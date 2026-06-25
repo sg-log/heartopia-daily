@@ -120,9 +120,42 @@ function getSheet_() {
 }
 
 function parseBody_(e) {
+  const parameters = (e && e.parameter) || {};
+  if (parameters.action) {
+    return {
+      action: String(parameters.action || ""),
+      postKey: String(parameters.postKey || ""),
+      adminKey: String(parameters.adminKey || ""),
+      id: String(parameters.id || ""),
+      date: String(parameters.date || ""),
+      memo: String(parameters.memo || ""),
+      poster: String(parameters.poster || ""),
+      author: String(parameters.poster || parameters.author || parameters["投稿者"] || ""),
+      weatherSlots: {
+        t18a: parseSlotParameter_(parameters.t18a),
+        t00: parseSlotParameter_(parameters.t00),
+        t06: parseSlotParameter_(parameters.t06),
+        t12: parseSlotParameter_(parameters.t12),
+        t18b: parseSlotParameter_(parameters.t18b)
+      }
+    };
+  }
+
   const text = e && e.postData && e.postData.contents;
   if (text) return JSON.parse(text);
-  return (e && e.parameter) || {};
+  return parameters;
+}
+
+function parseSlotParameter_(value) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(String(value));
+    return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [String(parsed)];
+  } catch (error) {
+    return String(value).split(/[・,、/]/).map(function(item) {
+      return item.trim();
+    }).filter(Boolean);
+  }
 }
 
 function encodeSlot_(value) {

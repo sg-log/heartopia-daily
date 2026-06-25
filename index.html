@@ -2052,14 +2052,21 @@ async function submitWeatherReport(){
   }
   E.weatherReportStatus.textContent = "送信中です…";
   try{
-    await apiPost({
-      action:"submit",
-      date:E.reportWeatherDate.value,
-      weatherSlots:chipSelections("report-weather"),
-      memo:E.reportWeatherMemo.value.trim(),
-      postKey:E.reportPostKey.value
+    const slots = chipSelections("report-weather");
+    const body = new URLSearchParams();
+    body.set("action", "submit");
+    body.set("postKey", E.reportPostKey.value);
+    body.set("date", E.reportWeatherDate.value);
+    WEATHER_SLOT_DEFS.forEach(([key]) => body.set(key, JSON.stringify(slots[key] || [])));
+    body.set("memo", E.reportWeatherMemo.value.trim());
+    body.set("poster", "");
+
+    await fetch(WEATHER_API_URL, {
+      method:"POST",
+      mode:"no-cors",
+      body
     });
-    E.weatherReportStatus.textContent = "天気を報告しました。承認後に公開されます。";
+    E.weatherReportStatus.textContent = "送信しました。反映されるまで少し待ってください。";
     clearChipSelections("report-weather");
     E.reportWeatherMemo.value = "";
   }catch(error){
