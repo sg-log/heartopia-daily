@@ -1749,6 +1749,14 @@ let state = load();
 function clone(v){ return JSON.parse(JSON.stringify(v)); }
 function pad(n){ return String(n).padStart(2,"0"); }
 function dateValue(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function normalizeApiDate(value){
+  if(!value) return "";
+  const text = String(value).trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const d = new Date(text);
+  if(!Number.isNaN(d.getTime())) return dateValue(d);
+  return text;
+}
 function parseDate(v){ const [y,m,d]=v.split("-").map(Number); return new Date(y,m-1,d); }
 function esc(v){ return String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;"); }
 function norm(v){ return String(v ?? "").trim().replace(/番地/g,"番").replace(/[ 　]/g,""); }
@@ -1797,7 +1805,7 @@ function normalize(input){
   const cycleData = Array.from({length:s.cycleLength}, (_,i) => byDay.get(i+1) || {day:i+1, oak:"", fluorite:"", confirmed:false, memo:""});
   const observations = (input.observations || []).map(o => ({date:o.date, oak:norm(o.oak), fluorite:norm(o.fluorite), memo:o.memo || ""})).filter(o => o.date && (o.oak || o.fluorite));
   const weather = (input.weather || []).map(w => ({
-    date:w.date,
+    date:normalizeApiDate(w.date),
     weatherSlots:normalizeWeatherSlots(w),
     memo:w.memo || ""
   })).filter(w => w.date);
@@ -1830,7 +1838,10 @@ function cycleDay(dateStr){
   return (((state.settings.baseCycleDay - 1 + diff) % state.settings.cycleLength) + state.settings.cycleLength) % state.settings.cycleLength + 1;
 }
 function dayData(day){ return state.cycleData.find(d => d.day === Number(day)) || {day, oak:"", fluorite:"", confirmed:false, memo:""}; }
-function weatherData(dateStr){ return state.weather.find(w => w.date === dateStr); }
+function weatherData(dateStr){
+  const normalizedDate = normalizeApiDate(dateStr);
+  return state.weather.find(w => normalizeApiDate(w.date) === normalizedDate);
+}
 function currentSlot(){
   const h = new Date().getHours();
   if(h < 6) return "t00";
@@ -1946,11 +1957,11 @@ function upsertObservation(item){
 
 function upsertWeather(item){
   item = {
-    date:item.date,
+    date:normalizeApiDate(item.date),
     weatherSlots:Object.fromEntries(WEATHER_SLOT_DEFS.map(([key]) => [key, weatherValues(item.weatherSlots?.[key])])),
     memo:item.memo || ""
   };
-  const old = state.weather.find(w => w.date === item.date);
+  const old = weatherData(item.date);
   if(old){ old.weatherSlots = item.weatherSlots; old.memo = item.memo; }
   else state.weather.push(item);
 }
@@ -2082,7 +2093,7 @@ async function fetchApprovedWeather(){
     if(result.ok === false) throw new Error(result.error || "APIエラー");
     const reports = result.reports || result.data || [];
     reports.forEach(report => upsertWeather({
-      date:report.date,
+      date:normalizeApiDate(report.date),
       weatherSlots:report.weatherSlots || report,
       memo:report.memo || ""
     }));
@@ -2111,7 +2122,7 @@ async function fetchPendingWeatherReports(){
     if(result.ok === false) throw new Error(result.error || "APIエラー");
     const reports = result.reports || result.data || [];
     E.pendingWeatherStatus.textContent = reports.length ? `${reports.length}件の未承認報告があります。` : "未承認の天気報告はありません。";
-    E.pendingWeatherReports.innerHTML = reports.length ? `<table><thead><tr><th>日付</th>${WEATHER_SLOT_DEFS.map(([,label]) => `<th>${esc(label)}</th>`).join("")}<th>メモ</th><th>操作</th></tr></thead><tbody>${reports.map(r => `<tr><td>${esc(r.date)}</td>${WEATHER_SLOT_DEFS.map(([key]) => `<td>${esc(weatherText(r.weatherSlots?.[key] ?? r[key], key, ""))}</td>`).join("")}<td>${esc(r.memo || "")}</td><td><div class="buttons"><button type="button" data-approve-weather="${esc(r.id)}">承認</button><button type="button" class="danger" data-reject-weather="${esc(r.id)}">却下</button></div></td></tr>`).join("")}</tbody></table>` : "";
+    E.pendingWeatherReports.innerHTML = reports.length ? `<table><thead><tr><th>日付</th>${WEATHER_SLOT_DEFS.map(([,label]) => `<th>${esc(label)}</th>`).join("")}<th>メモ</th><th>操作</th></tr></thead><tbody>${reports.map(r => `<tr><td>${esc(normalizeApiDate(r.date))}</td>${WEATHER_SLOT_DEFS.map(([key]) => `<td>${esc(weatherText(r.weatherSlots?.[key] ?? r[key], key, ""))}</td>`).join("")}<td>${esc(r.memo || "")}</td><td><div class="buttons"><button type="button" data-approve-weather="${esc(r.id)}">承認</button><button type="button" class="danger" data-reject-weather="${esc(r.id)}">却下</button></div></td></tr>`).join("")}</tbody></table>` : "";
     return reports;
   }catch(error){
     E.pendingWeatherStatus.textContent = `読み込めませんでした：${error.message}`;

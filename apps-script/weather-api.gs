@@ -40,10 +40,12 @@ function submit_(body) {
   if (!body.date) throw new Error("日付がありません");
 
   const slots = body.weatherSlots || {};
+  const date = formatDateValue(body.date);
+  if (!date) throw new Error("日付の形式が正しくありません");
   const now = new Date().toISOString();
   const row = [
     Utilities.getUuid(),
-    String(body.date),
+    date,
     encodeSlot_(slots.t18a),
     encodeSlot_(slots.t00),
     encodeSlot_(slots.t06),
@@ -90,11 +92,7 @@ function listByStatus_(status) {
     headers.forEach(function(header, index) {
       item[header] = row[index] == null ? "" : row[index];
     });
-    if (item.date instanceof Date) {
-      item.date = Utilities.formatDate(item.date, Session.getScriptTimeZone(), "yyyy-MM-dd");
-    } else {
-      item.date = String(item.date || "");
-    }
+    item.date = formatDateValue(item.date);
     item.weatherSlots = {
       t18a: decodeSlot_(item.t18a),
       t00: decodeSlot_(item.t00),
@@ -104,6 +102,22 @@ function listByStatus_(status) {
     };
     return item;
   });
+}
+
+function formatDateValue(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  }
+
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+
+  const parsed = new Date(text);
+  if (!isNaN(parsed.getTime())) {
+    return Utilities.formatDate(parsed, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  }
+  return text;
 }
 
 function getSheet_() {
