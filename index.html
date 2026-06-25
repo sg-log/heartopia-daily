@@ -1,0 +1,1968 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+<meta name="description" content="Heartopia Slow Lifeのツルツルオークと無垢な蛍石の場所を確認できる非公式メモサイトです。">
+<title>Heartopia Daily | 今日の採取場所メモ</title>
+<style>
+:root{
+  --bg:#f5f0e8;
+  --card:#fffefa;
+  --text:#5f5953;--heading:#3f3a36;--body:#5f5953;--subtle:#7a746d;--lighttext:#8a847d;
+  --muted:#7a746d;
+  --line:#e2d8cc;
+  --accent:#7c9189;
+  --accent2:#5d746b;
+  --soft:#edf3ef;
+  --warm:#fff5d8;
+  --bad:#a4574f;
+  --shadow:0 12px 34px rgba(45,38,31,.09);
+  --r:20px;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:radial-gradient(circle at 0 0,rgba(124,145,137,.20),transparent 34%),var(--bg);
+  color:var(--text);
+  line-height:1.7;
+}
+header,main{width:min(1080px,100%);margin:auto}
+header{padding:28px 18px 8px}
+h1{font-size:clamp(28px,7vw,48px);line-height:1.1;margin:0;letter-spacing:-.04em}
+header p{margin:8px 0 0;color:var(--muted);font-size:14px}
+main{padding:16px;display:grid;gap:16px}
+.card{
+  background:rgba(255,254,250,.96);
+  border:1px solid var(--line);
+  border-radius:var(--r);
+  box-shadow:var(--shadow);
+  padding:18px;
+}
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+.s8{grid-column:span 8}.s4{grid-column:span 4}.s6{grid-column:span 6}.s12{grid-column:span 12}
+h2{font-size:18px;margin:0 0 12px}
+h3{font-size:15px;margin:16px 0 8px}
+.small{font-size:12px;color:var(--muted)}
+.notice{font-size:13px;color:var(--muted);background:#faf7f1;border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+label{display:block;font-size:13px;color:var(--muted);margin:0 0 5px}
+input,select,textarea{
+  width:100%;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:#fff;
+  color:var(--text);
+  padding:10px 11px;
+  font-size:15px;
+}
+textarea{min-height:96px;resize:vertical}
+.row{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:10px}
+.row.one{grid-template-columns:1fr}
+button{
+  border:0;
+  border-radius:999px;
+  padding:10px 14px;
+  background:var(--accent);
+  color:#fff;
+  font-weight:800;
+  font-size:14px;
+  cursor:pointer;
+}
+button.secondary{background:var(--soft);color:var(--accent2);border:1px solid #d7e2dc}
+button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
+.buttons{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}
+.tab{background:var(--soft);color:var(--accent2)}
+.tab.active{background:var(--accent);color:#fff}
+.tab.admin{opacity:.78}
+.panel{display:none}
+.panel.active{display:grid;gap:16px}
+.datepill{
+  display:inline-flex;
+  width:max-content;
+  background:var(--soft);
+  color:var(--accent2);
+  border-radius:999px;
+  padding:6px 10px;
+  font-size:13px;
+  font-weight:900;
+}
+.hero{display:grid;gap:12px}
+.items{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.item{
+  border:1px solid var(--line);
+  border-radius:18px;
+  background:#fff;
+  padding:16px;
+  overflow:hidden;
+  position:relative;
+}
+.itemIcon{
+  width:100%;
+  height:150px;
+  border-radius:16px;
+  margin-bottom:12px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:linear-gradient(135deg,#f7fbf7,#fdf8ef);
+}
+.itemIcon img{
+  max-width:100%;
+  max-height:170px;
+  object-fit:contain;
+  display:block;
+}
+.item .label{font-size:13px;color:var(--muted);font-weight:800}
+.item .value{font-size:clamp(28px,8vw,46px);font-weight:950;line-height:1.15;margin-top:6px}
+.weatherNow{
+  border:1px solid #eadca9;
+  background:var(--warm);
+  border-radius:18px;
+  padding:14px;
+  color:#6b5526;
+}
+.preview{
+  background:#292724;
+  color:#f8f4ec;
+  border-radius:16px;
+  padding:14px;
+  white-space:pre-wrap;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:13px;
+  overflow:auto;
+}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}
+th{font-size:12px;color:var(--muted);background:#fbf8f4}
+.status{font-size:13px;color:var(--accent2);font-weight:800;min-height:1.4em;margin-top:10px}
+.toast{
+  position:fixed;
+  left:50%;
+  bottom:18px;
+  transform:translateX(-50%);
+  background:#292724;
+  color:#fff;
+  border-radius:999px;
+  padding:10px 14px;
+  box-shadow:var(--shadow);
+  font-size:13px;
+  opacity:0;
+  pointer-events:none;
+  transition:.2s;
+}
+.toast.show{opacity:1}
+@media(max-width:820px){
+  .grid{grid-template-columns:1fr}
+  .s8,.s4,.s6,.s12{grid-column:span 1}
+  .row,.row.one,.items{grid-template-columns:1fr}
+  .card{padding:15px}
+  .itemIcon{height:135px}
+}
+
+/* Mobile compact layout */
+@media(max-width:820px){
+  header{padding:18px 14px 4px}
+  h1{font-size:30px}
+  header p{font-size:12px;margin-top:4px}
+  main{padding:10px;gap:10px}
+  .tabs{gap:6px}
+  .tab{padding:8px 11px;font-size:13px}
+  .card{padding:12px;border-radius:16px}
+  h2{font-size:16px;margin-bottom:8px}
+  .buttons{margin-top:8px}
+  button{padding:8px 11px;font-size:13px}
+  .hero{gap:8px}
+  .datepill{font-size:12px;padding:4px 9px}
+  .items{grid-template-columns:1fr 1fr;gap:8px}
+  .item{padding:10px;border-radius:15px}
+  .itemIcon{height:82px;margin-bottom:8px;border-radius:13px}
+  .itemIcon img{max-height:100px}
+  .item .label{font-size:11px;line-height:1.25}
+  .item .value{font-size:30px;margin-top:3px}
+  .small{font-size:11px}
+  .weatherNow{padding:10px;border-radius:14px;font-size:13px}
+}
+
+@media(max-width:380px){
+  .itemIcon{height:74px}
+  .itemIcon img{max-height:90px}
+  .item .value{font-size:26px}
+  .item .label{font-size:10px}
+}
+
+
+/* Smartphone polish */
+.compactCopy details{border:0;padding:0;background:transparent}
+.compactCopy summary{cursor:pointer;font-weight:900;font-size:16px;list-style:none}
+.compactCopy summary::-webkit-details-marker{display:none}
+.compactCopy summary::after{content:"＋";float:right;color:var(--accent2)}
+.compactCopy details[open] summary::after{content:"－"}
+.compactCopy .preview{margin-top:12px}
+
+@media(max-width:820px){
+  body{line-height:1.55}
+  header{padding:14px 14px 2px}
+  h1{font-size:28px;letter-spacing:-.05em}
+  header p{font-size:12px;line-height:1.45;max-width:95%}
+  main{padding:8px;gap:8px}
+  .tabs{gap:6px;position:sticky;top:0;z-index:5;background:rgba(245,240,232,.92);backdrop-filter:blur(8px);padding:4px 0}
+  .tab{padding:7px 10px;font-size:13px}
+  .card{padding:11px;border-radius:16px}
+  h2{font-size:15px;margin-bottom:7px}
+  label{font-size:12px}
+  input,select,textarea{padding:8px 10px;font-size:14px;border-radius:12px}
+  .row{margin-bottom:8px}
+  .buttons{margin-top:7px;gap:6px}
+  button{padding:7px 10px;font-size:13px}
+  .hero{gap:7px}
+  .datepill{font-size:12px;padding:4px 8px}
+  .items{grid-template-columns:1fr 1fr;gap:8px}
+  .item{padding:9px;border-radius:15px}
+  .itemIcon{height:76px;margin-bottom:7px;border-radius:12px}
+  .itemIcon img{max-height:92px}
+  .item .label{font-size:11px;line-height:1.2}
+  .item .value{font-size:28px;margin-top:2px}
+  .small{font-size:11px;line-height:1.45}
+  .weatherNow{padding:10px;border-radius:14px;font-size:13px}
+  .compactCopy{padding:11px}
+  .compactCopy summary{font-size:15px}
+  .preview{font-size:12px;border-radius:14px;padding:12px}
+}
+
+@media(max-width:380px){
+  h1{font-size:26px}
+  .itemIcon{height:68px}
+  .itemIcon img{max-height:82px}
+  .item .value{font-size:25px}
+  .item .label{font-size:10px}
+  .tab{font-size:12px;padding:7px 9px}
+}
+
+
+h1,h2,h3{color:var(--heading);font-weight:800}
+body{color:var(--body)}
+header p,p{color:var(--body)}
+.small,label,.notice,th,.item .label,.datepill{color:var(--subtle)}
+.item .value{color:var(--heading);font-weight:900}
+.weatherNow{color:#6f6037}
+.preview{color:#f6f2ea}
+.tab{font-weight:700}
+.tab.active{font-weight:800}
+button{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--body)}
+
+
+@media(max-width:820px){
+  h1{font-weight:800}
+  .item .value{font-weight:900;letter-spacing:-.03em}
+}
+
+
+/* Final mobile polish */
+.todayCard .row.one{margin-bottom:8px}
+
+@media(max-width:820px){
+  h1{font-size:24px}
+  header{padding:12px 14px 0}
+  header p{font-size:11px}
+  .todayCard{padding-top:12px}
+  .todayCard label{display:none}
+  .todayCard .buttons{margin-top:6px}
+  .todayCard .small{margin:5px 0}
+  .weatherCard{padding:10px 11px}
+  .weatherCard h2{font-size:14px;margin-bottom:7px}
+  .weatherCard .weatherNow{padding:8px 10px;font-size:12px}
+}
+
+@media(min-width:821px){
+  .todayCard::before{
+    content:"今日の採取場所";
+    display:block;
+    font-size:18px;
+    font-weight:800;
+    color:var(--heading);
+    margin-bottom:12px;
+  }
+}
+
+</style>
+</head>
+<body>
+<header>
+  <h1>Heartopia Daily</h1>
+  <p>今日の採取場所をさっと確認できる非公式メモサイトです。</p>
+</header>
+
+<main>
+  <section class="tabs">
+    <button class="tab active" data-tab="today">今日の場所</button>
+    <button class="tab" data-tab="weather">天気メモ</button>
+    <button class="tab" data-tab="about">このサイトについて</button>
+    <button class="tab admin" data-tab="admin" id="adminTab" hidden>管理</button>
+  </section>
+
+  <section id="today" class="panel active">
+    <div class="grid">
+      <div class="card s8 todayCard">
+        <div class="row one">
+          <div>
+            <label for="targetDate">日付を選ぶ</label>
+            <input id="targetDate" type="date">
+          </div>
+        </div>
+        <div class="buttons">
+          <button id="todayBtn">今日に戻す</button>
+          <button class="secondary" id="tomorrowBtn">明日を見る</button>
+        </div>
+        <p class="small">朝6時切替で計算しています。</p>
+        <div class="hero" id="todayResult"></div>
+      </div>
+
+      <div class="card s4 weatherCard">
+        <h2>今日の天気</h2>
+        <div id="weatherResult"></div>
+      </div>
+
+      <div class="card s12 compactCopy">
+        <details>
+          <summary>Discord用コピー</summary>
+          <div id="discordText" class="preview"></div>
+          <div class="buttons"><button id="copyBtn">コピー</button></div>
+          <div id="copyStatus" class="status"></div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <section id="weather" class="panel">
+    <div class="grid">
+      <div class="card s6">
+        <h2>天気メモ</h2>
+        <div id="weatherSummary"></div>
+        <p class="small">天気は自動取得ではありません。ゲーム内予報を見て登録した分だけ表示します。</p>
+      </div>
+
+      <div class="card s6">
+        <h2>天気を登録</h2>
+        <div class="row">
+          <div><label for="weatherDate">日付</label><input id="weatherDate" type="date"></div>
+          <div><label for="weatherMemo">メモ</label><input id="weatherMemo" placeholder="虹、流星群、ドリスなど"></div>
+        </div>
+        <div class="row">
+          <div><label for="w0612">06:00から12:00</label><input id="w0612" placeholder="晴れ、雨、虹など"></div>
+          <div><label for="w1218">12:00から18:00</label><input id="w1218" placeholder="晴れ、雪など"></div>
+        </div>
+        <div class="row">
+          <div><label for="w1824">18:00から24:00</label><input id="w1824" placeholder="くもり、流星群など"></div>
+          <div><label for="w0006">00:00から06:00</label><input id="w0006" placeholder="翌朝6時まで"></div>
+        </div>
+        <div class="buttons"><button id="saveWeatherBtn">天気を登録</button></div>
+        <div id="weatherStatus" class="status"></div>
+      </div>
+
+      <div class="card s12">
+        <h2>天気ログ</h2>
+        <div id="weatherTable"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="about" class="panel">
+    <div class="grid">
+      <div class="card s12">
+        <h2>このサイトについて</h2>
+        <p>
+          このサイトは、ハートピアスローライフ内で日替わり出現する
+          ツルツルオークと無垢な蛍石の場所を、観測データをもとに確認するための非公式メモサイトです。
+        </p>
+        <p>
+          ゲーム内の日付切替は朝6時として計算しています。
+          表示内容は公式情報ではなく、過去の観測データをもとにした予想です。
+        </p>
+        <div class="notice">
+          個人が作成した非公式サイトです。ゲーム運営および関連サービスとは関係ありません。
+        </div>
+      </div>
+
+      <div class="card s6">
+        <h2>いま入っているデータ</h2>
+        <p>
+          2026-02-18 から 2026-06-25 までの観測ログ128件を登録済みです。
+          50日周期として矛盾がないことを確認しています。
+        </p>
+      </div>
+
+      <div class="card s6">
+        <h2>注意</h2>
+        <p>
+          現在は身内テスト用の静的HTML版です。
+          今後、公開運用する場合はデータ更新方法を分けて整える予定です。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section id="admin" class="panel">
+    <div class="grid">
+      <div class="card s12">
+        <h2>管理</h2>
+        <p class="notice">
+          この画面は身内テスト用の管理エリアです。現在、2026-02-18 から 2026-06-25 までの観測ログ128件を取り込み済みです。観測データの登録、バックアップ、内部設定の確認に使います。公開時は通常表示されません。
+        </p>
+      </div>
+
+      <div class="card s6">
+        <h2>木と石を登録</h2>
+        <div class="row">
+          <div><label for="obsDate">日付</label><input id="obsDate" type="date"></div>
+          <div><label for="obsMemo">メモ</label><input id="obsMemo" placeholder="任意"></div>
+        </div>
+        <div class="row">
+          <div><label for="obsOak">ツルツルオーク</label><input id="obsOak" placeholder="例：11番"></div>
+          <div><label for="obsFluorite">無垢な蛍石</label><input id="obsFluorite" placeholder="例：7番"></div>
+        </div>
+        <div class="buttons"><button id="addObsBtn">登録して反映</button></div>
+        <div id="obsStatus" class="status"></div>
+      </div>
+
+      <div class="card s6">
+        <h2>Webで拾った文章をまとめて貼る</h2>
+        <textarea id="bulkText" placeholder="例：
+2026/06/25
+ツルツルオーク 11番地
+無垢な蛍石 7番地"></textarea>
+        <div class="buttons">
+          <button id="parseBtn">読み取り</button>
+          <button class="secondary" id="applyParsedBtn">読み取った分を登録</button>
+        </div>
+        <div id="parseStatus" class="status"></div>
+        <div id="parsedTable"></div>
+      </div>
+
+      <div class="card s12">
+        <h2>蓄積データ</h2>
+        <details open><summary>表示用データ</summary><div id="cycleTable"></div></details>
+        <br>
+        <details><summary>観測ログ</summary><div id="obsTable"></div></details>
+      </div>
+
+      <div class="card s6">
+        <h2>内部設定</h2>
+        <p class="small">通常は変更不要です。日付切替は朝6時固定です。</p>
+        <div class="row">
+          <div><label for="baseDate">基準日</label><input id="baseDate" type="date"></div>
+          <div><label for="baseCycleDay">基準日の内部順</label><input id="baseCycleDay" type="number" min="1" max="50"></div>
+        </div>
+        <div class="row one">
+          <div><label for="cycleLength">周期日数</label><input id="cycleLength" type="number" min="2" max="365"></div>
+        </div>
+        <input id="rolloverHour" type="hidden" value="6">
+        <div class="buttons"><button id="saveSettingsBtn">設定を保存</button></div>
+      </div>
+
+      <div class="card s6">
+        <h2>バックアップ</h2>
+        <p class="small">ブラウザ内保存なので、編集したらJSONを書き出しておくのがおすすめです。</p>
+        <div class="buttons">
+          <button id="exportBtn">JSONを書き出し</button>
+          <button class="secondary" id="showImportBtn">JSONを読み込み</button>
+          <button class="danger" id="resetBtn">初期データに戻す</button>
+        </div>
+        <div id="importBox" style="display:none;margin-top:12px">
+          <textarea id="importText" placeholder="ここにJSONを貼り付け"></textarea>
+          <div class="buttons"><button id="importBtn">読み込む</button></div>
+        </div>
+        <div id="backupStatus" class="status"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const SEED = {
+  "settings": {
+    "baseDate": "2026-02-18",
+    "baseCycleDay": 1,
+    "cycleLength": 50,
+    "rolloverHour": 6
+  },
+  "cycleData": [
+    {
+      "day": 1,
+      "oak": "7番",
+      "fluorite": "2番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 2,
+      "oak": "3番",
+      "fluorite": "2番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 3,
+      "oak": "不思議な松林",
+      "fluorite": "2番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 4,
+      "oak": "3番",
+      "fluorite": "1番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 5,
+      "oak": "5番",
+      "fluorite": "1番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 6,
+      "oak": "12番",
+      "fluorite": "4番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 7,
+      "oak": "2番",
+      "fluorite": "8番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 8,
+      "oak": "8番",
+      "fluorite": "4番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 9,
+      "oak": "4番",
+      "fluorite": "1番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 10,
+      "oak": "8番",
+      "fluorite": "温泉山遺跡",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 11,
+      "oak": "6番",
+      "fluorite": "8番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 12,
+      "oak": "8番",
+      "fluorite": "8番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 13,
+      "oak": "12番",
+      "fluorite": "6番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 14,
+      "oak": "10番",
+      "fluorite": "2番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 15,
+      "oak": "7番",
+      "fluorite": "2番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 16,
+      "oak": "12番",
+      "fluorite": "温泉山遺跡",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 17,
+      "oak": "8番",
+      "fluorite": "5番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 18,
+      "oak": "6番",
+      "fluorite": "11番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 19,
+      "oak": "11番",
+      "fluorite": "11番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 20,
+      "oak": "2番",
+      "fluorite": "2番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 21,
+      "oak": "9番",
+      "fluorite": "12番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 22,
+      "oak": "3番",
+      "fluorite": "4番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 23,
+      "oak": "6番",
+      "fluorite": "11番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 24,
+      "oak": "2番",
+      "fluorite": "7番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 25,
+      "oak": "11番",
+      "fluorite": "9番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 26,
+      "oak": "不思議な松林",
+      "fluorite": "4番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 27,
+      "oak": "不思議な松林",
+      "fluorite": "4番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 28,
+      "oak": "11番",
+      "fluorite": "7番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 29,
+      "oak": "9番",
+      "fluorite": "5番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 30,
+      "oak": "10番",
+      "fluorite": "3番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 31,
+      "oak": "3番",
+      "fluorite": "7番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 32,
+      "oak": "6番",
+      "fluorite": "7番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 33,
+      "oak": "9番",
+      "fluorite": "1番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 34,
+      "oak": "4番",
+      "fluorite": "5番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 35,
+      "oak": "10番",
+      "fluorite": "9番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 36,
+      "oak": "不思議な松林",
+      "fluorite": "11番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 37,
+      "oak": "7番",
+      "fluorite": "6番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 38,
+      "oak": "6番",
+      "fluorite": "2番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 39,
+      "oak": "11番",
+      "fluorite": "2番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 40,
+      "oak": "2番",
+      "fluorite": "3番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 41,
+      "oak": "12番",
+      "fluorite": "12番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 42,
+      "oak": "4番",
+      "fluorite": "11番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 43,
+      "oak": "12番",
+      "fluorite": "温泉山遺跡",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 44,
+      "oak": "不思議な松林",
+      "fluorite": "8番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 45,
+      "oak": "2番",
+      "fluorite": "5番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 46,
+      "oak": "1番",
+      "fluorite": "4番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 47,
+      "oak": "10番",
+      "fluorite": "11番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 48,
+      "oak": "5番",
+      "fluorite": "温泉山遺跡",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 49,
+      "oak": "10番",
+      "fluorite": "8番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    },
+    {
+      "day": 50,
+      "oak": "4番",
+      "fluorite": "8番",
+      "confirmed": true,
+      "memo": "スプレッドシート全履歴から反映"
+    }
+  ],
+  "observations": [
+    {
+      "date": "2026-02-18",
+      "oak": "7番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-02-19",
+      "oak": "3番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-02-20",
+      "oak": "不思議な松林",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-02-21",
+      "oak": "3番",
+      "fluorite": "1番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-02-22",
+      "oak": "5番",
+      "fluorite": "1番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-02-23",
+      "oak": "12番",
+      "fluorite": "4番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-02-24",
+      "oak": "2番",
+      "fluorite": "8番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-02-25",
+      "oak": "8番",
+      "fluorite": "4番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-02-26",
+      "oak": "4番",
+      "fluorite": "1番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-02-27",
+      "oak": "8番",
+      "fluorite": "温泉山遺跡",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-02-28",
+      "oak": "6番",
+      "fluorite": "8番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-01",
+      "oak": "8番",
+      "fluorite": "8番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-02",
+      "oak": "12番",
+      "fluorite": "6番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-03",
+      "oak": "10番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-04",
+      "oak": "7番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-05",
+      "oak": "12番",
+      "fluorite": "温泉山遺跡",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-06",
+      "oak": "8番",
+      "fluorite": "5番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-07",
+      "oak": "6番",
+      "fluorite": "11番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-08",
+      "oak": "11番",
+      "fluorite": "11番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-09",
+      "oak": "2番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-10",
+      "oak": "9番",
+      "fluorite": "12番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-11",
+      "oak": "3番",
+      "fluorite": "4番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-12",
+      "oak": "6番",
+      "fluorite": "11番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-13",
+      "oak": "2番",
+      "fluorite": "7番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-14",
+      "oak": "11番",
+      "fluorite": "9番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-15",
+      "oak": "不思議な松林",
+      "fluorite": "4番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-16",
+      "oak": "不思議な松林",
+      "fluorite": "4番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-17",
+      "oak": "11番",
+      "fluorite": "7番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-18",
+      "oak": "9番",
+      "fluorite": "5番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-19",
+      "oak": "10番",
+      "fluorite": "3番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-20",
+      "oak": "3番",
+      "fluorite": "7番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-21",
+      "oak": "6番",
+      "fluorite": "7番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-22",
+      "oak": "9番",
+      "fluorite": "1番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-23",
+      "oak": "4番",
+      "fluorite": "5番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-24",
+      "oak": "10番",
+      "fluorite": "9番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-25",
+      "oak": "不思議な松林",
+      "fluorite": "11番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-26",
+      "oak": "7番",
+      "fluorite": "6番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-27",
+      "oak": "6番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-28",
+      "oak": "11番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-29",
+      "oak": "2番",
+      "fluorite": "3番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-30",
+      "oak": "12番",
+      "fluorite": "12番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-03-31",
+      "oak": "4番",
+      "fluorite": "11番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-01",
+      "oak": "12番",
+      "fluorite": "温泉山遺跡",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-02",
+      "oak": "不思議な松林",
+      "fluorite": "8番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-03",
+      "oak": "2番",
+      "fluorite": "5番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-04",
+      "oak": "1番",
+      "fluorite": "4番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-05",
+      "oak": "10番",
+      "fluorite": "11番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-06",
+      "oak": "5番",
+      "fluorite": "温泉山遺跡",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-07",
+      "oak": "10番",
+      "fluorite": "8番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-08",
+      "oak": "4番",
+      "fluorite": "8番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-09",
+      "oak": "7番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-10",
+      "oak": "3番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-11",
+      "oak": "不思議な松林",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-12",
+      "oak": "3番",
+      "fluorite": "1番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-13",
+      "oak": "5番",
+      "fluorite": "1番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-14",
+      "oak": "12番",
+      "fluorite": "4番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-15",
+      "oak": "2番",
+      "fluorite": "8番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-16",
+      "oak": "8番",
+      "fluorite": "4番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-17",
+      "oak": "4番",
+      "fluorite": "1番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-18",
+      "oak": "8番",
+      "fluorite": "温泉山遺跡",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-19",
+      "oak": "6番",
+      "fluorite": "8番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-20",
+      "oak": "8番",
+      "fluorite": "8番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-21",
+      "oak": "12番",
+      "fluorite": "6番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-22",
+      "oak": "10番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-23",
+      "oak": "7番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-24",
+      "oak": "12番",
+      "fluorite": "温泉山遺跡",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-25",
+      "oak": "8番",
+      "fluorite": "5番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-26",
+      "oak": "6番",
+      "fluorite": "11番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-27",
+      "oak": "11番",
+      "fluorite": "11番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-28",
+      "oak": "2番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-29",
+      "oak": "9番",
+      "fluorite": "12番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-04-30",
+      "oak": "3番",
+      "fluorite": "4番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-01",
+      "oak": "6番",
+      "fluorite": "11番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-02",
+      "oak": "2番",
+      "fluorite": "7番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-03",
+      "oak": "11番",
+      "fluorite": "9番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-04",
+      "oak": "不思議な松林",
+      "fluorite": "4番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-05",
+      "oak": "不思議な松林",
+      "fluorite": "4番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-06",
+      "oak": "11番",
+      "fluorite": "7番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-07",
+      "oak": "9番",
+      "fluorite": "5番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-08",
+      "oak": "10番",
+      "fluorite": "3番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-09",
+      "oak": "3番",
+      "fluorite": "7番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-10",
+      "oak": "6番",
+      "fluorite": "7番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-11",
+      "oak": "9番",
+      "fluorite": "1番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-12",
+      "oak": "4番",
+      "fluorite": "5番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-13",
+      "oak": "10番",
+      "fluorite": "9番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-14",
+      "oak": "不思議な松林",
+      "fluorite": "11番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-15",
+      "oak": "7番",
+      "fluorite": "6番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-16",
+      "oak": "6番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-17",
+      "oak": "11番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-18",
+      "oak": "2番",
+      "fluorite": "3番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-19",
+      "oak": "12番",
+      "fluorite": "12番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-20",
+      "oak": "4番",
+      "fluorite": "11番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-21",
+      "oak": "12番",
+      "fluorite": "温泉山遺跡",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-22",
+      "oak": "不思議な松林",
+      "fluorite": "8番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-23",
+      "oak": "2番",
+      "fluorite": "5番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-24",
+      "oak": "1番",
+      "fluorite": "4番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-25",
+      "oak": "10番",
+      "fluorite": "11番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-26",
+      "oak": "5番",
+      "fluorite": "温泉山遺跡",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-27",
+      "oak": "10番",
+      "fluorite": "8番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-28",
+      "oak": "4番",
+      "fluorite": "8番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-29",
+      "oak": "7番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-30",
+      "oak": "3番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-05-31",
+      "oak": "不思議な松林",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-01",
+      "oak": "3番",
+      "fluorite": "1番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-02",
+      "oak": "5番",
+      "fluorite": "1番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-03",
+      "oak": "12番",
+      "fluorite": "4番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-04",
+      "oak": "2番",
+      "fluorite": "8番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-05",
+      "oak": "8番",
+      "fluorite": "4番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-06",
+      "oak": "4番",
+      "fluorite": "1番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-07",
+      "oak": "8番",
+      "fluorite": "温泉山遺跡",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-08",
+      "oak": "6番",
+      "fluorite": "8番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-09",
+      "oak": "8番",
+      "fluorite": "8番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-10",
+      "oak": "12番",
+      "fluorite": "6番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-11",
+      "oak": "10番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-12",
+      "oak": "7番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-13",
+      "oak": "12番",
+      "fluorite": "温泉山遺跡",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-14",
+      "oak": "8番",
+      "fluorite": "5番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-15",
+      "oak": "6番",
+      "fluorite": "11番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-16",
+      "oak": "11番",
+      "fluorite": "11番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-17",
+      "oak": "2番",
+      "fluorite": "2番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-18",
+      "oak": "9番",
+      "fluorite": "12番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-19",
+      "oak": "3番",
+      "fluorite": "4番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-20",
+      "oak": "6番",
+      "fluorite": "11番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-21",
+      "oak": "2番",
+      "fluorite": "7番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-22",
+      "oak": "11番",
+      "fluorite": "9番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-23",
+      "oak": "不思議な松林",
+      "fluorite": "4番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-24",
+      "oak": "不思議な松林",
+      "fluorite": "4番",
+      "memo": "スプレッドシート取り込み"
+    },
+    {
+      "date": "2026-06-25",
+      "oak": "11番",
+      "fluorite": "7番",
+      "memo": "スプレッドシート取り込み"
+    }
+  ],
+  "weather": []
+};
+const STORAGE_KEY = "heartopiaDaily.publishReady.v1";
+const $ = id => document.getElementById(id);
+const ids = [
+  "targetDate","todayBtn","tomorrowBtn","todayResult","weatherResult","weatherSummary","discordText","copyBtn","copyStatus",
+  "obsDate","obsMemo","obsOak","obsFluorite","addObsBtn","obsStatus",
+  "weatherDate","weatherMemo","w0612","w1218","w1824","w0006","saveWeatherBtn","weatherStatus",
+  "bulkText","parseBtn","applyParsedBtn","parseStatus","parsedTable",
+  "cycleTable","obsTable","weatherTable",
+  "baseDate","baseCycleDay","cycleLength","rolloverHour","saveSettingsBtn",
+  "exportBtn","showImportBtn","importBox","importText","importBtn","resetBtn","backupStatus","toast"
+];
+const E = Object.fromEntries(ids.map(id => [id, $(id)]));
+let parsedItems = [];
+let state = load();
+
+function clone(v){ return JSON.parse(JSON.stringify(v)); }
+function pad(n){ return String(n).padStart(2,"0"); }
+function dateValue(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function parseDate(v){ const [y,m,d]=v.split("-").map(Number); return new Date(y,m-1,d); }
+function esc(v){ return String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;"); }
+function norm(v){ return String(v ?? "").trim().replace(/番地/g,"番").replace(/[ 　]/g,""); }
+function gameToday(){ const d = new Date(); d.setHours(d.getHours() - 6); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function addDays(dateStr,n){ const d=parseDate(dateStr); d.setDate(d.getDate()+n); return dateValue(d); }
+function jpDate(v){ const d=parseDate(v); return `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}(${"日月火水木金土"[d.getDay()]})`; }
+function load(){ try{ const raw=localStorage.getItem(STORAGE_KEY); return raw ? normalize(JSON.parse(raw)) : clone(SEED); }catch(e){ return clone(SEED); } }
+function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state,null,2)); }
+
+function normalize(input){
+  const s={...clone(SEED).settings, ...(input.settings || {})};
+  s.cycleLength = Number(s.cycleLength || 50);
+  s.baseCycleDay = Number(s.baseCycleDay || 1);
+  s.rolloverHour = 6;
+  const cycle = (input.cycleData || []).map(d => ({
+    day:Number(d.day),
+    oak:norm(d.oak),
+    fluorite:norm(d.fluorite),
+    confirmed:Boolean(d.confirmed),
+    memo:d.memo || ""
+  }));
+  const byDay = new Map(cycle.map(d => [d.day, d]));
+  const cycleData = Array.from({length:s.cycleLength}, (_,i) => byDay.get(i+1) || {day:i+1, oak:"", fluorite:"", confirmed:false, memo:""});
+  const observations = (input.observations || []).map(o => ({date:o.date, oak:norm(o.oak), fluorite:norm(o.fluorite), memo:o.memo || ""})).filter(o => o.date && (o.oak || o.fluorite));
+  const weather = (input.weather || []).map(w => ({
+    date:w.date,
+    slots:{s0612:w.slots?.s0612 || "", s1218:w.slots?.s1218 || "", s1824:w.slots?.s1824 || "", s0006:w.slots?.s0006 || ""},
+    memo:w.memo || ""
+  })).filter(w => w.date);
+  return {settings:s, cycleData, observations, weather};
+}
+
+function clampSettings(){
+  state.settings.cycleLength = Math.max(2, Math.min(365, Number(E.cycleLength.value || 50)));
+  state.settings.baseCycleDay = Math.max(1, Math.min(state.settings.cycleLength, Number(E.baseCycleDay.value || 1)));
+  state.settings.baseDate = E.baseDate.value || SEED.settings.baseDate;
+  state.settings.rolloverHour = 6;
+  if(state.cycleData.length !== state.settings.cycleLength){
+    state.cycleData = Array.from({length:state.settings.cycleLength}, (_,i) => state.cycleData[i] || {day:i+1, oak:"", fluorite:"", confirmed:false, memo:""});
+  }
+}
+
+function diffDays(a,b){ return Math.round((Date.UTC(b.getFullYear(),b.getMonth(),b.getDate()) - Date.UTC(a.getFullYear(),a.getMonth(),a.getDate())) / 86400000); }
+function cycleDay(dateStr){
+  const diff = diffDays(parseDate(state.settings.baseDate), parseDate(dateStr));
+  return (((state.settings.baseCycleDay - 1 + diff) % state.settings.cycleLength) + state.settings.cycleLength) % state.settings.cycleLength + 1;
+}
+function dayData(day){ return state.cycleData.find(d => d.day === Number(day)) || {day, oak:"", fluorite:"", confirmed:false, memo:""}; }
+function weatherData(dateStr){ return state.weather.find(w => w.date === dateStr); }
+function currentSlot(){
+  const h = new Date().getHours();
+  if(h >= 6 && h < 12) return "s0612";
+  if(h >= 12 && h < 18) return "s1218";
+  if(h >= 18) return "s1824";
+  return "s0006";
+}
+function slotLabel(key){ return {s0612:"06:00から12:00",s1218:"12:00から18:00",s1824:"18:00から24:00",s0006:"00:00から06:00"}[key] || ""; }
+function discord(dateStr, data, weather){
+  const w = weather ? weather.slots[currentSlot()] : "";
+  return `【今日の採取メモ】\n\n日付：${jpDate(dateStr)}\n\n無垢な蛍石：${data.fluorite || "未入力"}\nツルツルオーク：${data.oak || "未入力"}\n${w ? `\nいまの天気：${w}\n` : ""}\n※観測データをもとにした非公式の予想です。`;
+}
+
+function renderToday(){
+  const date = E.targetDate.value;
+  const cy = cycleDay(date);
+  const data = dayData(cy);
+  const tomorrow = dayData(cycleDay(addDays(date,1)));
+  const weather = weatherData(date);
+
+  E.todayResult.innerHTML = `
+    <span class="datepill">${esc(jpDate(date))}</span>
+    <div class="items">
+      <div class="item">
+        <div class="itemIcon"><img src="assets/fluorite.png" alt="無垢な蛍石のイラスト"></div>
+        <div class="label">無垢な蛍石</div>
+        <div class="value">${esc(data.fluorite || "未入力")}</div>
+      </div>
+      <div class="item">
+        <div class="itemIcon"><img src="assets/oak.png" alt="ツルツルオークのイラスト"></div>
+        <div class="label">ツルツルオーク</div>
+        <div class="value">${esc(data.oak || "未入力")}</div>
+      </div>
+    </div>
+    <div class="small">明日：蛍石 ${esc(tomorrow.fluorite || "未入力")} / オーク ${esc(tomorrow.oak || "未入力")}</div>
+  `;
+  renderWeather(date, weather);
+  renderWeatherSummary();
+  E.discordText.textContent = discord(date, data, weather);
+  renderTables();
+}
+
+function renderWeather(date, w){
+  if(!w){
+    E.weatherResult.innerHTML = `<div class="weatherNow">天気は未登録です。</div>`;
+    return;
+  }
+  const slot = currentSlot();
+  E.weatherResult.innerHTML = `
+    <div class="weatherNow"><strong>${esc(slotLabel(slot))}</strong><br>${esc(w.slots[slot] || "未登録")}</div>
+    ${w.memo ? `<div class="small">メモ：${esc(w.memo)}</div>` : ""}
+  `;
+}
+
+function renderWeatherSummary(){
+  const today = E.targetDate.value || dateValue(gameToday());
+  const w = weatherData(today);
+  if(!w){
+    E.weatherSummary.innerHTML = `<div class="weatherNow">天気は未登録です。</div>`;
+    return;
+  }
+  E.weatherSummary.innerHTML = `
+    <span class="datepill">${esc(jpDate(today))}</span>
+    <table>
+      <tbody>
+        <tr><td>06:00から12:00</td><td>${esc(w.slots.s0612 || "未登録")}</td></tr>
+        <tr><td>12:00から18:00</td><td>${esc(w.slots.s1218 || "未登録")}</td></tr>
+        <tr><td>18:00から24:00</td><td>${esc(w.slots.s1824 || "未登録")}</td></tr>
+        <tr><td>00:00から06:00</td><td>${esc(w.slots.s0006 || "未登録")}</td></tr>
+      </tbody>
+    </table>
+    ${w.memo ? `<p class="small">メモ：${esc(w.memo)}</p>` : ""}
+  `;
+}
+
+function renderTables(){
+  E.cycleTable.innerHTML = `<table><thead><tr><th>内部順</th><th>木</th><th>石</th><th>確認</th><th>メモ</th></tr></thead><tbody>${state.cycleData.map((d, i) => `<tr><td>${i + 1}</td><td>${esc(d.oak || "")}</td><td>${esc(d.fluorite || "")}</td><td>${d.confirmed ? "済" : ""}</td><td>${esc(d.memo || "")}</td></tr>`).join("")}</tbody></table>`;
+  E.obsTable.innerHTML = `<table><thead><tr><th>日付</th><th>木</th><th>石</th><th>メモ</th></tr></thead><tbody>${state.observations.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(o => `<tr><td>${esc(o.date)}</td><td>${esc(o.oak)}</td><td>${esc(o.fluorite)}</td><td>${esc(o.memo)}</td></tr>`).join("")}</tbody></table>`;
+  E.weatherTable.innerHTML = `<table><thead><tr><th>日付</th><th>06から12</th><th>12から18</th><th>18から24</th><th>00から06</th><th>メモ</th></tr></thead><tbody>${state.weather.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(w => `<tr><td>${esc(w.date)}</td><td>${esc(w.slots.s0612)}</td><td>${esc(w.slots.s1218)}</td><td>${esc(w.slots.s1824)}</td><td>${esc(w.slots.s0006)}</td><td>${esc(w.memo)}</td></tr>`).join("")}</tbody></table>`;
+}
+
+function upsertObservation(item){
+  item = {date:item.date, oak:norm(item.oak), fluorite:norm(item.fluorite), memo:item.memo || ""};
+  const old = state.observations.find(o => o.date === item.date);
+  if(old){
+    if(item.oak) old.oak = item.oak;
+    if(item.fluorite) old.fluorite = item.fluorite;
+    if(item.memo) old.memo = item.memo;
+  } else {
+    state.observations.push(item);
+  }
+
+  const cy = cycleDay(item.date);
+  const i = state.cycleData.findIndex(d => d.day === cy);
+  if(i >= 0){
+    if(item.oak) state.cycleData[i].oak = item.oak;
+    if(item.fluorite) state.cycleData[i].fluorite = item.fluorite;
+    state.cycleData[i].confirmed = true;
+    state.cycleData[i].memo = "観測ログから反映";
+  }
+}
+
+function upsertWeather(item){
+  const old = state.weather.find(w => w.date === item.date);
+  if(old){ old.slots = item.slots; old.memo = item.memo; }
+  else state.weather.push(item);
+}
+
+function parseBulk(text){
+  const lines = text.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+  const items = [];
+  let cur = null;
+  const dateRe = /((20\d{2})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})日?|(\d{1,2})[\/月](\d{1,2})日?)/;
+  for(const line of lines){
+    const dm = line.match(dateRe);
+    if(dm){
+      let y,m,d;
+      if(dm[2]){ y = Number(dm[2]); m = Number(dm[3]); d = Number(dm[4]); }
+      else { const now = new Date(); y = now.getFullYear(); m = Number(dm[5]); d = Number(dm[6]); }
+      cur = {date:`${y}-${pad(m)}-${pad(d)}`, oak:"", fluorite:"", memo:"貼り付け"};
+      items.push(cur);
+    }
+    if(!cur) continue;
+    const isOak = /オーク|oak|ツルツル/i.test(line);
+    const isFlu = /蛍石|fluorite|ほたる|ホタル/i.test(line);
+    const pm = line.match(/(温泉山遺跡|不思議な松林|\d{1,2}\s*番地?)/);
+    if(pm){
+      const place = norm(pm[1]);
+      if(isOak) cur.oak = place;
+      if(isFlu) cur.fluorite = place;
+      if(!isOak && !isFlu){
+        if(!cur.oak) cur.oak = place;
+        else if(!cur.fluorite) cur.fluorite = place;
+      }
+    }
+  }
+  return items.filter(x => x.date && (x.oak || x.fluorite));
+}
+
+function toast(msg){
+  E.toast.textContent = msg;
+  E.toast.classList.add("show");
+  setTimeout(() => E.toast.classList.remove("show"), 1600);
+}
+
+
+function setupAdminVisibility(){
+  const params = new URLSearchParams(window.location.search);
+  const adminEnabled = params.get("admin") === "1" || window.location.hash === "#admin";
+  const adminTab = document.getElementById("adminTab");
+
+  if(adminEnabled && adminTab){
+    adminTab.hidden = false;
+  }
+
+  if(!adminEnabled){
+    const adminPanel = document.getElementById("admin");
+    if(adminPanel){
+      adminPanel.classList.remove("active");
+    }
+  }
+}
+
+function init(){
+  setupAdminVisibility();
+  E.targetDate.value = dateValue(gameToday());
+  E.obsDate.value = E.targetDate.value;
+  E.weatherDate.value = E.targetDate.value;
+  E.baseDate.value = state.settings.baseDate;
+  E.baseCycleDay.value = state.settings.baseCycleDay;
+  E.cycleLength.value = state.settings.cycleLength;
+  E.rolloverHour.value = 6;
+  renderToday();
+
+  document.querySelectorAll(".tab").forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+      document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById(btn.dataset.tab).classList.add("active");
+      renderToday();
+    };
+  });
+
+  E.targetDate.onchange = renderToday;
+  E.todayBtn.onclick = () => { E.targetDate.value = dateValue(gameToday()); renderToday(); };
+  E.tomorrowBtn.onclick = () => { E.targetDate.value = addDays(E.targetDate.value, 1); renderToday(); };
+
+  E.copyBtn.onclick = async () => {
+    try{
+      await navigator.clipboard.writeText(E.discordText.textContent);
+      E.copyStatus.textContent = "コピーしました";
+      toast("コピーしました");
+    }catch(e){
+      E.copyStatus.textContent = "手動で選択してコピーしてください";
+    }
+  };
+
+  E.addObsBtn.onclick = () => {
+    if(!E.obsDate.value || (!E.obsOak.value && !E.obsFluorite.value)){
+      E.obsStatus.textContent = "日付と、木か石のどちらかは必要です";
+      return;
+    }
+    upsertObservation({date:E.obsDate.value, oak:E.obsOak.value, fluorite:E.obsFluorite.value, memo:E.obsMemo.value});
+    save();
+    renderToday();
+    E.obsStatus.textContent = "登録して表示用データに反映しました";
+    toast("登録しました");
+  };
+
+  E.saveWeatherBtn.onclick = () => {
+    upsertWeather({
+      date:E.weatherDate.value,
+      slots:{s0612:E.w0612.value.trim(), s1218:E.w1218.value.trim(), s1824:E.w1824.value.trim(), s0006:E.w0006.value.trim()},
+      memo:E.weatherMemo.value.trim()
+    });
+    save();
+    renderToday();
+    E.weatherStatus.textContent = "天気を登録しました";
+    toast("登録しました");
+  };
+
+  E.parseBtn.onclick = () => {
+    parsedItems = parseBulk(E.bulkText.value);
+    E.parseStatus.textContent = `${parsedItems.length}件読み取りました`;
+    E.parsedTable.innerHTML = parsedItems.length
+      ? `<table><thead><tr><th>日付</th><th>木</th><th>石</th></tr></thead><tbody>${parsedItems.map(x => `<tr><td>${esc(x.date)}</td><td>${esc(x.oak)}</td><td>${esc(x.fluorite)}</td></tr>`).join("")}</tbody></table>`
+      : `<p class="small">読み取れませんでした。</p>`;
+  };
+
+  E.applyParsedBtn.onclick = () => {
+    parsedItems.forEach(upsertObservation);
+    save();
+    renderToday();
+    E.parseStatus.textContent = `${parsedItems.length}件を登録しました`;
+    toast("登録しました");
+  };
+
+  E.saveSettingsBtn.onclick = () => {
+    clampSettings();
+    save();
+    renderToday();
+    toast("保存しました");
+  };
+
+  E.exportBtn.onclick = () => {
+    const blob = new Blob([JSON.stringify(state,null,2)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `heartopia-daily-data-${dateValue(new Date())}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  E.showImportBtn.onclick = () => {
+    E.importBox.style.display = E.importBox.style.display === "none" ? "block" : "none";
+  };
+
+  E.importBtn.onclick = () => {
+    try{
+      state = normalize(JSON.parse(E.importText.value));
+      save();
+      init();
+      toast("読み込みました");
+    }catch(e){
+      E.backupStatus.textContent = "JSONの読み込みに失敗しました";
+    }
+  };
+
+  E.resetBtn.onclick = () => {
+    if(!confirm("初期データに戻します。よろしいですか？")) return;
+    state = clone(SEED);
+    save();
+    init();
+    toast("初期データに戻しました");
+  };
+}
+init();
+</script>
+</body>
+</html>
