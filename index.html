@@ -117,6 +117,13 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
   object-fit:contain;
   display:block;
 }
+.itemIcon img[src*="fluorite"]{
+  transform:scale(0.88);
+}
+
+.itemIcon img[src*="oak"]{
+  transform:scale(1.15);
+}
 .item .label{font-size:13px;color:var(--muted);font-weight:800}
 .item .value{font-size:clamp(28px,8vw,46px);font-weight:950;line-height:1.15;margin-top:6px}
 .weatherNow{
@@ -1708,12 +1715,12 @@ function renderToday(){
     <span class="datepill">${esc(jpDate(date))}</span>
     <div class="items">
       <div class="item">
-        <div class="itemIcon"><img src="assets/fluorite.png" alt="無垢な蛍石のイラスト"></div>
+        <div class="itemIcon"><img src="assets/fluorite.png?v=adopted1" alt="無垢な蛍石のイラスト"></div>
         <div class="label">無垢な蛍石</div>
         <div class="value">${esc(data.fluorite || "未入力")}</div>
       </div>
       <div class="item">
-        <div class="itemIcon"><img src="assets/oak.png" alt="ツルツルオークのイラスト"></div>
+        <div class="itemIcon"><img src="?v=adopted1" alt="ツルツルオークのイラスト"></div>
         <div class="label">ツルツルオーク</div>
         <div class="value">${esc(data.oak || "未入力")}</div>
       </div>
