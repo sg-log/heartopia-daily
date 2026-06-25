@@ -569,7 +569,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
 <div id="toast" class="toast"></div>
 
 <script>
-const WEATHER_API_URL = "https://script.google.com/macros/s/AKfycbwoPLuj0rSsennsx01-B-6UxqBjqnPieocgVLQnJMKEgRw6fZziV5ZGVA3SusjVLF3o/exe";
+const WEATHER_API_URL = "https://script.google.com/macros/s/AKfycbwoPLuj0rSsennsx01-B-6UxqBjqnPieocgVLQnJMKEgRw6fZziV5ZGVA3SusjVLF3o/exec";
 const WEATHER_OPTIONS = [
   { value:"晴", label:"晴" },
   { value:"雨", label:"雨", icon:"☔" },
@@ -2030,15 +2030,13 @@ function renderCorrectionsTable(){
 }
 
 async function apiPost(payload){
-  const response = await fetch(const WEATHER_API_URL = "https://script.google.com/macros/s/xxxxx/exec";
+  const response = await fetch(WEATHER_API_URL,{
     method:"POST",
     headers:{"Content-Type":"text/plain;charset=utf-8"},
     body:JSON.stringify(payload)
   });
   if(!response.ok) throw new Error(`HTTP ${response.status}`);
-  const result = await response.json();
-  if(result.ok === false) throw new Error(result.error || "APIエラー");
-  return result;
+  return await response.json();
 }
 
 async function submitWeatherReport(){
