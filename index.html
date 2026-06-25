@@ -571,11 +571,10 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
 <script>
 const WEATHER_API_URL = "";
 const WEATHER_OPTIONS = [
-  { value:"晴", label:"晴", icon:"☀️" },
+  { value:"晴", label:"晴" },
   { value:"雨", label:"雨", icon:"☔" },
   { value:"くもり", label:"くもり", icon:"☁️" },
   { value:"雪", label:"雪", icon:"☃" },
-  { value:"夜晴", label:"晴", icon:"🌙" },
   { value:"流星群", label:"流星群", icon:"🌠" },
   { value:"虹", label:"虹", icon:"🌈" },
   { value:"雷", label:"雷", icon:"⚡" },
@@ -590,6 +589,13 @@ const WEATHER_SLOT_LABELS = {
 };
 const WEATHER_SLOT_DEFS = Object.entries(WEATHER_SLOT_LABELS);
 const WEATHER_OPTION_MAP = Object.fromEntries(WEATHER_OPTIONS.map(option => [option.value, option]));
+const SUNNY_ICONS = {
+  t18a:"🌙",
+  t00:"🌙",
+  t06:"☀️",
+  t12:"☀️",
+  t18b:"🌙"
+};
 const SEED = {
   "settings": {
     "baseDate": "2026-02-18",
@@ -1753,7 +1759,7 @@ function load(){ try{ const raw=localStorage.getItem(STORAGE_KEY); return normal
 function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state,null,2)); }
 function normalizeWeatherValue(value){
   const text = String(value ?? "").trim();
-  return {"晴れ":"晴","月":"夜晴"}[text] || text;
+  return {"晴れ":"晴","夜晴":"晴","月":"晴"}[text] || text;
 }
 function weatherValues(v){
   if(Array.isArray(v)) return [...new Set(v.map(normalizeWeatherValue).filter(Boolean))];
@@ -1833,14 +1839,21 @@ function currentSlot(){
   return "t18b";
 }
 function slotLabel(key){ return WEATHER_SLOT_LABELS[key] || ""; }
-function weatherDisplay(value){
+function weatherIcon(value, slotKey){
+  const normalized = normalizeWeatherValue(value);
+  if(normalized === "晴") return SUNNY_ICONS[slotKey] || "☀️";
+  return WEATHER_OPTION_MAP[normalized]?.icon || "";
+}
+function weatherDisplay(value, slotKey){
   const normalized = normalizeWeatherValue(value);
   const option = WEATHER_OPTION_MAP[normalized];
-  return option ? `${option.icon} ${option.label}` : normalized;
+  const icon = weatherIcon(normalized, slotKey);
+  return option ? `${icon ? `${icon} ` : ""}${option.label}` : normalized;
 }
-function weatherText(values, fallback="未登録"){ return weatherValues(values).map(weatherDisplay).join("・") || fallback; }
+function weatherText(values, slotKey, fallback="未登録"){ return weatherValues(values).map(value => weatherDisplay(value, slotKey)).join("・") || fallback; }
 function discord(dateStr, data, weather){
-  const w = weather ? weatherText(weather.weatherSlots[currentSlot()], "") : "";
+  const slot = currentSlot();
+  const w = weather ? weatherText(weather.weatherSlots[slot], slot, "") : "";
   return `【今日の採取メモ】\n\n日付：${jpDate(dateStr)}\n\n無垢な蛍石：${data.fluorite || "未入力"}\nツルツルオーク：${data.oak || "未入力"}\n${w ? `\nいまの天気：${w}\n` : ""}\n※観測データをもとにした非公式の予想です。`;
 }
 
@@ -1880,7 +1893,7 @@ function renderWeather(date, w){
   }
   const slot = currentSlot();
   E.weatherResult.innerHTML = `
-    <div class="weatherNow"><strong>${esc(slotLabel(slot))}</strong><br>${esc(weatherText(w.weatherSlots[slot]))}</div>
+    <div class="weatherNow"><strong>${esc(slotLabel(slot))}</strong><br>${esc(weatherText(w.weatherSlots[slot], slot))}</div>
     ${w.memo ? `<div class="small">メモ：${esc(w.memo)}</div>` : ""}
   `;
 }
@@ -1896,7 +1909,7 @@ function renderWeatherSummary(){
     <span class="datepill">${esc(jpDate(today))}</span>
     <table>
       <tbody>
-        ${WEATHER_SLOT_DEFS.map(([key,label]) => `<tr><td>${esc(label)}</td><td>${esc(weatherText(w.weatherSlots[key]))}</td></tr>`).join("")}
+        ${WEATHER_SLOT_DEFS.map(([key,label]) => `<tr><td>${esc(label)}</td><td>${esc(weatherText(w.weatherSlots[key], key))}</td></tr>`).join("")}
       </tbody>
     </table>
     ${w.memo ? `<p class="small">メモ：${esc(w.memo)}</p>` : ""}
@@ -1906,7 +1919,7 @@ function renderWeatherSummary(){
 function renderTables(){
   E.cycleTable.innerHTML = `<table><thead><tr><th>内部順</th><th>木</th><th>石</th><th>確認</th><th>メモ</th></tr></thead><tbody>${state.cycleData.map((d, i) => `<tr><td>${i + 1}</td><td>${esc(d.oak || "")}</td><td>${esc(d.fluorite || "")}</td><td>${d.confirmed ? "済" : ""}</td><td>${esc(d.memo || "")}</td></tr>`).join("")}</tbody></table>`;
   E.obsTable.innerHTML = `<table><thead><tr><th>日付</th><th>木</th><th>石</th><th>メモ</th></tr></thead><tbody>${state.observations.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(o => `<tr><td>${esc(o.date)}</td><td>${esc(o.oak)}</td><td>${esc(o.fluorite)}</td><td>${esc(o.memo)}</td></tr>`).join("")}</tbody></table>`;
-  E.weatherTable.innerHTML = `<table><thead><tr><th>日付</th>${WEATHER_SLOT_DEFS.map(([,label]) => `<th>${esc(label)}</th>`).join("")}<th>メモ</th></tr></thead><tbody>${state.weather.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(w => `<tr><td>${esc(w.date)}</td>${WEATHER_SLOT_DEFS.map(([key]) => `<td>${esc(weatherText(w.weatherSlots[key], ""))}</td>`).join("")}<td>${esc(w.memo)}</td></tr>`).join("")}</tbody></table>`;
+  E.weatherTable.innerHTML = `<table><thead><tr><th>日付</th>${WEATHER_SLOT_DEFS.map(([,label]) => `<th>${esc(label)}</th>`).join("")}<th>メモ</th></tr></thead><tbody>${state.weather.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(w => `<tr><td>${esc(w.date)}</td>${WEATHER_SLOT_DEFS.map(([key]) => `<td>${esc(weatherText(w.weatherSlots[key], key, ""))}</td>`).join("")}<td>${esc(w.memo)}</td></tr>`).join("")}</tbody></table>`;
   renderCorrectionsTable();
 }
 
@@ -1947,7 +1960,7 @@ function chipGroupHtml(prefix){
     <div class="weatherSlot">
       <label>${esc(label)}</label>
       <div class="chipGroup" id="${esc(prefix)}-${esc(key)}">
-        ${WEATHER_OPTIONS.map(option => `<button type="button" class="weatherChip" data-weather-option="${esc(option.value)}" aria-label="${esc(option.label)}"><span class="weatherChipIcon" aria-hidden="true">${esc(option.icon)}</span><span class="weatherChipLabel">${esc(option.label)}</span></button>`).join("")}
+        ${WEATHER_OPTIONS.map(option => `<button type="button" class="weatherChip" data-weather-option="${esc(option.value)}" aria-label="${esc(option.label)}"><span class="weatherChipIcon" aria-hidden="true">${esc(weatherIcon(option.value, key))}</span><span class="weatherChipLabel">${esc(option.label)}</span></button>`).join("")}
       </div>
     </div>
   `).join("");
@@ -2093,7 +2106,7 @@ async function fetchPendingWeatherReports(){
     if(result.ok === false) throw new Error(result.error || "APIエラー");
     const reports = result.reports || result.data || [];
     E.pendingWeatherStatus.textContent = reports.length ? `${reports.length}件の未承認報告があります。` : "未承認の天気報告はありません。";
-    E.pendingWeatherReports.innerHTML = reports.length ? `<table><thead><tr><th>日付</th>${WEATHER_SLOT_DEFS.map(([,label]) => `<th>${esc(label)}</th>`).join("")}<th>メモ</th><th>操作</th></tr></thead><tbody>${reports.map(r => `<tr><td>${esc(r.date)}</td>${WEATHER_SLOT_DEFS.map(([key]) => `<td>${esc(weatherText(r.weatherSlots?.[key] ?? r[key], ""))}</td>`).join("")}<td>${esc(r.memo || "")}</td><td><div class="buttons"><button type="button" data-approve-weather="${esc(r.id)}">承認</button><button type="button" class="danger" data-reject-weather="${esc(r.id)}">却下</button></div></td></tr>`).join("")}</tbody></table>` : "";
+    E.pendingWeatherReports.innerHTML = reports.length ? `<table><thead><tr><th>日付</th>${WEATHER_SLOT_DEFS.map(([,label]) => `<th>${esc(label)}</th>`).join("")}<th>メモ</th><th>操作</th></tr></thead><tbody>${reports.map(r => `<tr><td>${esc(r.date)}</td>${WEATHER_SLOT_DEFS.map(([key]) => `<td>${esc(weatherText(r.weatherSlots?.[key] ?? r[key], key, ""))}</td>`).join("")}<td>${esc(r.memo || "")}</td><td><div class="buttons"><button type="button" data-approve-weather="${esc(r.id)}">承認</button><button type="button" class="danger" data-reject-weather="${esc(r.id)}">却下</button></div></td></tr>`).join("")}</tbody></table>` : "";
     return reports;
   }catch(error){
     E.pendingWeatherStatus.textContent = `読み込めませんでした：${error.message}`;
