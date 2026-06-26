@@ -439,6 +439,17 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
         <h2>天気を報告</h2>
         <div class="row">
           <div><label for="reportWeatherDate">日付</label><input id="reportWeatherDate" type="date"></div>
+          <div>
+            <label for="reportStartSlot">最初の時間</label>
+            <select id="reportStartSlot">
+              <option value="00">00時</option>
+              <option value="06">06時</option>
+              <option value="12">12時</option>
+              <option value="18">18時</option>
+            </select>
+          </div>
+        </div>
+        <div class="row one">
           <div><label for="reportWeatherMemo">メモ</label><input id="reportWeatherMemo" placeholder="任意"></div>
         </div>
         <div id="reportWeatherChips"></div>
@@ -513,6 +524,17 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
         <h2>天気を手動登録・編集</h2>
         <div class="row">
           <div><label for="adminWeatherDate">日付</label><input id="adminWeatherDate" type="date"></div>
+          <div>
+            <label for="adminStartSlot">最初の時間</label>
+            <select id="adminStartSlot">
+              <option value="00">00時</option>
+              <option value="06">06時</option>
+              <option value="12">12時</option>
+              <option value="18">18時</option>
+            </select>
+          </div>
+        </div>
+        <div class="row one">
           <div><label for="adminWeatherMemo">メモ</label><input id="adminWeatherMemo" placeholder="任意"></div>
         </div>
         <div id="adminWeatherChips"></div>
@@ -618,21 +640,14 @@ const WEATHER_OPTIONS = [
   { value:"雷", label:"雷", icon:"⚡" },
   { value:"不明", label:"不明", icon:"？" }
 ];
-const WEATHER_SLOT_LABELS = {
-  t18a:"18時",
-  t00:"00時",
-  t06:"06時",
-  t12:"12時",
-  t18b:"翌18時"
-};
-const WEATHER_SLOT_DEFS = Object.entries(WEATHER_SLOT_LABELS);
+const WEATHER_START_SLOTS = ["00","06","12","18"];
+const WEATHER_SLOT_KEYS = ["slot0","slot1","slot2","slot3","slot4"];
 const WEATHER_OPTION_MAP = Object.fromEntries(WEATHER_OPTIONS.map(option => [option.value, option]));
 const SUNNY_ICONS = {
-  t18a:"🌙",
-  t00:"🌙",
-  t06:"☀️",
-  t12:"☀️",
-  t18b:"🌙"
+  "00":"🌙",
+  "06":"☀️",
+  "12":"☀️",
+  "18":"🌙"
 };
 const SEED = {
   "settings": {
@@ -1772,8 +1787,8 @@ const ids = [
   "targetDate","todayBtn","tomorrowBtn","todayResult","weatherResult","weatherSummary","discordText","copyBtn","copyStatus",
   "weeklyWeather",
   "obsDate","obsMemo","obsOak","obsFluorite","addObsBtn","obsStatus",
-  "reportWeatherDate","reportWeatherMemo","reportPostKey","reportWeatherChips","submitWeatherReportBtn","weatherReportStatus",
-  "adminWeatherDate","adminWeatherMemo","adminWeatherChips","saveAdminWeatherBtn","adminWeatherStatus",
+  "reportWeatherDate","reportStartSlot","reportWeatherMemo","reportPostKey","reportWeatherChips","submitWeatherReportBtn","weatherReportStatus",
+  "adminWeatherDate","adminStartSlot","adminWeatherMemo","adminWeatherChips","saveAdminWeatherBtn","adminWeatherStatus",
   "weatherAdminKey","refreshPendingWeatherBtn","pendingWeatherStatus","pendingWeatherReports",
   "correctionDate","correctionMemo","correctionExpected","actualFluorite","actualOak","saveCorrectionBtn","saveApplyCorrectionBtn","correctionStatus","correctionsTable",
   "bulkText","parseBtn","applyParsedBtn","parseStatus","parsedTable",
@@ -1817,20 +1832,54 @@ function normalizeWeatherValue(value){
 }
 function weatherValues(v){
   if(Array.isArray(v)) return [...new Set(v.map(normalizeWeatherValue).filter(Boolean))];
-  if(typeof v === "string" && v.trim()) return [...new Set(v.split(/[・,、/]/).map(normalizeWeatherValue).filter(Boolean))];
+  if(typeof v === "string" && v.trim()){
+    const text = v.trim();
+    if(text.startsWith("[")){
+      try{
+        const parsed = JSON.parse(text);
+        if(Array.isArray(parsed)) return [...new Set(parsed.map(normalizeWeatherValue).filter(Boolean))];
+      }catch(e){}
+    }
+    return [...new Set(text.split(/[・,、/]/).map(normalizeWeatherValue).filter(Boolean))];
+  }
   return [];
 }
+function normalizeStartSlot(value, fallback="18"){
+  const raw = String(value ?? "").replace("時","").trim();
+  if(!raw) return fallback;
+  const text = raw.padStart(2,"0");
+  return WEATHER_START_SLOTS.includes(text) ? text : fallback;
+}
+function currentStartSlot(){
+  const h = new Date().getHours();
+  if(h < 6) return "00";
+  if(h < 12) return "06";
+  if(h < 18) return "12";
+  return "18";
+}
 function normalizeWeatherSlots(w){
+  if(w.slots && WEATHER_SLOT_KEYS.some(key => w.slots[key] != null)){
+    return Object.fromEntries(WEATHER_SLOT_KEYS.map(key => [key, weatherValues(w.slots[key])]));
+  }
+  if(WEATHER_SLOT_KEYS.some(key => w[key] != null)){
+    return Object.fromEntries(WEATHER_SLOT_KEYS.map(key => [key, weatherValues(w[key])]));
+  }
   if(w.weatherSlots){
-    return Object.fromEntries(WEATHER_SLOT_DEFS.map(([key]) => [key, weatherValues(w.weatherSlots[key])]));
+    return {
+      slot0:weatherValues(w.weatherSlots.t18a),
+      slot1:weatherValues(w.weatherSlots.t00),
+      slot2:weatherValues(w.weatherSlots.t06),
+      slot3:weatherValues(w.weatherSlots.t12),
+      slot4:weatherValues(w.weatherSlots.t18b)
+    };
   }
   const old = w.slots || {};
   return {
-    t18a:weatherValues(old.s1824),
-    t00:weatherValues(old.s0006),
-    t06:weatherValues(old.s0612),
-    t12:weatherValues(old.s1218),
-    t18b:weatherValues(old.s1824)
+    slot0:weatherValues(old.s1824),
+    slot1:weatherValues(old.s0006),
+    slot2:weatherValues(old.s0612),
+    slot3:weatherValues(old.s1218),
+    slot4:weatherValues(old.s1824)
   };
 }
 
@@ -1852,7 +1901,8 @@ function normalize(input){
   const observations = (input.observations || []).map(o => ({date:o.date, oak:norm(o.oak), fluorite:norm(o.fluorite), memo:o.memo || ""})).filter(o => o.date && (o.oak || o.fluorite));
   const weather = (input.weather || []).map(w => ({
     date:normalizeApiDate(w.date),
-    weatherSlots:normalizeWeatherSlots(w),
+    startSlot:normalizeStartSlot(w.startSlot, w.weatherSlots ? "18" : "18"),
+    slots:normalizeWeatherSlots(w),
     memo:w.memo || ""
   })).filter(w => w.date);
   const corrections = (input.corrections || []).map(c => ({
@@ -1888,44 +1938,55 @@ function weatherData(dateStr){
   const normalizedDate = normalizeApiDate(dateStr);
   return state.weather.find(w => normalizeApiDate(w.date) === normalizedDate);
 }
-function currentSlot(){
-  const h = new Date().getHours();
-  if(h < 6) return "t00";
-  if(h < 12) return "t06";
-  if(h < 18) return "t12";
-  return "t18a";
+function slotHourAt(startSlot, index){
+  const startIndex = WEATHER_START_SLOTS.indexOf(normalizeStartSlot(startSlot));
+  return WEATHER_START_SLOTS[(startIndex + index) % WEATHER_START_SLOTS.length];
 }
-function slotLabel(key){ return WEATHER_SLOT_LABELS[key] || ""; }
-function weatherIcon(value, slotKey){
+function slotIndex(key){ return WEATHER_SLOT_KEYS.indexOf(key); }
+function slotLabel(key, startSlot){
+  const index = slotIndex(key);
+  if(index < 0) return "";
+  const hour = slotHourAt(startSlot, index);
+  return `${index === 4 ? "翌" : ""}${hour}時`;
+}
+function slotLabels(startSlot){
+  return WEATHER_SLOT_KEYS.map(key => [key, slotLabel(key, startSlot)]);
+}
+function currentSlot(startSlot){
+  const current = currentStartSlot();
+  return WEATHER_SLOT_KEYS.slice(0,4).find(key => slotHourAt(startSlot, slotIndex(key)) === current) || "";
+}
+function weatherIcon(value, slotKey, startSlot){
   const normalized = normalizeWeatherValue(value);
-  if(normalized === "晴") return SUNNY_ICONS[slotKey] || "☀️";
+  if(normalized === "晴") return SUNNY_ICONS[slotHourAt(startSlot, slotIndex(slotKey))] || "☀️";
   return WEATHER_OPTION_MAP[normalized]?.icon || "";
 }
-function weatherDisplay(value, slotKey){
+function weatherDisplay(value, slotKey, startSlot){
   const normalized = normalizeWeatherValue(value);
   const option = WEATHER_OPTION_MAP[normalized];
-  const icon = weatherIcon(normalized, slotKey);
+  const icon = weatherIcon(normalized, slotKey, startSlot);
   return option ? `${icon ? `${icon} ` : ""}${option.label}` : normalized;
 }
-function weatherText(values, slotKey, fallback="未登録"){ return weatherValues(values).map(value => weatherDisplay(value, slotKey)).join("・") || fallback; }
+function weatherText(values, slotKey, startSlot, fallback="未登録"){ return weatherValues(values).map(value => weatherDisplay(value, slotKey, startSlot)).join("・") || fallback; }
 function weatherSlotRowsHtml(w){
-  const now = currentSlot();
-  return `<div class="weatherSlotList">${WEATHER_SLOT_DEFS.map(([key,label]) => {
+  const startSlot = normalizeStartSlot(w.startSlot);
+  const now = currentSlot(startSlot);
+  return `<div class="weatherSlotList">${slotLabels(startSlot).map(([key,label]) => {
     const isCurrent = key === now;
     return `
       <div class="weatherLine${isCurrent ? " current" : ""}">
         <div class="weatherLineTime">${esc(label)}</div>
-        <div class="weatherLineText">${esc(weatherText(w.weatherSlots[key], key))}</div>
+        <div class="weatherLineText">${esc(weatherText(w.slots[key], key, startSlot))}</div>
       </div>
     `;
   }).join("")}</div>`;
 }
 function representativeWeather(w){
   if(!w) return "未登録";
-  const order = ["t06","t12","t18a","t00","t18b"];
-  for(const key of order){
-    const values = weatherValues(w.weatherSlots[key]);
-    if(values.length) return values.slice(0,2).map(value => weatherDisplay(value, key)).join("・");
+  const startSlot = normalizeStartSlot(w.startSlot);
+  for(const key of WEATHER_SLOT_KEYS){
+    const values = weatherValues(w.slots[key]);
+    if(values.length) return values.slice(0,2).map(value => weatherDisplay(value, key, startSlot)).join("・");
   }
   return "未登録";
 }
@@ -1944,8 +2005,9 @@ function renderWeeklyWeather(startDate){
   }).join("");
 }
 function discord(dateStr, data, weather){
-  const slot = currentSlot();
-  const w = weather ? weatherText(weather.weatherSlots[slot], slot, "") : "";
+  const startSlot = normalizeStartSlot(weather?.startSlot);
+  const slot = currentSlot(startSlot);
+  const w = weather && slot ? weatherText(weather.slots[slot], slot, startSlot, "") : "";
   return `【今日の採取メモ】\n\n日付：${jpDate(dateStr)}\n\n無垢な蛍石：${data.fluorite || "未入力"}\nツルツルオーク：${data.oak || "未入力"}\n${w ? `\nいまの天気：${w}\n` : ""}\n※観測データをもとにした非公式の予想です。`;
 }
 
@@ -2007,7 +2069,10 @@ function renderWeatherSummary(){
 function renderTables(){
   E.cycleTable.innerHTML = `<table><thead><tr><th>内部順</th><th>木</th><th>石</th><th>確認</th><th>メモ</th></tr></thead><tbody>${state.cycleData.map((d, i) => `<tr><td>${i + 1}</td><td>${esc(d.oak || "")}</td><td>${esc(d.fluorite || "")}</td><td>${d.confirmed ? "済" : ""}</td><td>${esc(d.memo || "")}</td></tr>`).join("")}</tbody></table>`;
   E.obsTable.innerHTML = `<table><thead><tr><th>日付</th><th>木</th><th>石</th><th>メモ</th></tr></thead><tbody>${state.observations.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(o => `<tr><td>${esc(o.date)}</td><td>${esc(o.oak)}</td><td>${esc(o.fluorite)}</td><td>${esc(o.memo)}</td></tr>`).join("")}</tbody></table>`;
-  E.weatherTable.innerHTML = `<table><thead><tr><th>日付</th>${WEATHER_SLOT_DEFS.map(([,label]) => `<th>${esc(label)}</th>`).join("")}<th>メモ</th></tr></thead><tbody>${state.weather.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(w => `<tr><td>${esc(w.date)}</td>${WEATHER_SLOT_DEFS.map(([key]) => `<td>${esc(weatherText(w.weatherSlots[key], key, ""))}</td>`).join("")}<td>${esc(w.memo)}</td></tr>`).join("")}</tbody></table>`;
+  E.weatherTable.innerHTML = `<table><thead><tr><th>日付</th><th>開始</th>${WEATHER_SLOT_KEYS.map((key, i) => `<th>slot${i}</th>`).join("")}<th>メモ</th></tr></thead><tbody>${state.weather.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(w => {
+    const startSlot = normalizeStartSlot(w.startSlot);
+    return `<tr><td>${esc(w.date)}</td><td>${esc(startSlot)}時</td>${WEATHER_SLOT_KEYS.map(key => `<td><strong>${esc(slotLabel(key, startSlot))}</strong><br>${esc(weatherText(w.slots[key], key, startSlot, ""))}</td>`).join("")}<td>${esc(w.memo)}</td></tr>`;
+  }).join("")}</tbody></table>`;
   renderCorrectionsTable();
 }
 
@@ -2035,42 +2100,49 @@ function upsertObservation(item){
 function upsertWeather(item){
   item = {
     date:normalizeApiDate(item.date),
-    weatherSlots:Object.fromEntries(WEATHER_SLOT_DEFS.map(([key]) => [key, weatherValues(item.weatherSlots?.[key])])),
+    startSlot:normalizeStartSlot(item.startSlot),
+    slots:normalizeWeatherSlots(item),
     memo:item.memo || ""
   };
   const old = weatherData(item.date);
-  if(old){ old.weatherSlots = item.weatherSlots; old.memo = item.memo; }
+  if(old){ old.startSlot = item.startSlot; old.slots = item.slots; old.memo = item.memo; }
   else state.weather.push(item);
 }
 
-function chipGroupHtml(prefix){
-  return WEATHER_SLOT_DEFS.map(([key,label]) => `
+function chipGroupHtml(prefix, startSlot){
+  return slotLabels(startSlot).map(([key,label]) => `
     <div class="weatherSlot">
       <label>${esc(label)}</label>
       <div class="chipGroup" id="${esc(prefix)}-${esc(key)}">
-        ${WEATHER_OPTIONS.map(option => `<button type="button" class="weatherChip" data-weather-option="${esc(option.value)}" aria-label="${esc(option.label)}"><span class="weatherChipIcon" aria-hidden="true">${esc(weatherIcon(option.value, key))}</span><span class="weatherChipLabel">${esc(option.label)}</span></button>`).join("")}
+        ${WEATHER_OPTIONS.map(option => `<button type="button" class="weatherChip" data-weather-option="${esc(option.value)}" aria-label="${esc(option.label)}"><span class="weatherChipIcon" aria-hidden="true">${esc(weatherIcon(option.value, key, startSlot))}</span><span class="weatherChipLabel">${esc(option.label)}</span></button>`).join("")}
       </div>
     </div>
   `).join("");
 }
 function chipSelections(prefix){
-  return Object.fromEntries(WEATHER_SLOT_DEFS.map(([key]) => [
+  return Object.fromEntries(WEATHER_SLOT_KEYS.map(key => [
     key,
     [...document.querySelectorAll(`#${prefix}-${key} .weatherChip.selected`)].map(btn => btn.dataset.weatherOption)
   ]));
 }
 function setChipSelections(prefix, slots={}){
-  WEATHER_SLOT_DEFS.forEach(([key]) => {
+  WEATHER_SLOT_KEYS.forEach(key => {
     const selected = new Set(weatherValues(slots[key]));
     document.querySelectorAll(`#${prefix}-${key} .weatherChip`).forEach(btn => btn.classList.toggle("selected", selected.has(btn.dataset.weatherOption)));
   });
 }
 function clearChipSelections(prefix){ setChipSelections(prefix, {}); }
+function renderChipGroups(prefix, startSlot, slots={}){
+  const container = prefix === "report-weather" ? E.reportWeatherChips : E.adminWeatherChips;
+  container.innerHTML = chipGroupHtml(prefix, startSlot);
+  setChipSelections(prefix, slots);
+}
 
 function loadAdminWeatherForm(){
   const w = weatherData(E.adminWeatherDate.value);
+  E.adminStartSlot.value = normalizeStartSlot(w?.startSlot, currentStartSlot());
   E.adminWeatherMemo.value = w?.memo || "";
-  setChipSelections("admin-weather", w?.weatherSlots || {});
+  renderChipGroups("admin-weather", E.adminStartSlot.value, w?.slots || {});
 }
 
 function updateCorrectionExpected(){
@@ -2143,7 +2215,8 @@ async function submitWeatherReport(){
     body.set("action", "submit");
     body.set("postKey", E.reportPostKey.value);
     body.set("date", E.reportWeatherDate.value);
-    WEATHER_SLOT_DEFS.forEach(([key]) => body.set(key, JSON.stringify(slots[key] || [])));
+    body.set("startSlot", normalizeStartSlot(E.reportStartSlot.value, currentStartSlot()));
+    WEATHER_SLOT_KEYS.forEach(key => body.set(key, JSON.stringify(slots[key] || [])));
     body.set("memo", E.reportWeatherMemo.value.trim());
     body.set("poster", "");
 
@@ -2171,7 +2244,8 @@ async function fetchApprovedWeather(){
     const reports = result.reports || result.data || [];
     reports.forEach(report => upsertWeather({
       date:normalizeApiDate(report.date),
-      weatherSlots:report.weatherSlots || report,
+      startSlot:report.startSlot,
+      slots:report.slots || report,
       memo:report.memo || ""
     }));
     save();
@@ -2199,7 +2273,11 @@ async function fetchPendingWeatherReports(){
     if(result.ok === false) throw new Error(result.error || "APIエラー");
     const reports = result.reports || result.data || [];
     E.pendingWeatherStatus.textContent = reports.length ? `${reports.length}件の未承認報告があります。` : "未承認の天気報告はありません。";
-    E.pendingWeatherReports.innerHTML = reports.length ? `<table><thead><tr><th>日付</th>${WEATHER_SLOT_DEFS.map(([,label]) => `<th>${esc(label)}</th>`).join("")}<th>メモ</th><th>操作</th></tr></thead><tbody>${reports.map(r => `<tr><td>${esc(normalizeApiDate(r.date))}</td>${WEATHER_SLOT_DEFS.map(([key]) => `<td>${esc(weatherText(r.weatherSlots?.[key] ?? r[key], key, ""))}</td>`).join("")}<td>${esc(r.memo || "")}</td><td><div class="buttons"><button type="button" data-approve-weather="${esc(r.id)}">承認</button><button type="button" class="danger" data-reject-weather="${esc(r.id)}">却下</button></div></td></tr>`).join("")}</tbody></table>` : "";
+    E.pendingWeatherReports.innerHTML = reports.length ? `<table><thead><tr><th>日付</th><th>開始</th>${WEATHER_SLOT_KEYS.map((key, i) => `<th>slot${i}</th>`).join("")}<th>メモ</th><th>操作</th></tr></thead><tbody>${reports.map(r => {
+      const startSlot = normalizeStartSlot(r.startSlot);
+      const slots = normalizeWeatherSlots(r);
+      return `<tr><td>${esc(normalizeApiDate(r.date))}</td><td>${esc(startSlot)}時</td>${WEATHER_SLOT_KEYS.map(key => `<td><strong>${esc(slotLabel(key, startSlot))}</strong><br>${esc(weatherText(slots[key], key, startSlot, ""))}</td>`).join("")}<td>${esc(r.memo || "")}</td><td><div class="buttons"><button type="button" data-approve-weather="${esc(r.id)}">承認</button><button type="button" class="danger" data-reject-weather="${esc(r.id)}">却下</button></div></td></tr>`;
+    }).join("")}</tbody></table>` : "";
     return reports;
   }catch(error){
     E.pendingWeatherStatus.textContent = `読み込めませんでした：${error.message}`;
@@ -2293,8 +2371,10 @@ function init(){
   E.reportWeatherDate.value = E.targetDate.value;
   E.adminWeatherDate.value = E.targetDate.value;
   E.correctionDate.value = E.targetDate.value;
-  E.reportWeatherChips.innerHTML = chipGroupHtml("report-weather");
-  E.adminWeatherChips.innerHTML = chipGroupHtml("admin-weather");
+  E.reportStartSlot.value = currentStartSlot();
+  E.adminStartSlot.value = currentStartSlot();
+  renderChipGroups("report-weather", E.reportStartSlot.value);
+  renderChipGroups("admin-weather", E.adminStartSlot.value);
   loadAdminWeatherForm();
   updateCorrectionExpected();
   E.baseDate.value = state.settings.baseDate;
@@ -2349,8 +2429,16 @@ function init(){
     if(chip) chip.classList.toggle("selected");
   };
   E.submitWeatherReportBtn.onclick = submitWeatherReport;
+  E.reportStartSlot.onchange = () => {
+    const slots = chipSelections("report-weather");
+    renderChipGroups("report-weather", E.reportStartSlot.value, slots);
+  };
 
   E.adminWeatherDate.onchange = loadAdminWeatherForm;
+  E.adminStartSlot.onchange = () => {
+    const slots = chipSelections("admin-weather");
+    renderChipGroups("admin-weather", E.adminStartSlot.value, slots);
+  };
   E.saveAdminWeatherBtn.onclick = () => {
     if(!E.adminWeatherDate.value){
       E.adminWeatherStatus.textContent = "日付を入力してください。";
@@ -2358,7 +2446,8 @@ function init(){
     }
     upsertWeather({
       date:E.adminWeatherDate.value,
-      weatherSlots:chipSelections("admin-weather"),
+      startSlot:E.adminStartSlot.value,
+      slots:chipSelections("admin-weather"),
       memo:E.adminWeatherMemo.value.trim()
     });
     save();

@@ -2,7 +2,7 @@ const POST_KEY = "kuma82";
 const ADMIN_KEY = "Kuma29";
 const SHEET_NAME = "weather_reports";
 const HEADERS = [
-  "id", "date", "t18a", "t00", "t06", "t12", "t18b",
+  "id", "date", "startSlot", "slot0", "slot1", "slot2", "slot3", "slot4",
   "memo", "status", "投稿者", "createdAt", "approvedAt"
 ];
 
@@ -39,18 +39,20 @@ function submit_(body) {
   requireKey_(body.postKey, POST_KEY, "投稿キー");
   if (!body.date) throw new Error("日付がありません");
 
-  const slots = body.weatherSlots || {};
+  const startSlot = normalizeStartSlot_(body.startSlot);
+  const slots = normalizeSlots_(body);
   const date = formatDateValue(body.date);
   if (!date) throw new Error("日付の形式が正しくありません");
   const now = new Date().toISOString();
   const row = [
     Utilities.getUuid(),
     date,
-    encodeSlot_(slots.t18a),
-    encodeSlot_(slots.t00),
-    encodeSlot_(slots.t06),
-    encodeSlot_(slots.t12),
-    encodeSlot_(slots.t18b),
+    startSlot,
+    encodeSlot_(slots.slot0),
+    encodeSlot_(slots.slot1),
+    encodeSlot_(slots.slot2),
+    encodeSlot_(slots.slot3),
+    encodeSlot_(slots.slot4),
     String(body.memo || ""),
     "pending",
     String(body.author || body["投稿者"] || ""),
@@ -93,12 +95,13 @@ function listByStatus_(status) {
       item[header] = row[index] == null ? "" : row[index];
     });
     item.date = formatDateValue(item.date);
-    item.weatherSlots = {
-      t18a: decodeSlot_(item.t18a),
-      t00: decodeSlot_(item.t00),
-      t06: decodeSlot_(item.t06),
-      t12: decodeSlot_(item.t12),
-      t18b: decodeSlot_(item.t18b)
+    item.startSlot = normalizeStartSlot_(item.startSlot);
+    item.slots = {
+      slot0: decodeSlot_(item.slot0),
+      slot1: decodeSlot_(item.slot1),
+      slot2: decodeSlot_(item.slot2),
+      slot3: decodeSlot_(item.slot3),
+      slot4: decodeSlot_(item.slot4)
     };
     return item;
   });
@@ -120,6 +123,49 @@ function formatDateValue(value) {
   return text;
 }
 
+function normalizeStartSlot_(value) {
+  const text = String(value || "18").replace("時", "").trim();
+  const normalized = text.length === 1 ? "0" + text : text;
+  return ["00", "06", "12", "18"].indexOf(normalized) >= 0 ? normalized : "18";
+}
+
+function normalizeSlots_(body) {
+  const source = body.slots || {};
+  if (["slot0", "slot1", "slot2", "slot3", "slot4"].some(function(key) { return source[key] != null; })) {
+    return {
+      slot0: normalizeSlotList_(source.slot0),
+      slot1: normalizeSlotList_(source.slot1),
+      slot2: normalizeSlotList_(source.slot2),
+      slot3: normalizeSlotList_(source.slot3),
+      slot4: normalizeSlotList_(source.slot4)
+    };
+  }
+
+  if (["slot0", "slot1", "slot2", "slot3", "slot4"].some(function(key) { return body[key] != null; })) {
+    return {
+      slot0: normalizeSlotList_(body.slot0),
+      slot1: normalizeSlotList_(body.slot1),
+      slot2: normalizeSlotList_(body.slot2),
+      slot3: normalizeSlotList_(body.slot3),
+      slot4: normalizeSlotList_(body.slot4)
+    };
+  }
+
+  const old = body.weatherSlots || {};
+  return {
+    slot0: normalizeSlotList_(old.t18a),
+    slot1: normalizeSlotList_(old.t00),
+    slot2: normalizeSlotList_(old.t06),
+    slot3: normalizeSlotList_(old.t12),
+    slot4: normalizeSlotList_(old.t18b)
+  };
+}
+
+function normalizeSlotList_(value) {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  return parseSlotParameter_(value);
+}
+
 function getSheet_() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = spreadsheet.getSheetByName(SHEET_NAME);
@@ -136,22 +182,36 @@ function getSheet_() {
 function parseBody_(e) {
   const parameters = (e && e.parameter) || {};
   if (parameters.action) {
+    const hasNewSlots = ["slot0", "slot1", "slot2", "slot3", "slot4"].some(function(key) {
+      return parameters[key] != null;
+    });
+    const hasOldSlots = ["t18a", "t00", "t06", "t12", "t18b"].some(function(key) {
+      return parameters[key] != null;
+    });
     return {
       action: String(parameters.action || ""),
       postKey: String(parameters.postKey || ""),
       adminKey: String(parameters.adminKey || ""),
       id: String(parameters.id || ""),
       date: String(parameters.date || ""),
+      startSlot: String(parameters.startSlot || ""),
       memo: String(parameters.memo || ""),
       poster: String(parameters.poster || ""),
       author: String(parameters.poster || parameters.author || parameters["投稿者"] || ""),
-      weatherSlots: {
+      slots: hasNewSlots ? {
+        slot0: parseSlotParameter_(parameters.slot0),
+        slot1: parseSlotParameter_(parameters.slot1),
+        slot2: parseSlotParameter_(parameters.slot2),
+        slot3: parseSlotParameter_(parameters.slot3),
+        slot4: parseSlotParameter_(parameters.slot4)
+      } : {},
+      weatherSlots: hasOldSlots ? {
         t18a: parseSlotParameter_(parameters.t18a),
         t00: parseSlotParameter_(parameters.t00),
         t06: parseSlotParameter_(parameters.t06),
         t12: parseSlotParameter_(parameters.t12),
         t18b: parseSlotParameter_(parameters.t18b)
-      }
+      } : {}
     };
   }
 

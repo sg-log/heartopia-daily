@@ -11,11 +11,12 @@
 ```text
 id
 date
-t18a
-t00
-t06
-t12
-t18b
+startSlot
+slot0
+slot1
+slot2
+slot3
+slot4
 memo
 status
 投稿者
