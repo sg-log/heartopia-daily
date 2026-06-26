@@ -2185,9 +2185,66 @@ function cycleDay(dateStr){
   return (((state.settings.baseCycleDay - 1 + diff) % state.settings.cycleLength) + state.settings.cycleLength) % state.settings.cycleLength + 1;
 }
 function dayData(day){ return state.cycleData.find(d => d.day === Number(day)) || {day, oak:"", fluorite:"", confirmed:false, memo:""}; }
-function weatherData(dateStr){
+function rawWeatherData(dateStr){
   const normalizedDate = normalizeApiDate(dateStr);
   return state.weather.find(w => normalizeApiDate(w.date) === normalizedDate);
+}
+function weatherDateTimeKey(dateStr, hour){
+  return `${normalizeApiDate(dateStr)} ${String(hour).padStart(2,"0")}`;
+}
+function weatherSlotDateFor(baseDate, startSlot, index){
+  const startIndex = WEATHER_START_SLOTS.indexOf(normalizeStartSlot(startSlot));
+  const dayOffset = Math.floor((startIndex + index) / WEATHER_START_SLOTS.length);
+  return addDays(baseDate, dayOffset);
+}
+function buildWeatherSlotIndex(){
+  const map = new Map();
+  state.weather
+    .slice()
+    .sort((a,b) => normalizeApiDate(a.date).localeCompare(normalizeApiDate(b.date)))
+    .forEach(w => {
+      const baseDate = normalizeApiDate(w.date);
+      const startSlot = normalizeStartSlot(w.startSlot);
+      WEATHER_SLOT_KEYS.forEach((key, index) => {
+        const values = weatherValues(w.slots?.[key]);
+        if(!values.length) return;
+        const date = weatherSlotDateFor(baseDate, startSlot, index);
+        const hour = slotHourAt(startSlot, index);
+        map.set(weatherDateTimeKey(date, hour), values);
+      });
+    });
+  return map;
+}
+function buildWeatherWeekIndex(){
+  const map = new Map();
+  state.weather
+    .slice()
+    .sort((a,b) => normalizeApiDate(a.date).localeCompare(normalizeApiDate(b.date)))
+    .forEach(w => {
+      const baseDate = normalizeApiDate(w.date);
+      WEATHER_WEEK_KEYS.forEach((key, index) => {
+        const values = weatherValues(w.weeks?.[key]);
+        if(values.length) map.set(weekDate(baseDate, index), values);
+      });
+    });
+  return map;
+}
+function weatherData(dateStr){
+  const date = normalizeApiDate(dateStr);
+  const slotIndexMap = buildWeatherSlotIndex();
+  const weekIndexMap = buildWeatherWeekIndex();
+  const slots = Object.fromEntries(WEATHER_SLOT_KEYS.map((key, index) => {
+    const hour = slotHourAt("00", index);
+    const targetDate = weatherSlotDateFor(date, "00", index);
+    return [key, slotIndexMap.get(weatherDateTimeKey(targetDate, hour)) || []];
+  }));
+  const weeks = Object.fromEntries(WEATHER_WEEK_KEYS.map((key, index) => [
+    key,
+    weekIndexMap.get(weekDate(date, index)) || []
+  ]));
+  const raw = rawWeatherData(date);
+  const hasData = WEATHER_SLOT_KEYS.some(key => slots[key].length) || WEATHER_WEEK_KEYS.some(key => weeks[key].length);
+  return hasData ? {date, startSlot:"00", slots, weeks, memo:raw?.memo || ""} : null;
 }
 function slotHourAt(startSlot, index){
   const startIndex = WEATHER_START_SLOTS.indexOf(normalizeStartSlot(startSlot));
@@ -2635,7 +2692,7 @@ function upsertWeather(item){
     weeks:normalizeWeatherWeeks(item),
     memo:item.memo || ""
   };
-  const old = weatherData(item.date);
+  const old = rawWeatherData(item.date);
   if(old){ old.startSlot = item.startSlot; old.slots = item.slots; old.weeks = item.weeks; old.memo = item.memo; }
   else state.weather.push(item);
 }
@@ -2701,7 +2758,7 @@ function renderWeekChipGroups(prefix, baseDate, weeks={}){
 }
 
 function loadAdminWeatherForm(){
-  const w = weatherData(E.adminWeatherDate.value);
+  const w = rawWeatherData(E.adminWeatherDate.value);
   E.adminStartSlot.value = normalizeStartSlot(w?.startSlot, currentStartSlot());
   E.adminWeatherMemo.value = w?.memo || "";
   renderChipGroups("admin-weather", E.adminStartSlot.value, w?.slots || {});
