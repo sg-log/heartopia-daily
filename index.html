@@ -133,6 +133,40 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
   padding:14px;
   color:#6b5526;
 }
+.weatherSlotList{display:grid;gap:7px}
+.weatherLine{
+  display:grid;
+  grid-template-columns:64px 1fr;
+  align-items:center;
+  gap:8px;
+  border:1px solid #eadfd0;
+  background:#fffdf8;
+  border-radius:14px;
+  padding:8px 10px;
+}
+.weatherLine.current{
+  background:#fff3c8;
+  border-color:#dfc77b;
+  box-shadow:0 3px 10px rgba(110,86,25,.08);
+}
+.weatherLineTime{font-weight:900;color:#6b5526}
+.weatherLineText{font-weight:700;color:#6b5526}
+.weatherLine.current .weatherLineTime,
+.weatherLine.current .weatherLineText{font-weight:900}
+.weeklyWeather{display:grid;gap:7px;margin-top:8px}
+.weeklyWeatherRow{
+  display:grid;
+  grid-template-columns:minmax(116px,auto) 1fr;
+  align-items:center;
+  gap:8px;
+  border:1px solid var(--line);
+  background:#fff;
+  border-radius:13px;
+  padding:8px 10px;
+  font-size:13px;
+}
+.weeklyWeatherDate{font-weight:800;color:var(--subtle)}
+.weeklyWeatherText{font-weight:800;color:var(--heading)}
 .preview{
   background:#292724;
   color:#f8f4ec;
@@ -327,6 +361,8 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
   .weatherCard{padding:10px 11px}
   .weatherCard h2{font-size:14px;margin-bottom:7px}
   .weatherCard .weatherNow{padding:8px 10px;font-size:12px}
+  .weatherLine{grid-template-columns:54px 1fr;padding:7px 8px;font-size:12px}
+  .weeklyWeatherRow{grid-template-columns:1fr;padding:8px;font-size:12px;gap:2px}
 }
 
 @media(min-width:821px){
@@ -395,6 +431,8 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
         <h2>今日の天気メモ</h2>
         <div id="weatherSummary"></div>
         <p class="small">天気は自動取得ではありません。ゲーム内予報を見て登録した分だけ表示します。</p>
+        <h3>週間天気</h3>
+        <div id="weeklyWeather"></div>
       </div>
 
       <div class="card s6">
@@ -1732,6 +1770,7 @@ const STORAGE_KEY = "heartopiaDaily.publishReady.v1";
 const $ = id => document.getElementById(id);
 const ids = [
   "targetDate","todayBtn","tomorrowBtn","todayResult","weatherResult","weatherSummary","discordText","copyBtn","copyStatus",
+  "weeklyWeather",
   "obsDate","obsMemo","obsOak","obsFluorite","addObsBtn","obsStatus",
   "reportWeatherDate","reportWeatherMemo","reportPostKey","reportWeatherChips","submitWeatherReportBtn","weatherReportStatus",
   "adminWeatherDate","adminWeatherMemo","adminWeatherChips","saveAdminWeatherBtn","adminWeatherStatus",
@@ -1759,7 +1798,14 @@ function normalizeApiDate(value){
 }
 function parseDate(v){ const [y,m,d]=v.split("-").map(Number); return new Date(y,m-1,d); }
 function esc(v){ return String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;"); }
-function norm(v){ return String(v ?? "").trim().replace(/番地/g,"番").replace(/[ 　]/g,""); }
+function norm(v){
+  return String(v ?? "")
+    .trim()
+    .replace(/番地/g,"番")
+    .replace(/温泉山遺跡/g,"遺跡")
+    .replace(/不思議な松林/g,"松林")
+    .replace(/[ 　]/g,"");
+}
 function gameToday(){ const d = new Date(); d.setHours(d.getHours() - 6); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
 function addDays(dateStr,n){ const d=parseDate(dateStr); d.setDate(d.getDate()+n); return dateValue(d); }
 function jpDate(v){ const d=parseDate(v); return `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}(${"日月火水木金土"[d.getDay()]})`; }
@@ -1847,7 +1893,7 @@ function currentSlot(){
   if(h < 6) return "t00";
   if(h < 12) return "t06";
   if(h < 18) return "t12";
-  return "t18b";
+  return "t18a";
 }
 function slotLabel(key){ return WEATHER_SLOT_LABELS[key] || ""; }
 function weatherIcon(value, slotKey){
@@ -1862,6 +1908,41 @@ function weatherDisplay(value, slotKey){
   return option ? `${icon ? `${icon} ` : ""}${option.label}` : normalized;
 }
 function weatherText(values, slotKey, fallback="未登録"){ return weatherValues(values).map(value => weatherDisplay(value, slotKey)).join("・") || fallback; }
+function weatherSlotRowsHtml(w){
+  const now = currentSlot();
+  return `<div class="weatherSlotList">${WEATHER_SLOT_DEFS.map(([key,label]) => {
+    const isCurrent = key === now;
+    return `
+      <div class="weatherLine${isCurrent ? " current" : ""}">
+        <div class="weatherLineTime">${esc(label)}</div>
+        <div class="weatherLineText">${esc(weatherText(w.weatherSlots[key], key))}</div>
+      </div>
+    `;
+  }).join("")}</div>`;
+}
+function representativeWeather(w){
+  if(!w) return "未登録";
+  const order = ["t06","t12","t18a","t00","t18b"];
+  for(const key of order){
+    const values = weatherValues(w.weatherSlots[key]);
+    if(values.length) return values.slice(0,2).map(value => weatherDisplay(value, key)).join("・");
+  }
+  return "未登録";
+}
+function renderWeeklyWeather(startDate){
+  if(!E.weeklyWeather) return;
+  const base = startDate || E.targetDate.value || dateValue(gameToday());
+  E.weeklyWeather.innerHTML = Array.from({length:7}, (_,i) => {
+    const date = addDays(base, i);
+    const w = weatherData(date);
+    return `
+      <div class="weeklyWeatherRow">
+        <div class="weeklyWeatherDate">${esc(jpDate(date))}</div>
+        <div class="weeklyWeatherText">${esc(representativeWeather(w))}</div>
+      </div>
+    `;
+  }).join("");
+}
 function discord(dateStr, data, weather){
   const slot = currentSlot();
   const w = weather ? weatherText(weather.weatherSlots[slot], slot, "") : "";
@@ -1893,6 +1974,7 @@ function renderToday(){
   `;
   renderWeather(date, weather);
   renderWeatherSummary();
+  renderWeeklyWeather(date);
   E.discordText.textContent = discord(date, data, weather);
   renderTables();
 }
@@ -1902,9 +1984,8 @@ function renderWeather(date, w){
     E.weatherResult.innerHTML = `<div class="weatherNow">天気は未登録です。</div>`;
     return;
   }
-  const slot = currentSlot();
   E.weatherResult.innerHTML = `
-    <div class="weatherNow"><strong>${esc(slotLabel(slot))}</strong><br>${esc(weatherText(w.weatherSlots[slot], slot))}</div>
+    <div class="weatherNow">${weatherSlotRowsHtml(w)}</div>
     ${w.memo ? `<div class="small">メモ：${esc(w.memo)}</div>` : ""}
   `;
 }
@@ -1918,11 +1999,7 @@ function renderWeatherSummary(){
   }
   E.weatherSummary.innerHTML = `
     <span class="datepill">${esc(jpDate(today))}</span>
-    <table>
-      <tbody>
-        ${WEATHER_SLOT_DEFS.map(([key,label]) => `<tr><td>${esc(label)}</td><td>${esc(weatherText(w.weatherSlots[key], key))}</td></tr>`).join("")}
-      </tbody>
-    </table>
+    <div class="weatherNow">${weatherSlotRowsHtml(w)}</div>
     ${w.memo ? `<p class="small">メモ：${esc(w.memo)}</p>` : ""}
   `;
 }
@@ -2169,13 +2246,15 @@ function parseBulk(text){
     if(!cur) continue;
     const isOak = /オーク|oak|ツルツル/i.test(line);
     const isFlu = /蛍石|fluorite|ほたる|ホタル/i.test(line);
-    const pm = line.match(/(温泉山遺跡|不思議な松林|\d{1,2}\s*番地?)/);
+    const pm = line.match(/(温泉山遺跡|不思議な松林|遺跡|松林|\d{1,2}\s*番地?)/);
     if(pm){
       const place = norm(pm[1]);
       if(isOak) cur.oak = place;
       if(isFlu) cur.fluorite = place;
       if(!isOak && !isFlu){
-        if(!cur.oak) cur.oak = place;
+        if(place === "松林") cur.oak = place;
+        else if(place === "遺跡") cur.fluorite = place;
+        else if(!cur.oak) cur.oak = place;
         else if(!cur.fluorite) cur.fluorite = place;
       }
     }
@@ -2351,7 +2430,7 @@ function init(){
 
   E.resetBtn.onclick = () => {
     if(!confirm("初期データに戻します。よろしいですか？")) return;
-    state = clone(SEED);
+    state = normalize(clone(SEED));
     save();
     init();
     toast("初期データに戻しました");
