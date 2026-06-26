@@ -72,6 +72,7 @@ button{
   font-size:14px;
   cursor:pointer;
 }
+button:disabled{opacity:.48;cursor:not-allowed}
 button.secondary{background:var(--soft);color:var(--accent2);border:1px solid #d7e2dc}
 button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 .buttons{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
@@ -643,15 +644,15 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
             <p class="shareImageTitle">共有用画像</p>
             <div class="buttons shareImageActions">
               <button id="saveShareImageBtn">画像を保存</button>
-              <button class="secondary" id="shareImageBtn" hidden>画像を共有</button>
+              <button class="secondary" id="shareImageBtn">画像を共有</button>
             </div>
             <div id="shareImageStatus" class="status"></div>
             <div id="shareImagePreview" class="shareImagePreview"></div>
           </div>
           <p class="shareImageTitle">Discord用テキストコピー</p>
-          <div id="discordText" class="preview"></div>
           <div class="buttons"><button id="copyBtn">コピー</button></div>
           <div id="copyStatus" class="status"></div>
+          <div id="discordText" class="preview"></div>
         </details>
       </div>
     </div>
@@ -2960,7 +2961,9 @@ function init(){
     }
   };
   if(E.shareImageBtn){
-    E.shareImageBtn.hidden = !(navigator.share && window.File && navigator.canShare);
+    const canUseShareFiles = Boolean(navigator.share && window.File && navigator.canShare);
+    E.shareImageBtn.disabled = !canUseShareFiles;
+    E.shareImageBtn.title = canUseShareFiles ? "" : "このブラウザでは画像共有に対応していません";
   }
   E.saveShareImageBtn.onclick = async () => {
     try{
