@@ -127,11 +127,11 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 .item .label{font-size:13px;color:var(--muted);font-weight:800}
 .item .value{font-size:clamp(28px,8vw,46px);font-weight:950;line-height:1.15;margin-top:6px}
 .weatherNow{
-  border:1px solid #eadca9;
-  background:var(--warm);
+  border:1px solid #e4ded5;
+  background:#fffefa;
   border-radius:18px;
   padding:14px;
-  color:#6b5526;
+  color:#5f5953;
 }
 .weatherSlotList{display:grid;gap:7px}
 .weatherLine{
@@ -139,46 +139,153 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
   grid-template-columns:64px 1fr;
   align-items:center;
   gap:8px;
-  border:1px solid #eadfd0;
-  background:#fffdf8;
+  border:1px solid #e7e1d8;
+  background:#fffefa;
   border-radius:14px;
   padding:8px 10px;
 }
 .weatherLine.current{
-  background:#fff3c8;
-  border-color:#dfc77b;
-  box-shadow:0 3px 10px rgba(110,86,25,.08);
+  background:#edf3ef;
+  border-color:#cbd9d3;
+  box-shadow:0 2px 8px rgba(93,116,107,.08);
 }
-.weatherLineTime{font-weight:900;color:#6b5526}
-.weatherLineText{font-weight:700;color:#6b5526}
+.weatherLineTime{font-weight:900;color:#5f5953}
+.weatherLineText{font-weight:700;color:#5f5953}
 .weatherLine.current .weatherLineTime,
 .weatherLine.current .weatherLineText{font-weight:900}
-.weeklyWeather{display:grid;gap:7px;margin-top:8px}
-.weeklyWeatherRow{
+.weeklyWeather{
   display:grid;
-  grid-template-columns:minmax(116px,auto) 1fr;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:0;
+  margin-top:8px;
+  border:1px solid #e8e1d8;
+  background:#fffefa;
+  border-radius:14px;
+  overflow:hidden;
+  padding:8px 7px 7px;
+  position:relative;
+}
+.weeklyWeather::after{
+  content:"";
+  position:absolute;
+  left:10px;
+  right:10px;
+  top:39px;
+  border-top:1px solid #e1d9cf;
+  pointer-events:none;
+}
+.weeklyWeatherRow{
+  display:flex;
+  flex-direction:column;
   align-items:center;
-  gap:8px;
-  border:1px solid var(--line);
-  background:#fff;
-  border-radius:13px;
-  padding:8px 10px;
-  font-size:13px;
+  justify-content:flex-start;
+  gap:2px;
+  border:0;
+  background:transparent;
+  border-radius:0;
+  padding:0 2px;
+  font-size:11px;
+  min-width:0;
+  width:100%;
+  min-height:52px;
 }
 .weeklyWeatherDate{font-weight:800;color:var(--subtle)}
-.weeklyWeatherText{font-weight:800;color:var(--heading)}
-.compactWeatherWeek{display:grid;gap:6px;margin-top:10px}
-.compactWeatherWeek .weeklyWeatherRow{padding:7px 9px}
+.weeklyWeatherDay{font-weight:900;color:var(--subtle);line-height:1}
+.weeklyWeatherDayNum{
+  padding-bottom:8px;
+  font-size:11px;
+  color:var(--lighttext);
+  line-height:1;
+  text-align:center;
+}
+.weeklyWeatherText{
+  font-weight:800;
+  color:var(--heading);
+  min-width:0;
+  overflow:visible;
+  text-overflow:clip;
+  white-space:nowrap;
+  line-height:1.1;
+  text-align:center;
+}
+.weeklyWeatherIcons{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:1px 2px;
+  font-size:16px;
+  line-height:1;
+  min-height:18px;
+}
+.compactWeatherWeek{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:0;
+  margin-top:10px;
+  border:1px solid #e8e1d8;
+  background:#fffefa;
+  border-radius:14px;
+  overflow:hidden;
+  padding:7px 6px 6px;
+  position:relative;
+}
+.compactWeatherWeek::after{
+  content:"";
+  position:absolute;
+  left:9px;
+  right:9px;
+  top:36px;
+  border-top:1px solid #e1d9cf;
+  pointer-events:none;
+}
+.compactWeatherWeek .weeklyWeatherRow{
+  padding:0 1px;
+  min-height:48px;
+}
+.compactWeatherWeek .weeklyWeatherText{
+  font-size:11px;
+  line-height:1.1;
+}
+.compactWeatherWeek .weeklyWeatherIcons{
+  font-size:17px;
+}
 .focusWeather{
   margin-top:10px;
-  border:1px solid #d9ccba;
-  background:#fffdf8;
+  border:1px solid #cbd9d3;
+  background:linear-gradient(135deg,#faf7f1,#fffefa);
   border-radius:14px;
   padding:8px 10px;
-  color:#6b5526;
+  color:#4f625b;
   font-size:13px;
   font-weight:800;
+  text-align:left;
 }
+.focusWeatherLabel{
+  font-weight:950;
+  color:#4f625b;
+  margin-bottom:5px;
+}
+.focusWeatherChips{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-start;
+  gap:7px;
+}
+.focusWeatherChip{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  border:1px solid #b8cbc3;
+  background:#edf3ef;
+  border-radius:999px;
+  padding:5px 9px;
+  color:#4f625b;
+  line-height:1.1;
+  white-space:nowrap;
+}
+.focusWeatherIcon{font-size:18px;line-height:1}
+.focusWeatherDay{font-size:13px;font-weight:950}
 .preview{
   background:#292724;
   color:#f8f4ec;
@@ -345,7 +452,7 @@ body{color:var(--body)}
 header p,p{color:var(--body)}
 .small,label,.notice,th,.item .label,.datepill{color:var(--subtle)}
 .item .value{color:var(--heading);font-weight:900}
-.weatherNow{color:#6f6037}
+.weatherNow{color:var(--body)}
 .preview{color:#f6f2ea}
 .tab{font-weight:700}
 .tab.active{font-weight:800}
@@ -374,7 +481,13 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
   .weatherCard h2{font-size:14px;margin-bottom:7px}
   .weatherCard .weatherNow{padding:8px 10px;font-size:12px}
   .weatherLine{grid-template-columns:54px 1fr;padding:7px 8px;font-size:12px}
-  .weeklyWeatherRow{grid-template-columns:1fr;padding:8px;font-size:12px;gap:2px}
+  .weeklyWeatherRow{padding:0 2px;font-size:11px;gap:2px}
+}
+
+@media(max-width:360px){
+  .weeklyWeatherRow{padding:0 1px;font-size:10px}
+  .weeklyWeatherIcons{font-size:15px}
+  .compactWeatherWeek .weeklyWeatherIcons{font-size:16px}
 }
 
 @media(min-width:821px){
@@ -2005,6 +2118,20 @@ function simpleWeatherDisplay(value){
 function simpleWeatherText(values, fallback="未登録"){
   return weatherValues(values).map(simpleWeatherDisplay).join("・") || fallback;
 }
+function compactWeatherText(values, fallback="未登録"){
+  return weatherValues(values).map(value => weatherIcon(value)).filter(Boolean).join(" ") || fallback;
+}
+function shortWeatherDisplay(value){
+  const normalized = normalizeWeatherValue(value);
+  const shortLabels = {"くもり":"曇","流星群":"流星"};
+  const option = WEATHER_OPTION_MAP[normalized];
+  const icon = weatherIcon(normalized);
+  const label = shortLabels[normalized] || option?.label || normalized;
+  return option ? `${icon ? `${icon} ` : ""}${label}` : label;
+}
+function shortWeatherText(values, fallback="未登録"){
+  return weatherValues(values).map(shortWeatherDisplay).join("・") || fallback;
+}
 function weatherSlotRowsHtml(w){
   const startSlot = normalizeStartSlot(w.startSlot);
   const now = currentSlot(startSlot);
@@ -2030,11 +2157,14 @@ function weeklyRowsHtml(w, baseDate, className="weeklyWeather"){
   if(!w) return "";
   return `<div class="${esc(className)}">${WEATHER_WEEK_KEYS.map((key, index) => {
     const date = addDays(baseDate, index + 1);
-    const day = "日月火水木金土"[parseDate(date).getDay()];
+    const d = parseDate(date);
+    const day = "日月火水木金土"[d.getDay()];
+    const icons = compactWeatherText(w.weeks?.[key], "—");
     return `
-      <div class="weeklyWeatherRow">
-        <div class="weeklyWeatherDate">${esc(day)}</div>
-        <div class="weeklyWeatherText">${esc(simpleWeatherText(w.weeks?.[key]))}</div>
+      <div class="weeklyWeatherRow" data-week-key="${esc(key)}">
+        <div class="weeklyWeatherDay">${esc(day)}</div>
+        <div class="weeklyWeatherDayNum">${esc(d.getDate())}</div>
+        <div class="weeklyWeatherText"><span class="weeklyWeatherIcons">${esc(icons)}</span></div>
       </div>
     `;
   }).join("")}</div>`;
@@ -2043,7 +2173,7 @@ function renderWeeklyWeather(startDate){
   if(!E.weeklyWeather) return;
   const base = startDate || E.targetDate.value || dateValue(gameToday());
   const w = weatherData(base);
-  E.weeklyWeather.innerHTML = w ? weeklyRowsHtml(w, base) : `<div class="weatherNow">週間天気は未登録です。</div>`;
+  E.weeklyWeather.innerHTML = w ? weeklyRowsHtml(w, base, "weeklyWeather") : `<div class="weatherNow">週間天気は未登録です。</div>`;
 }
 function focusWeatherHtml(w, baseDate){
   if(!w) return "";
@@ -2053,10 +2183,10 @@ function focusWeatherHtml(w, baseDate){
     values.forEach(value => {
       const date = addDays(baseDate, index + 1);
       const day = "日月火水木金土"[parseDate(date).getDay()];
-      items.push(`${weatherIcon(value)} ${day}曜`);
+      items.push(`<span class="focusWeatherChip"><span class="focusWeatherIcon">${esc(weatherIcon(value))}</span><span class="focusWeatherDay">${esc(day)}</span></span>`);
     });
   });
-  return items.length ? `<div class="focusWeather">注目：${esc(items.join("　"))}</div>` : "";
+  return items.length ? `<div class="focusWeather"><div class="focusWeatherLabel">注目天気</div><div class="focusWeatherChips">${items.join("")}</div></div>` : "";
 }
 function discord(dateStr, data, weather){
   const startSlot = normalizeStartSlot(weather?.startSlot);
