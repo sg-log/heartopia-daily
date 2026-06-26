@@ -75,6 +75,17 @@ button{
 button.secondary{background:var(--soft);color:var(--accent2);border:1px solid #d7e2dc}
 button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 .buttons{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.dateShortcuts{gap:7px;margin-top:8px}
+.dateShortcuts button{
+  padding:7px 12px;
+  background:#f7faf7;
+  color:var(--accent2);
+  border:1px solid #dce5df;
+  box-shadow:none;
+  font-size:13px;
+  font-weight:800;
+}
+.dateShortcuts button:hover{background:var(--soft)}
 .tabs{display:flex;gap:8px;flex-wrap:wrap}
 .tab{background:var(--soft);color:var(--accent2)}
 .tab.active{background:var(--accent);color:#fff}
@@ -133,24 +144,32 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
   padding:14px;
   color:#5f5953;
 }
-.weatherSlotList{display:grid;gap:7px}
-.weatherLine{
+.weatherSlotList{
   display:grid;
-  grid-template-columns:64px 1fr;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:4px;
+}
+.weatherLine{
+  display:flex;
+  flex-direction:column;
   align-items:center;
-  gap:8px;
-  border:1px solid #e7e1d8;
-  background:#fffefa;
-  border-radius:14px;
-  padding:8px 10px;
+  justify-content:center;
+  gap:4px;
+  border:1px solid transparent;
+  background:transparent;
+  border-radius:12px;
+  padding:6px 2px;
+  min-width:0;
+  min-height:48px;
+  text-align:center;
 }
 .weatherLine.current{
   background:#edf3ef;
   border-color:#cbd9d3;
-  box-shadow:0 2px 8px rgba(93,116,107,.08);
+  box-shadow:none;
 }
-.weatherLineTime{font-weight:900;color:#5f5953}
-.weatherLineText{font-weight:700;color:#5f5953}
+.weatherLineTime{font-size:11px;font-weight:900;line-height:1;color:#5f5953}
+.weatherLineText{font-size:14px;font-weight:800;line-height:1.15;color:#5f5953;white-space:normal}
 .weatherLine.current .weatherLineTime,
 .weatherLine.current .weatherLineText{font-weight:900}
 .weeklyWeather{
@@ -312,23 +331,23 @@ th{font-size:12px;color:var(--muted);background:#fbf8f4}
   background:var(--soft);
   color:var(--accent2);
   border:1px solid #d7e2dc;
-  border-radius:14px;
-  padding:5px 6px;
-  width:48px;
+  border-radius:13px;
+  padding:4px 5px;
+  width:46px;
   min-width:40px;
-  min-height:48px;
+  min-height:46px;
   line-height:1.05;
   font-weight:500;
 }
 .weatherChipIcon{
   display:block;
-  font-size:21px;
+  font-size:20px;
   line-height:1;
 }
 .weatherChipLabel{
   display:block;
-  max-width:42px;
-  font-size:11px;
+  max-width:40px;
+  font-size:10.5px;
   line-height:1.05;
   font-weight:500;
   overflow-wrap:anywhere;
@@ -413,7 +432,7 @@ th{font-size:12px;color:var(--muted);background:#fbf8f4}
   h1{font-size:28px;letter-spacing:-.05em}
   header p{font-size:12px;line-height:1.45;max-width:95%}
   main{padding:8px;gap:8px}
-  .tabs{gap:6px;position:sticky;top:0;z-index:5;background:rgba(245,240,232,.92);backdrop-filter:blur(8px);padding:4px 0}
+  .tabs{gap:6px;position:sticky;top:0;z-index:5;background:transparent;backdrop-filter:none;padding:0}
   .tab{padding:7px 10px;font-size:13px}
   .card{padding:11px;border-radius:16px}
   h2{font-size:15px;margin-bottom:7px}
@@ -480,7 +499,9 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
   .weatherCard{padding:10px 11px}
   .weatherCard h2{font-size:14px;margin-bottom:7px}
   .weatherCard .weatherNow{padding:8px 10px;font-size:12px}
-  .weatherLine{grid-template-columns:54px 1fr;padding:7px 8px;font-size:12px}
+  .weatherLine{padding:5px 1px;min-height:44px}
+  .weatherLineTime{font-size:10px}
+  .weatherLineText{font-size:14px}
   .weeklyWeatherRow{padding:0 2px;font-size:11px;gap:2px}
 }
 
@@ -526,9 +547,9 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
             <input id="targetDate" type="date">
           </div>
         </div>
-        <div class="buttons">
-          <button id="todayBtn">今日に戻す</button>
-          <button class="secondary" id="tomorrowBtn">明日を見る</button>
+        <div class="buttons dateShortcuts">
+          <button id="todayBtn">今日</button>
+          <button class="secondary" id="tomorrowBtn">明日</button>
         </div>
         <p class="small">朝6時切替で計算しています。</p>
         <div class="hero" id="todayResult"></div>
@@ -763,12 +784,10 @@ const WEATHER_API_URL = "https://script.google.com/macros/s/AKfycbwoPLuj0rSsenns
 const WEATHER_OPTIONS = [
   { value:"晴", label:"晴" },
   { value:"雨", label:"雨", icon:"☔" },
-  { value:"くもり", label:"くもり", icon:"☁️" },
-  { value:"雪", label:"雪", icon:"☃" },
-  { value:"桜", label:"桜", icon:"🌸" },
   { value:"流星群", label:"流星群", icon:"🌠" },
   { value:"虹", label:"虹", icon:"🌈" },
-  { value:"不明", label:"不明", icon:"？" }
+  { value:"雪", label:"雪", icon:"☃" },
+  { value:"桜", label:"桜", icon:"🌸" }
 ];
 const WEATHER_START_SLOTS = ["00","06","12","18"];
 const WEATHER_SLOT_KEYS = ["slot0","slot1","slot2","slot3","slot4"];
@@ -1960,7 +1979,7 @@ function load(){ try{ const raw=localStorage.getItem(STORAGE_KEY); return normal
 function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state,null,2)); }
 function normalizeWeatherValue(value){
   const text = String(value ?? "").trim();
-  if(text === "雷" || text === "⚡") return "";
+  if(["雷","⚡","く"+"もり","\u2601\uFE0F","不明","？"].includes(text)) return "";
   return {"晴れ":"晴","夜晴":"晴","月":"晴"}[text] || text;
 }
 function weatherValues(v){
@@ -2085,7 +2104,7 @@ function slotLabel(key, startSlot){
   const index = slotIndex(key);
   if(index < 0) return "";
   const hour = slotHourAt(startSlot, index);
-  return `${index === 4 ? "翌" : ""}${hour}時`;
+  return `${hour}時`;
 }
 function slotLabels(startSlot){
   return WEATHER_SLOT_KEYS.map(key => [key, slotLabel(key, startSlot)]);
@@ -2109,6 +2128,9 @@ function weatherDisplay(value, slotKey, startSlot){
   return option ? `${icon ? `${icon} ` : ""}${option.label}` : normalized;
 }
 function weatherText(values, slotKey, startSlot, fallback="未登録"){ return weatherValues(values).map(value => weatherDisplay(value, slotKey, startSlot)).join("・") || fallback; }
+function slotWeatherMiniText(values, slotKey, startSlot, fallback="—"){
+  return weatherValues(values).map(value => weatherIcon(value, slotKey, startSlot)).filter(Boolean).join(" ") || fallback;
+}
 function simpleWeatherDisplay(value){
   const normalized = normalizeWeatherValue(value);
   const option = WEATHER_OPTION_MAP[normalized];
@@ -2123,7 +2145,7 @@ function compactWeatherText(values, fallback="未登録"){
 }
 function shortWeatherDisplay(value){
   const normalized = normalizeWeatherValue(value);
-  const shortLabels = {"くもり":"曇","流星群":"流星"};
+  const shortLabels = {"流星群":"流星"};
   const option = WEATHER_OPTION_MAP[normalized];
   const icon = weatherIcon(normalized);
   const label = shortLabels[normalized] || option?.label || normalized;
@@ -2131,6 +2153,9 @@ function shortWeatherDisplay(value){
 }
 function shortWeatherText(values, fallback="未登録"){
   return weatherValues(values).map(shortWeatherDisplay).join("・") || fallback;
+}
+function weatherChipLabel(option){
+  return option.value === "流星群" ? "流星" : option.label;
 }
 function weatherSlotRowsHtml(w){
   const startSlot = normalizeStartSlot(w.startSlot);
@@ -2140,7 +2165,7 @@ function weatherSlotRowsHtml(w){
     return `
       <div class="weatherLine${isCurrent ? " current" : ""}">
         <div class="weatherLineTime">${esc(label)}</div>
-        <div class="weatherLineText">${esc(weatherText(w.slots[key], key, startSlot))}</div>
+        <div class="weatherLineText">${esc(slotWeatherMiniText(w.slots[key], key, startSlot))}</div>
       </div>
     `;
   }).join("")}</div>`;
@@ -2301,7 +2326,7 @@ function chipGroupHtml(prefix, startSlot){
     <div class="weatherSlot">
       <label>${esc(label)}</label>
       <div class="chipGroup" id="${esc(prefix)}-${esc(key)}">
-        ${WEATHER_OPTIONS.map(option => `<button type="button" class="weatherChip" data-weather-option="${esc(option.value)}" aria-label="${esc(option.label)}"><span class="weatherChipIcon" aria-hidden="true">${esc(weatherIcon(option.value, key, startSlot))}</span><span class="weatherChipLabel">${esc(option.label)}</span></button>`).join("")}
+        ${WEATHER_OPTIONS.map(option => `<button type="button" class="weatherChip" data-weather-option="${esc(option.value)}" aria-label="${esc(option.label)}"><span class="weatherChipIcon" aria-hidden="true">${esc(weatherIcon(option.value, key, startSlot))}</span><span class="weatherChipLabel">${esc(weatherChipLabel(option))}</span></button>`).join("")}
       </div>
     </div>
   `).join("");
@@ -2315,7 +2340,7 @@ function weekChipGroupHtml(prefix, baseDate){
       <div class="weatherSlot">
         <label>${esc(day)}曜</label>
         <div class="chipGroup" id="${esc(prefix)}-${esc(key)}">
-          ${WEATHER_OPTIONS.map(option => `<button type="button" class="weatherChip" data-weather-option="${esc(option.value)}" aria-label="${esc(option.label)}"><span class="weatherChipIcon" aria-hidden="true">${esc(weatherIcon(option.value))}</span><span class="weatherChipLabel">${esc(option.label)}</span></button>`).join("")}
+          ${WEATHER_OPTIONS.map(option => `<button type="button" class="weatherChip" data-weather-option="${esc(option.value)}" aria-label="${esc(option.label)}"><span class="weatherChipIcon" aria-hidden="true">${esc(weatherIcon(option.value))}</span><span class="weatherChipLabel">${esc(weatherChipLabel(option))}</span></button>`).join("")}
         </div>
       </div>
     `;
