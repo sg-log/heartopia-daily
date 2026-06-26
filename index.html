@@ -315,6 +315,51 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
   font-size:13px;
   overflow:auto;
 }
+.shareImageTools{
+  margin-top:14px;
+  border-top:1px solid var(--line);
+  padding-top:12px;
+}
+.shareImageTitle{
+  font-size:13px;
+  font-weight:900;
+  color:var(--accent2);
+  margin:0 0 8px;
+}
+.shareImagePreview{
+  width:min(100%,720px);
+  aspect-ratio:16/9;
+  border:1px solid #e4ded5;
+  border-radius:18px;
+  background:linear-gradient(135deg,#fffefa,#f5f0e8);
+  padding:18px;
+  overflow:hidden;
+  display:grid;
+  gap:10px;
+  color:var(--heading);
+  box-shadow:0 10px 24px rgba(45,38,31,.06);
+}
+.shareImageHeader{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.shareImageBrand{font-size:22px;font-weight:950;letter-spacing:-.03em;color:var(--accent2);line-height:1.1}
+.shareImageDate{font-size:13px;font-weight:800;color:var(--subtle);white-space:nowrap}
+.shareImagePlaces{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.shareImagePlace{
+  background:rgba(255,255,255,.72);
+  border:1px solid #e7e0d6;
+  border-radius:14px;
+  padding:10px 12px;
+}
+.shareImagePlaceLabel{font-size:12px;font-weight:800;color:var(--muted)}
+.shareImagePlaceValue{font-size:24px;font-weight:950;color:var(--heading);line-height:1.2}
+.shareImageSectionTitle{font-size:12px;font-weight:900;color:var(--accent2);margin-bottom:4px}
+.shareImageWeatherLine,.shareImageWeeklyLine,.shareImageFocusLine{
+  font-size:13px;
+  font-weight:800;
+  color:var(--body);
+  line-height:1.35;
+}
+.shareImageFocusLine{color:var(--accent2)}
+.shareImageActions{margin-top:8px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}
 th{font-size:12px;color:var(--muted);background:#fbf8f4}
@@ -454,6 +499,15 @@ th{font-size:12px;color:var(--muted);background:#fbf8f4}
   .compactCopy{padding:11px}
   .compactCopy summary{font-size:15px}
   .preview{font-size:12px;border-radius:14px;padding:12px}
+  .shareImagePreview{padding:13px;border-radius:15px;gap:7px}
+  .shareImageBrand{font-size:18px}
+  .shareImageDate{font-size:11px}
+  .shareImagePlaces{gap:7px}
+  .shareImagePlace{padding:7px 8px;border-radius:12px}
+  .shareImagePlaceLabel{font-size:10px}
+  .shareImagePlaceValue{font-size:18px}
+  .shareImageSectionTitle{font-size:10px;margin-bottom:2px}
+  .shareImageWeatherLine,.shareImageWeeklyLine,.shareImageFocusLine{font-size:11px;line-height:1.25}
 }
 
 @media(max-width:380px){
@@ -566,6 +620,15 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
           <div class="buttons"><button id="copyBtn">コピー</button></div>
           <div id="copyStatus" class="status"></div>
           <div id="discordText" class="preview"></div>
+          <div class="shareImageTools">
+            <p class="shareImageTitle">共有用画像</p>
+            <div id="shareImagePreview" class="shareImagePreview"></div>
+            <div class="buttons shareImageActions">
+              <button id="saveShareImageBtn">画像を保存</button>
+              <button class="secondary" id="shareImageBtn" hidden>画像を共有</button>
+            </div>
+            <div id="shareImageStatus" class="status"></div>
+          </div>
         </details>
       </div>
     </div>
@@ -1936,6 +1999,7 @@ const STORAGE_KEY = "heartopiaDaily.publishReady.v1";
 const $ = id => document.getElementById(id);
 const ids = [
   "targetDate","todayBtn","tomorrowBtn","todayResult","weatherResult","weatherSummary","discordText","copyBtn","copyStatus",
+  "shareImagePreview","saveShareImageBtn","shareImageBtn","shareImageStatus",
   "weeklyWeather",
   "obsDate","obsMemo","obsOak","obsFluorite","addObsBtn","obsStatus",
   "reportWeatherDate","reportStartSlot","reportWeatherMemo","reportPostKey","reportWeatherChips","reportWeekChips","submitWeatherReportBtn","weatherReportStatus",
@@ -2202,16 +2266,166 @@ function renderWeeklyWeather(startDate){
 }
 function focusWeatherHtml(w, baseDate){
   if(!w) return "";
+  const items = focusWeatherItems(w, baseDate);
+  return items.length ? `<div class="focusWeather"><div class="focusWeatherLabel">注目天気</div><div class="focusWeatherChips">${items.map(item => `<span class="focusWeatherChip"><span class="focusWeatherIcon">${esc(item.icon)}</span><span class="focusWeatherDay">${esc(item.day)}</span></span>`).join("")}</div></div>` : "";
+}
+function focusWeatherItems(w, baseDate){
+  if(!w) return [];
   const items = [];
   WEATHER_WEEK_KEYS.forEach((key, index) => {
     const values = weatherValues(w.weeks?.[key]).filter(value => FOCUS_WEATHER_VALUES.includes(value));
     values.forEach(value => {
       const date = addDays(baseDate, index + 1);
       const day = "日月火水木金土"[parseDate(date).getDay()];
-      items.push(`<span class="focusWeatherChip"><span class="focusWeatherIcon">${esc(weatherIcon(value))}</span><span class="focusWeatherDay">${esc(day)}</span></span>`);
+      items.push({icon:weatherIcon(value), day, value});
     });
   });
-  return items.length ? `<div class="focusWeather"><div class="focusWeatherLabel">注目天気</div><div class="focusWeatherChips">${items.join("")}</div></div>` : "";
+  return items;
+}
+function weeklyForecastItems(w, baseDate){
+  return WEATHER_WEEK_KEYS.map((key, index) => {
+    const date = addDays(baseDate, index + 1);
+    const d = parseDate(date);
+    return {
+      key,
+      day:"日月火水木金土"[d.getDay()],
+      date:d.getDate(),
+      icons:w ? compactWeatherText(w.weeks?.[key], "—") : "—"
+    };
+  });
+}
+function shareWeatherLine(weather){
+  if(!weather) return "天気は未登録";
+  const startSlot = normalizeStartSlot(weather.startSlot);
+  return slotLabels(startSlot).map(([key,label]) => `${label.replace("時","")} ${slotWeatherMiniText(weather.slots[key], key, startSlot)}`).join(" / ");
+}
+function shareFocusLine(weather, date){
+  const items = focusWeatherItems(weather, date);
+  return items.length ? items.map(item => `${item.icon} ${item.day}`).join("　") : "なし";
+}
+function shareWeeklyLine(weather, date){
+  const items = weeklyForecastItems(weather, date);
+  return items.map(item => `${item.day}${item.icons}`).join(" ");
+}
+function renderShareImagePreview(date, data, weather){
+  if(!E.shareImagePreview) return;
+  E.shareImagePreview.innerHTML = `
+    <div class="shareImageHeader">
+      <div class="shareImageBrand">Heartopia Daily</div>
+      <div class="shareImageDate">${esc(jpDate(date))}</div>
+    </div>
+    <div class="shareImagePlaces">
+      <div class="shareImagePlace"><div class="shareImagePlaceLabel">無垢な蛍石</div><div class="shareImagePlaceValue">${esc(data.fluorite || "未入力")}</div></div>
+      <div class="shareImagePlace"><div class="shareImagePlaceLabel">ツルツルオーク</div><div class="shareImagePlaceValue">${esc(data.oak || "未入力")}</div></div>
+    </div>
+    <div>
+      <div class="shareImageSectionTitle">今日の天気</div>
+      <div class="shareImageWeatherLine">${esc(shareWeatherLine(weather))}</div>
+    </div>
+    <div class="shareImageFocusLine">注目：${esc(shareFocusLine(weather, date))}</div>
+    <div class="shareImageWeeklyLine">週間：${esc(shareWeeklyLine(weather, date))}</div>
+  `;
+}
+function roundedRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y);
+  ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);
+  ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);
+  ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);
+  ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+}
+function fillRoundRect(ctx,x,y,w,h,r,fill,stroke){
+  roundedRect(ctx,x,y,w,h,r);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  if(stroke){
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}
+function drawShareImageCanvas(date, data, weather){
+  const canvas = document.createElement("canvas");
+  canvas.width = 1200;
+  canvas.height = 675;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#f5f0e8";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  fillRoundRect(ctx,50,45,1100,585,34,"#fffefa","#e2d8cc");
+
+  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = "#5d746b";
+  ctx.font = '900 50px "Noto Sans JP","Segoe UI Emoji",sans-serif';
+  ctx.fillText("Heartopia Daily",90,120);
+  ctx.fillStyle = "#7a746d";
+  ctx.textAlign = "right";
+  ctx.font = '800 28px "Noto Sans JP","Segoe UI Emoji",sans-serif';
+  ctx.fillText(jpDate(date),1110,116);
+  ctx.textAlign = "left";
+
+  const placeY = 155;
+  [["無垢な蛍石", data.fluorite || "未入力", 90], ["ツルツルオーク", data.oak || "未入力", 610]].forEach(([label,value,x]) => {
+    fillRoundRect(ctx,x,placeY,500,120,22,"#ffffff","#e7e0d6");
+    ctx.fillStyle = "#7a746d";
+    ctx.font = '800 24px "Noto Sans JP","Segoe UI Emoji",sans-serif';
+    ctx.fillText(label,x+28,placeY+42);
+    ctx.fillStyle = "#3f3a36";
+    ctx.font = '900 46px "Noto Sans JP","Segoe UI Emoji",sans-serif';
+    ctx.fillText(value,x+28,placeY+94);
+  });
+
+  ctx.fillStyle = "#5d746b";
+  ctx.font = '900 26px "Noto Sans JP","Segoe UI Emoji",sans-serif';
+  ctx.fillText("今日の天気",90,335);
+  fillRoundRect(ctx,90,355,1020,105,22,"#f7faf7","#dde6df");
+  if(weather){
+    const startSlot = normalizeStartSlot(weather.startSlot);
+    slotLabels(startSlot).forEach(([key,label], index) => {
+      const x = 110 + index * 196;
+      ctx.fillStyle = "#7a746d";
+      ctx.font = '900 24px "Noto Sans JP","Segoe UI Emoji",sans-serif';
+      ctx.fillText(label.replace("時",""),x,392);
+      ctx.fillStyle = "#3f3a36";
+      ctx.font = '900 34px "Noto Sans JP","Segoe UI Emoji",sans-serif';
+      ctx.fillText(slotWeatherMiniText(weather.slots[key], key, startSlot),x,435);
+    });
+  }else{
+    ctx.fillStyle = "#7a746d";
+    ctx.font = '800 30px "Noto Sans JP","Segoe UI Emoji",sans-serif';
+    ctx.fillText("天気は未登録",120,420);
+  }
+
+  ctx.fillStyle = "#5d746b";
+  ctx.font = '900 26px "Noto Sans JP","Segoe UI Emoji",sans-serif';
+  ctx.fillText("注目",90,505);
+  ctx.fillStyle = "#3f3a36";
+  ctx.font = '900 30px "Noto Sans JP","Segoe UI Emoji",sans-serif';
+  ctx.fillText(shareFocusLine(weather, date),170,505);
+
+  ctx.fillStyle = "#5d746b";
+  ctx.font = '900 26px "Noto Sans JP","Segoe UI Emoji",sans-serif';
+  ctx.fillText("週間",90,565);
+  ctx.fillStyle = "#3f3a36";
+  ctx.font = '900 30px "Noto Sans JP","Segoe UI Emoji",sans-serif';
+  ctx.fillText(shareWeeklyLine(weather, date),170,565);
+
+  ctx.fillStyle = "#9a938b";
+  ctx.font = '700 18px "Noto Sans JP",sans-serif';
+  ctx.fillText("非公式の予想メモです",90,615);
+  return canvas;
+}
+async function createShareImageBlob(){
+  if(document.fonts?.ready) await document.fonts.ready;
+  const date = E.targetDate.value;
+  const data = dayData(cycleDay(date));
+  const weather = weatherData(date);
+  const canvas = drawShareImageCanvas(date, data, weather);
+  return new Promise(resolve => canvas.toBlob(resolve, "image/png"));
 }
 function discord(dateStr, data, weather){
   const startSlot = normalizeStartSlot(weather?.startSlot);
@@ -2247,6 +2461,7 @@ function renderToday(){
   renderWeatherSummary();
   renderWeeklyWeather(date);
   E.discordText.textContent = discord(date, data, weather);
+  renderShareImagePreview(date, data, weather);
   renderTables();
 }
 
@@ -2658,6 +2873,41 @@ function init(){
       toast("コピーしました");
     }catch(e){
       E.copyStatus.textContent = "手動で選択してコピーしてください";
+    }
+  };
+  if(E.shareImageBtn){
+    E.shareImageBtn.hidden = !(navigator.share && window.File && navigator.canShare);
+  }
+  E.saveShareImageBtn.onclick = async () => {
+    try{
+      const blob = await createShareImageBlob();
+      if(!blob) throw new Error("画像を生成できませんでした");
+      const date = E.targetDate.value;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `heartopia-daily-${date}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      E.shareImageStatus.textContent = "画像を保存しました";
+      toast("画像を保存しました");
+    }catch(error){
+      E.shareImageStatus.textContent = `画像を保存できませんでした：${error.message}`;
+    }
+  };
+  E.shareImageBtn.onclick = async () => {
+    try{
+      const blob = await createShareImageBlob();
+      if(!blob) throw new Error("画像を生成できませんでした");
+      const date = E.targetDate.value;
+      const file = new File([blob], `heartopia-daily-${date}.png`, {type:"image/png"});
+      if(!navigator.canShare?.({files:[file]})) throw new Error("このブラウザでは画像共有に対応していません");
+      await navigator.share({files:[file], title:"Heartopia Daily", text:"今日の採取場所メモ"});
+      E.shareImageStatus.textContent = "共有を開きました";
+    }catch(error){
+      E.shareImageStatus.textContent = `画像を共有できませんでした：${error.message}`;
     }
   };
 
