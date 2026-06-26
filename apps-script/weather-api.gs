@@ -1,5 +1,5 @@
-const POST_KEY = "CHANGE_ME_POST_KEY";
-const ADMIN_KEY = "CHANGE_ME_ADMIN_KEY";
+const POST_KEY = "kuma82";
+const ADMIN_KEY = "Kuma29";
 const SHEET_NAME = "weather_reports";
 const HEADERS = [
   "id", "date", "t18a", "t00", "t06", "t12", "t18b",
