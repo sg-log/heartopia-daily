@@ -316,9 +316,8 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
   overflow:auto;
 }
 .shareImageTools{
-  margin-top:14px;
-  border-top:1px solid var(--line);
-  padding-top:12px;
+  margin-top:12px;
+  padding-top:0;
 }
 .shareImageTitle{
   font-size:13px;
@@ -326,6 +325,7 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
   color:var(--accent2);
   margin:0 0 8px;
 }
+.shareImageTools + .shareImageTitle{margin-top:14px}
 .shareImagePreview{
   width:min(100%,720px);
   aspect-ratio:16/9;
@@ -344,11 +344,30 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 .shareImageDate{font-size:13px;font-weight:800;color:var(--subtle);white-space:nowrap}
 .shareImagePlaces{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .shareImagePlace{
+  display:grid;
+  grid-template-columns:58px 1fr;
+  align-items:center;
+  gap:8px;
   background:rgba(255,255,255,.72);
   border:1px solid #e7e0d6;
   border-radius:14px;
-  padding:10px 12px;
+  padding:8px 10px;
+  min-width:0;
 }
+.shareImageArt{
+  width:58px;
+  height:58px;
+  border-radius:12px;
+  background:linear-gradient(135deg,#f7fbf7,#fdf8ef);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+.shareImageArt img{max-width:58px;max-height:64px;object-fit:contain;display:block}
+.shareImageArt img[src*="fluorite"]{transform:scale(.9)}
+.shareImageArt img[src*="oak"]{transform:scale(1.08)}
+.shareImagePlaceText{min-width:0}
 .shareImagePlaceLabel{font-size:12px;font-weight:800;color:var(--muted)}
 .shareImagePlaceValue{font-size:24px;font-weight:950;color:var(--heading);line-height:1.2}
 .shareImageSectionTitle{font-size:12px;font-weight:900;color:var(--accent2);margin-bottom:4px}
@@ -503,7 +522,9 @@ th{font-size:12px;color:var(--muted);background:#fbf8f4}
   .shareImageBrand{font-size:18px}
   .shareImageDate{font-size:11px}
   .shareImagePlaces{gap:7px}
-  .shareImagePlace{padding:7px 8px;border-radius:12px}
+  .shareImagePlace{grid-template-columns:42px 1fr;gap:6px;padding:7px 8px;border-radius:12px}
+  .shareImageArt{width:42px;height:42px;border-radius:10px}
+  .shareImageArt img{max-width:42px;max-height:48px}
   .shareImagePlaceLabel{font-size:10px}
   .shareImagePlaceValue{font-size:18px}
   .shareImageSectionTitle{font-size:10px;margin-bottom:2px}
@@ -617,9 +638,6 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
       <div class="card s12 compactCopy">
         <details>
           <summary>Discord用コピー</summary>
-          <div class="buttons"><button id="copyBtn">コピー</button></div>
-          <div id="copyStatus" class="status"></div>
-          <div id="discordText" class="preview"></div>
           <div class="shareImageTools">
             <p class="shareImageTitle">共有用画像</p>
             <div id="shareImagePreview" class="shareImagePreview"></div>
@@ -629,6 +647,10 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
             </div>
             <div id="shareImageStatus" class="status"></div>
           </div>
+          <p class="shareImageTitle">Discord用テキストコピー</p>
+          <div id="discordText" class="preview"></div>
+          <div class="buttons"><button id="copyBtn">コピー</button></div>
+          <div id="copyStatus" class="status"></div>
         </details>
       </div>
     </div>
@@ -2315,8 +2337,14 @@ function renderShareImagePreview(date, data, weather){
       <div class="shareImageDate">${esc(jpDate(date))}</div>
     </div>
     <div class="shareImagePlaces">
-      <div class="shareImagePlace"><div class="shareImagePlaceLabel">無垢な蛍石</div><div class="shareImagePlaceValue">${esc(data.fluorite || "未入力")}</div></div>
-      <div class="shareImagePlace"><div class="shareImagePlaceLabel">ツルツルオーク</div><div class="shareImagePlaceValue">${esc(data.oak || "未入力")}</div></div>
+      <div class="shareImagePlace">
+        <div class="shareImageArt"><img src="assets/fluorite.png" alt="無垢な蛍石"></div>
+        <div class="shareImagePlaceText"><div class="shareImagePlaceLabel">無垢な蛍石</div><div class="shareImagePlaceValue">${esc(data.fluorite || "未入力")}</div></div>
+      </div>
+      <div class="shareImagePlace">
+        <div class="shareImageArt"><img src="assets/oak.png" alt="ツルツルオーク"></div>
+        <div class="shareImagePlaceText"><div class="shareImagePlaceLabel">ツルツルオーク</div><div class="shareImagePlaceValue">${esc(data.oak || "未入力")}</div></div>
+      </div>
     </div>
     <div>
       <div class="shareImageSectionTitle">今日の天気</div>
@@ -2349,7 +2377,40 @@ function fillRoundRect(ctx,x,y,w,h,r,fill,stroke){
     ctx.stroke();
   }
 }
-function drawShareImageCanvas(date, data, weather){
+async function loadShareImage(src){
+  try{
+    const response = await fetch(src, {cache:"force-cache", credentials:"same-origin"});
+    if(!response.ok) throw new Error("image fetch failed");
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    return await new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => resolve({img, url});
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+      img.src = url;
+    });
+  }catch(error){
+    return null;
+  }
+}
+function drawContainImage(ctx,img,x,y,w,h,scale=1){
+  if(!img) return;
+  const ratio = Math.min(w / img.naturalWidth, h / img.naturalHeight) * scale;
+  const dw = img.naturalWidth * ratio;
+  const dh = img.naturalHeight * ratio;
+  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+}
+async function drawShareImageCanvas(date, data, weather, options={}){
+  const withImages = options.withImages !== false;
+  const [fluoriteAsset, oakAsset] = withImages ? await Promise.all([
+    loadShareImage("assets/fluorite.png"),
+    loadShareImage("assets/oak.png")
+  ]) : [null, null];
+  const fluoriteImg = fluoriteAsset?.img || null;
+  const oakImg = oakAsset?.img || null;
   const canvas = document.createElement("canvas");
   canvas.width = 1200;
   canvas.height = 675;
@@ -2369,14 +2430,16 @@ function drawShareImageCanvas(date, data, weather){
   ctx.textAlign = "left";
 
   const placeY = 155;
-  [["無垢な蛍石", data.fluorite || "未入力", 90], ["ツルツルオーク", data.oak || "未入力", 610]].forEach(([label,value,x]) => {
+  [["無垢な蛍石", data.fluorite || "未入力", 90, fluoriteImg, .92], ["ツルツルオーク", data.oak || "未入力", 610, oakImg, 1.08]].forEach(([label,value,x,img,scale]) => {
     fillRoundRect(ctx,x,placeY,500,120,22,"#ffffff","#e7e0d6");
+    fillRoundRect(ctx,x+24,placeY+20,82,82,18,"#f7fbf7","#edf3ef");
+    drawContainImage(ctx,img,x+30,placeY+24,70,74,scale);
     ctx.fillStyle = "#7a746d";
     ctx.font = '800 24px "Noto Sans JP","Segoe UI Emoji",sans-serif';
-    ctx.fillText(label,x+28,placeY+42);
+    ctx.fillText(label,x+130,placeY+42);
     ctx.fillStyle = "#3f3a36";
     ctx.font = '900 46px "Noto Sans JP","Segoe UI Emoji",sans-serif';
-    ctx.fillText(value,x+28,placeY+94);
+    ctx.fillText(value,x+130,placeY+94);
   });
 
   ctx.fillStyle = "#5d746b";
@@ -2417,15 +2480,35 @@ function drawShareImageCanvas(date, data, weather){
   ctx.fillStyle = "#9a938b";
   ctx.font = '700 18px "Noto Sans JP",sans-serif';
   ctx.fillText("非公式の予想メモです",90,615);
+  [fluoriteAsset, oakAsset].forEach(asset => {
+    if(asset?.url) URL.revokeObjectURL(asset.url);
+  });
   return canvas;
+}
+function canvasToPngBlob(canvas){
+  return new Promise((resolve, reject) => {
+    try{
+      canvas.toBlob(blob => {
+        if(blob) resolve(blob);
+        else reject(new Error("画像を生成できませんでした"));
+      }, "image/png");
+    }catch(error){
+      reject(error);
+    }
+  });
 }
 async function createShareImageBlob(){
   if(document.fonts?.ready) await document.fonts.ready;
   const date = E.targetDate.value;
   const data = dayData(cycleDay(date));
   const weather = weatherData(date);
-  const canvas = drawShareImageCanvas(date, data, weather);
-  return new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+  try{
+    const canvas = await drawShareImageCanvas(date, data, weather, {withImages:true});
+    return await canvasToPngBlob(canvas);
+  }catch(error){
+    const canvas = await drawShareImageCanvas(date, data, weather, {withImages:false});
+    return await canvasToPngBlob(canvas);
+  }
 }
 function discord(dateStr, data, weather){
   const startSlot = normalizeStartSlot(weather?.startSlot);
