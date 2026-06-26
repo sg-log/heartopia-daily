@@ -17,6 +17,11 @@ slot1
 slot2
 slot3
 slot4
+week1
+week2
+week3
+week4
+week5
 memo
 status
 投稿者

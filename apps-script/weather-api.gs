@@ -3,6 +3,7 @@ const ADMIN_KEY = "Kuma29";
 const SHEET_NAME = "weather_reports";
 const HEADERS = [
   "id", "date", "startSlot", "slot0", "slot1", "slot2", "slot3", "slot4",
+  "week1", "week2", "week3", "week4", "week5",
   "memo", "status", "投稿者", "createdAt", "approvedAt"
 ];
 
@@ -41,6 +42,7 @@ function submit_(body) {
 
   const startSlot = normalizeStartSlot_(body.startSlot);
   const slots = normalizeSlots_(body);
+  const weeks = normalizeWeeks_(body);
   const date = formatDateValue(body.date);
   if (!date) throw new Error("日付の形式が正しくありません");
   const now = new Date().toISOString();
@@ -53,6 +55,11 @@ function submit_(body) {
     encodeSlot_(slots.slot2),
     encodeSlot_(slots.slot3),
     encodeSlot_(slots.slot4),
+    encodeSlot_(weeks.week1),
+    encodeSlot_(weeks.week2),
+    encodeSlot_(weeks.week3),
+    encodeSlot_(weeks.week4),
+    encodeSlot_(weeks.week5),
     String(body.memo || ""),
     "pending",
     String(body.author || body["投稿者"] || ""),
@@ -102,6 +109,13 @@ function listByStatus_(status) {
       slot2: decodeSlot_(item.slot2),
       slot3: decodeSlot_(item.slot3),
       slot4: decodeSlot_(item.slot4)
+    };
+    item.weeks = {
+      week1: decodeSlot_(item.week1),
+      week2: decodeSlot_(item.week2),
+      week3: decodeSlot_(item.week3),
+      week4: decodeSlot_(item.week4),
+      week5: decodeSlot_(item.week5)
     };
     return item;
   });
@@ -161,6 +175,26 @@ function normalizeSlots_(body) {
   };
 }
 
+function normalizeWeeks_(body) {
+  const source = body.weeks || {};
+  if (["week1", "week2", "week3", "week4", "week5"].some(function(key) { return source[key] != null; })) {
+    return {
+      week1: normalizeSlotList_(source.week1),
+      week2: normalizeSlotList_(source.week2),
+      week3: normalizeSlotList_(source.week3),
+      week4: normalizeSlotList_(source.week4),
+      week5: normalizeSlotList_(source.week5)
+    };
+  }
+  return {
+    week1: normalizeSlotList_(body.week1),
+    week2: normalizeSlotList_(body.week2),
+    week3: normalizeSlotList_(body.week3),
+    week4: normalizeSlotList_(body.week4),
+    week5: normalizeSlotList_(body.week5)
+  };
+}
+
 function normalizeSlotList_(value) {
   if (Array.isArray(value)) return value.map(String).filter(Boolean);
   return parseSlotParameter_(value);
@@ -188,6 +222,9 @@ function parseBody_(e) {
     const hasOldSlots = ["t18a", "t00", "t06", "t12", "t18b"].some(function(key) {
       return parameters[key] != null;
     });
+    const hasWeeks = ["week1", "week2", "week3", "week4", "week5"].some(function(key) {
+      return parameters[key] != null;
+    });
     return {
       action: String(parameters.action || ""),
       postKey: String(parameters.postKey || ""),
@@ -211,6 +248,13 @@ function parseBody_(e) {
         t06: parseSlotParameter_(parameters.t06),
         t12: parseSlotParameter_(parameters.t12),
         t18b: parseSlotParameter_(parameters.t18b)
+      } : {},
+      weeks: hasWeeks ? {
+        week1: parseSlotParameter_(parameters.week1),
+        week2: parseSlotParameter_(parameters.week2),
+        week3: parseSlotParameter_(parameters.week3),
+        week4: parseSlotParameter_(parameters.week4),
+        week5: parseSlotParameter_(parameters.week5)
       } : {}
     };
   }
