@@ -687,7 +687,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
         </div>
         <div id="reportWeatherChips"></div>
         <h3>週間予報</h3>
-        <p class="small">翌日〜5日後のざっくり天気を記録できます。</p>
+        <p class="small">2日後〜6日後のざっくり天気を記録できます。</p>
         <div id="reportWeekChips"></div>
         <div class="row one">
           <div><label for="reportPostKey">投稿キー</label><input id="reportPostKey" type="password" autocomplete="off"></div>
@@ -879,6 +879,7 @@ const WEATHER_OPTIONS = [
 const WEATHER_START_SLOTS = ["00","06","12","18"];
 const WEATHER_SLOT_KEYS = ["slot0","slot1","slot2","slot3","slot4"];
 const WEATHER_WEEK_KEYS = ["week1","week2","week3","week4","week5"];
+const WEATHER_WEEK_START_OFFSET = 2;
 const FOCUS_WEATHER_VALUES = ["雨","虹","流星群"];
 const WEATHER_OPTION_MAP = Object.fromEntries(WEATHER_OPTIONS.map(option => [option.value, option]));
 const SUNNY_ICONS = {
@@ -2197,6 +2198,23 @@ function slotLabel(key, startSlot){
 function slotLabels(startSlot){
   return WEATHER_SLOT_KEYS.map(key => [key, slotLabel(key, startSlot)]);
 }
+function weekDate(baseDate, index){
+  return addDays(baseDate, index + WEATHER_WEEK_START_OFFSET);
+}
+function weekDateInfo(baseDate, index){
+  const date = weekDate(baseDate, index);
+  const d = parseDate(date);
+  return {
+    date,
+    month:d.getMonth() + 1,
+    dayNum:d.getDate(),
+    day:"日月火水木金土"[d.getDay()]
+  };
+}
+function weekDateLabel(baseDate, index){
+  const info = weekDateInfo(baseDate, index);
+  return `${info.month}/${info.dayNum}(${info.day})`;
+}
 function currentSlot(startSlot){
   const current = currentStartSlot();
   return WEATHER_SLOT_KEYS.slice(0,4).find(key => slotHourAt(startSlot, slotIndex(key)) === current) || "";
@@ -2269,14 +2287,12 @@ function representativeWeather(w){
 function weeklyRowsHtml(w, baseDate, className="weeklyWeather"){
   if(!w) return "";
   return `<div class="${esc(className)}">${WEATHER_WEEK_KEYS.map((key, index) => {
-    const date = addDays(baseDate, index + 1);
-    const d = parseDate(date);
-    const day = "日月火水木金土"[d.getDay()];
+    const info = weekDateInfo(baseDate, index);
     const icons = compactWeatherText(w.weeks?.[key], "—");
     return `
       <div class="weeklyWeatherRow" data-week-key="${esc(key)}">
-        <div class="weeklyWeatherDay">${esc(day)}</div>
-        <div class="weeklyWeatherDayNum">${esc(d.getDate())}</div>
+        <div class="weeklyWeatherDay">${esc(info.day)}</div>
+        <div class="weeklyWeatherDayNum">${esc(info.dayNum)}</div>
         <div class="weeklyWeatherText"><span class="weeklyWeatherIcons">${esc(icons)}</span></div>
       </div>
     `;
@@ -2299,21 +2315,19 @@ function focusWeatherItems(w, baseDate){
   WEATHER_WEEK_KEYS.forEach((key, index) => {
     const values = weatherValues(w.weeks?.[key]).filter(value => FOCUS_WEATHER_VALUES.includes(value));
     values.forEach(value => {
-      const date = addDays(baseDate, index + 1);
-      const day = "日月火水木金土"[parseDate(date).getDay()];
-      items.push({icon:weatherIcon(value), day, value});
+      const info = weekDateInfo(baseDate, index);
+      items.push({icon:weatherIcon(value), day:info.day, value});
     });
   });
   return items;
 }
 function weeklyForecastItems(w, baseDate){
   return WEATHER_WEEK_KEYS.map((key, index) => {
-    const date = addDays(baseDate, index + 1);
-    const d = parseDate(date);
+    const info = weekDateInfo(baseDate, index);
     return {
       key,
-      day:"日月火水木金土"[d.getDay()],
-      date:d.getDate(),
+      day:info.day,
+      date:info.dayNum,
       icons:w ? compactWeatherText(w.weeks?.[key], "—") : "—"
     };
   });
@@ -2582,7 +2596,7 @@ function renderTables(){
   E.obsTable.innerHTML = `<table><thead><tr><th>日付</th><th>木</th><th>石</th><th>メモ</th></tr></thead><tbody>${state.observations.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(o => `<tr><td>${esc(o.date)}</td><td>${esc(o.oak)}</td><td>${esc(o.fluorite)}</td><td>${esc(o.memo)}</td></tr>`).join("")}</tbody></table>`;
   E.weatherTable.innerHTML = `<table><thead><tr><th>日付</th><th>開始</th>${WEATHER_SLOT_KEYS.map((key, i) => `<th>slot${i}</th>`).join("")}${WEATHER_WEEK_KEYS.map((key, i) => `<th>week${i + 1}</th>`).join("")}<th>メモ</th></tr></thead><tbody>${state.weather.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(w => {
     const startSlot = normalizeStartSlot(w.startSlot);
-    return `<tr><td>${esc(w.date)}</td><td>${esc(startSlot)}時</td>${WEATHER_SLOT_KEYS.map(key => `<td><strong>${esc(slotLabel(key, startSlot))}</strong><br>${esc(weatherText(w.slots[key], key, startSlot, ""))}</td>`).join("")}${WEATHER_WEEK_KEYS.map(key => `<td>${esc(simpleWeatherText(w.weeks?.[key], ""))}</td>`).join("")}<td>${esc(w.memo)}</td></tr>`;
+    return `<tr><td>${esc(w.date)}</td><td>${esc(startSlot)}時</td>${WEATHER_SLOT_KEYS.map(key => `<td><strong>${esc(slotLabel(key, startSlot))}</strong><br>${esc(weatherText(w.slots[key], key, startSlot, ""))}</td>`).join("")}${WEATHER_WEEK_KEYS.map((key, i) => `<td><strong>${esc(weekDateLabel(w.date, i))}</strong><br>${esc(simpleWeatherText(w.weeks?.[key], ""))}</td>`).join("")}<td>${esc(w.memo)}</td></tr>`;
   }).join("")}</tbody></table>`;
   renderCorrectionsTable();
 }
@@ -2634,11 +2648,9 @@ function chipGroupHtml(prefix, startSlot){
 function weekChipGroupHtml(prefix, baseDate){
   const base = baseDate || E.targetDate.value || dateValue(gameToday());
   return WEATHER_WEEK_KEYS.map((key, index) => {
-    const date = addDays(base, index + 1);
-    const day = "日月火水木金土"[parseDate(date).getDay()];
     return `
       <div class="weatherSlot">
-        <label>${esc(day)}曜</label>
+        <label>${esc(weekDateLabel(base, index))}</label>
         <div class="chipGroup" id="${esc(prefix)}-${esc(key)}">
           ${WEATHER_OPTIONS.map(option => `<button type="button" class="weatherChip" data-weather-option="${esc(option.value)}" aria-label="${esc(option.label)}"><span class="weatherChipIcon" aria-hidden="true">${esc(weatherIcon(option.value))}</span><span class="weatherChipLabel">${esc(weatherChipLabel(option))}</span></button>`).join("")}
         </div>
@@ -2827,7 +2839,8 @@ async function fetchPendingWeatherReports(){
       const startSlot = normalizeStartSlot(r.startSlot);
       const slots = normalizeWeatherSlots(r);
       const weeks = normalizeWeatherWeeks(r);
-      return `<tr><td>${esc(normalizeApiDate(r.date))}</td><td>${esc(startSlot)}時</td>${WEATHER_SLOT_KEYS.map(key => `<td><strong>${esc(slotLabel(key, startSlot))}</strong><br>${esc(weatherText(slots[key], key, startSlot, ""))}</td>`).join("")}${WEATHER_WEEK_KEYS.map(key => `<td>${esc(simpleWeatherText(weeks[key], ""))}</td>`).join("")}<td>${esc(r.memo || "")}</td><td><div class="buttons"><button type="button" data-approve-weather="${esc(r.id)}">承認</button><button type="button" class="danger" data-reject-weather="${esc(r.id)}">却下</button></div></td></tr>`;
+      const reportDate = normalizeApiDate(r.date);
+      return `<tr><td>${esc(reportDate)}</td><td>${esc(startSlot)}時</td>${WEATHER_SLOT_KEYS.map(key => `<td><strong>${esc(slotLabel(key, startSlot))}</strong><br>${esc(weatherText(slots[key], key, startSlot, ""))}</td>`).join("")}${WEATHER_WEEK_KEYS.map((key, i) => `<td><strong>${esc(weekDateLabel(reportDate, i))}</strong><br>${esc(simpleWeatherText(weeks[key], ""))}</td>`).join("")}<td>${esc(r.memo || "")}</td><td><div class="buttons"><button type="button" data-approve-weather="${esc(r.id)}">承認</button><button type="button" class="danger" data-reject-weather="${esc(r.id)}">却下</button></div></td></tr>`;
     }).join("")}</tbody></table>` : "";
     return reports;
   }catch(error){
