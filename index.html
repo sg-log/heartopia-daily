@@ -87,6 +87,8 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
   font-weight:800;
 }
 .dateShortcuts button:hover{background:var(--soft)}
+.adminSaveRow{align-items:end}
+.adminSaveRow .buttons{margin-top:0}
 .tabs{display:flex;gap:8px;flex-wrap:wrap}
 .tab{background:var(--soft);color:var(--accent2)}
 .tab.active{background:var(--accent);color:#fff}
@@ -776,7 +778,10 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
         <div id="adminWeatherChips"></div>
         <h3>週間予報</h3>
         <div id="adminWeekChips"></div>
-        <div class="buttons"><button id="saveAdminWeatherBtn">天気を保存</button></div>
+        <div class="row adminSaveRow">
+          <div><label for="adminSaveWeatherAdminKey">管理キー</label><input id="adminSaveWeatherAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
+          <div class="buttons"><button id="saveAdminWeatherBtn">天気を保存</button></div>
+        </div>
         <div id="adminWeatherStatus" class="status"></div>
       </div>
 
@@ -2028,7 +2033,7 @@ const ids = [
   "weeklyWeather",
   "obsDate","obsMemo","obsOak","obsFluorite","addObsBtn","obsStatus",
   "reportWeatherDate","reportStartSlot","reportWeatherMemo","reportPostKey","reportWeatherChips","reportWeekChips","submitWeatherReportBtn","weatherReportStatus",
-  "adminWeatherDate","adminStartSlot","adminWeatherMemo","adminWeatherChips","adminWeekChips","saveAdminWeatherBtn","adminWeatherStatus",
+  "adminWeatherDate","adminStartSlot","adminWeatherMemo","adminWeatherChips","adminWeekChips","adminSaveWeatherAdminKey","saveAdminWeatherBtn","adminWeatherStatus",
   "weatherAdminKey","refreshPendingWeatherBtn","pendingWeatherStatus","pendingWeatherReports",
   "correctionDate","correctionMemo","correctionExpected","actualFluorite","actualOak","saveCorrectionBtn","saveApplyCorrectionBtn","correctionStatus","correctionsTable",
   "bulkText","parseBtn","applyParsedBtn","parseStatus","parsedTable",
@@ -2757,6 +2762,31 @@ async function apiPost(payload){
   return await response.json();
 }
 
+async function saveApprovedWeatherToApi(item){
+  if(!WEATHER_API_URL) return {ok:false, skipped:true};
+  const result = await apiPost({
+    action:"saveApproved",
+    adminKey:adminKeyValue(),
+    date:item.date,
+    startSlot:item.startSlot,
+    slots:item.slots,
+    weeks:item.weeks,
+    memo:item.memo,
+    author:"管理者"
+  });
+  if(result.ok === false) throw new Error(result.error || "APIエラー");
+  return result;
+}
+function adminKeyValue(){
+  return (E.adminSaveWeatherAdminKey?.value || E.weatherAdminKey?.value || "").trim();
+}
+function syncAdminKeys(source){
+  const value = source.value;
+  [E.adminSaveWeatherAdminKey, E.weatherAdminKey].forEach(input => {
+    if(input && input !== source) input.value = value;
+  });
+}
+
 async function submitWeatherReport(){
   if(!WEATHER_API_URL){
     E.weatherReportStatus.textContent = "送信先が未設定です";
@@ -2829,7 +2859,7 @@ async function fetchPendingWeatherReports(){
   try{
     const url = new URL(WEATHER_API_URL);
     url.searchParams.set("action","pending");
-    url.searchParams.set("adminKey", E.weatherAdminKey.value);
+    url.searchParams.set("adminKey", adminKeyValue());
     const response = await fetch(url);
     const result = await response.json();
     if(result.ok === false) throw new Error(result.error || "APIエラー");
@@ -2852,7 +2882,7 @@ async function fetchPendingWeatherReports(){
 async function approveWeatherReport(id){
   if(!WEATHER_API_URL) return;
   try{
-    await apiPost({action:"approve", id, adminKey:E.weatherAdminKey.value});
+    await apiPost({action:"approve", id, adminKey:adminKeyValue()});
     await fetchPendingWeatherReports();
     toast("天気報告を承認しました");
   }catch(error){
@@ -2863,7 +2893,7 @@ async function approveWeatherReport(id){
 async function rejectWeatherReport(id){
   if(!WEATHER_API_URL) return;
   try{
-    await apiPost({action:"reject", id, adminKey:E.weatherAdminKey.value});
+    await apiPost({action:"reject", id, adminKey:adminKeyValue()});
     await fetchPendingWeatherReports();
     toast("天気報告を却下しました");
   }catch(error){
@@ -2948,6 +2978,9 @@ function init(){
   E.cycleLength.value = state.settings.cycleLength;
   E.rolloverHour.value = 6;
   renderToday();
+  [E.adminSaveWeatherAdminKey, E.weatherAdminKey].forEach(input => {
+    if(input) input.addEventListener("input", () => syncAdminKeys(input));
+  });
   fetchApprovedWeather();
 
   document.querySelectorAll(".tab").forEach(btn => {
@@ -3054,22 +3087,39 @@ function init(){
     const slots = chipSelections("admin-weather");
     renderChipGroups("admin-weather", E.adminStartSlot.value, slots);
   };
-  E.saveAdminWeatherBtn.onclick = () => {
+  E.saveAdminWeatherBtn.onclick = async () => {
     if(!E.adminWeatherDate.value){
       E.adminWeatherStatus.textContent = "日付を入力してください。";
       return;
     }
-    upsertWeather({
+    const item = {
       date:E.adminWeatherDate.value,
       startSlot:E.adminStartSlot.value,
       slots:chipSelections("admin-weather"),
       weeks:weekSelections("admin-week"),
       memo:E.adminWeatherMemo.value.trim()
-    });
+    };
+    upsertWeather(item);
     save();
     renderToday();
-    E.adminWeatherStatus.textContent = "天気を保存しました。";
-    toast("天気を保存しました");
+    if(!WEATHER_API_URL){
+      E.adminWeatherStatus.textContent = "天気をブラウザ内に保存しました。";
+      toast("天気を保存しました");
+      return;
+    }
+    if(!adminKeyValue()){
+      E.adminWeatherStatus.textContent = "ブラウザ内に保存しました。スプレッドシート反映には管理キーを入力してください。";
+      toast("ブラウザ内に保存しました");
+      return;
+    }
+    E.adminWeatherStatus.textContent = "スプレッドシートへ保存中です…";
+    try{
+      await saveApprovedWeatherToApi(item);
+      E.adminWeatherStatus.textContent = "天気を保存しました。スプレッドシートにも反映済みです。";
+      toast("天気を保存しました");
+    }catch(error){
+      E.adminWeatherStatus.textContent = `ブラウザ内には保存しましたが、スプレッドシート反映に失敗しました：${error.message}`;
+    }
   };
 
   E.refreshPendingWeatherBtn.onclick = fetchPendingWeatherReports;

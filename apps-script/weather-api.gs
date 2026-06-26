@@ -28,6 +28,7 @@ function doPost(e) {
     const body = parseBody_(e);
     const action = String(body.action || "");
     if (action === "submit") return submit_(body);
+    if (action === "saveApproved") return saveApproved_(body);
     if (action === "approve") return changeStatus_(body, "approved");
     if (action === "reject") return changeStatus_(body, "rejected");
     return json_({ ok: false, error: "unknown action" });
@@ -68,6 +69,85 @@ function submit_(body) {
   ];
   getSheet_().appendRow(row);
   return json_({ ok: true, id: row[0], status: "pending" });
+}
+
+function saveApproved_(body) {
+  requireKey_(body.adminKey, ADMIN_KEY, "管理キー");
+  if (!body.date) throw new Error("日付がありません");
+
+  const date = formatDateValue(body.date);
+  if (!date) throw new Error("日付の形式が正しくありません");
+
+  const startSlot = normalizeStartSlot_(body.startSlot);
+  const slots = normalizeSlots_(body);
+  const weeks = normalizeWeeks_(body);
+  const now = new Date().toISOString();
+  const sheet = getSheet_();
+  const values = sheet.getDataRange().getValues();
+  const idColumn = HEADERS.indexOf("id");
+  const dateColumn = HEADERS.indexOf("date");
+  const statusColumn = HEADERS.indexOf("status");
+  let updated = 0;
+
+  for (let i = 1; i < values.length; i++) {
+    if (formatDateValue(values[i][dateColumn]) !== date) continue;
+    if (String(values[i][statusColumn]) !== "approved") continue;
+
+    const row = approvedRow_({
+      id: String(values[i][idColumn] || Utilities.getUuid()),
+      date: date,
+      startSlot: startSlot,
+      slots: slots,
+      weeks: weeks,
+      memo: String(body.memo || ""),
+      author: String(body.author || body["投稿者"] || "管理者"),
+      createdAt: String(values[i][HEADERS.indexOf("createdAt")] || now),
+      approvedAt: now
+    });
+    sheet.getRange(i + 1, 1, 1, HEADERS.length).setValues([row]);
+    updated++;
+  }
+
+  if (updated > 0) {
+    return json_({ ok: true, status: "approved", mode: "updated", updated: updated });
+  }
+
+  const row = approvedRow_({
+    id: Utilities.getUuid(),
+    date: date,
+    startSlot: startSlot,
+    slots: slots,
+    weeks: weeks,
+    memo: String(body.memo || ""),
+    author: String(body.author || body["投稿者"] || "管理者"),
+    createdAt: now,
+    approvedAt: now
+  });
+  sheet.appendRow(row);
+  return json_({ ok: true, id: row[0], status: "approved", mode: "created" });
+}
+
+function approvedRow_(item) {
+  return [
+    item.id,
+    item.date,
+    item.startSlot,
+    encodeSlot_(item.slots.slot0),
+    encodeSlot_(item.slots.slot1),
+    encodeSlot_(item.slots.slot2),
+    encodeSlot_(item.slots.slot3),
+    encodeSlot_(item.slots.slot4),
+    encodeSlot_(item.weeks.week1),
+    encodeSlot_(item.weeks.week2),
+    encodeSlot_(item.weeks.week3),
+    encodeSlot_(item.weeks.week4),
+    encodeSlot_(item.weeks.week5),
+    item.memo,
+    "approved",
+    item.author,
+    item.createdAt,
+    item.approvedAt
+  ];
 }
 
 function changeStatus_(body, status) {
