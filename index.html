@@ -338,6 +338,7 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
   gap:10px;
   color:var(--heading);
   box-shadow:0 10px 24px rgba(45,38,31,.06);
+  margin-top:10px;
 }
 .shareImageHeader{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
 .shareImageBrand{font-size:22px;font-weight:950;letter-spacing:-.03em;color:var(--accent2);line-height:1.1}
@@ -640,12 +641,12 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
           <summary>Discord用コピー</summary>
           <div class="shareImageTools">
             <p class="shareImageTitle">共有用画像</p>
-            <div id="shareImagePreview" class="shareImagePreview"></div>
             <div class="buttons shareImageActions">
               <button id="saveShareImageBtn">画像を保存</button>
               <button class="secondary" id="shareImageBtn" hidden>画像を共有</button>
             </div>
             <div id="shareImageStatus" class="status"></div>
+            <div id="shareImagePreview" class="shareImagePreview"></div>
           </div>
           <p class="shareImageTitle">Discord用テキストコピー</p>
           <div id="discordText" class="preview"></div>
