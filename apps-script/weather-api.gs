@@ -218,7 +218,7 @@ function formatDateValue(value) {
 }
 
 function normalizeStartSlot_(value) {
-  const text = String(value || "18").replace("時", "").trim();
+  const text = String(value == null || value === "" ? "18" : value).replace("時", "").trim();
   const normalized = text.length === 1 ? "0" + text : text;
   return ["00", "06", "12", "18"].indexOf(normalized) >= 0 ? normalized : "18";
 }
@@ -290,6 +290,7 @@ function getSheet_() {
   if (HEADERS.some(function(header, index) { return String(currentHeaders[index]) !== header; })) {
     throw new Error("1行目の列名をREADME記載の順番に合わせてください");
   }
+  sheet.getRange(1, HEADERS.indexOf("startSlot") + 1, Math.max(sheet.getMaxRows(), 1), 1).setNumberFormat("@");
   return sheet;
 }
 
