@@ -383,6 +383,38 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 }
 .shareImageFocusLine{color:var(--accent2)}
 .shareImageActions{margin-top:8px}
+.giftList{display:grid;gap:10px}
+.giftCard{
+  border:1px solid #e4ded5;
+  background:#fffefa;
+  border-radius:16px;
+  padding:12px;
+  display:grid;
+  gap:8px;
+}
+.giftCard.claimed{opacity:.68;background:#f8f7f3}
+.giftCard.expired{opacity:.62;background:#f3f1ed}
+.giftHead{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.giftCodeText{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:18px;
+  font-weight:900;
+  color:var(--heading);
+  letter-spacing:.02em;
+  flex:1;
+  min-width:160px;
+  background:#fbf8f4;
+  border-color:#e7e0d6;
+}
+.giftReward{font-weight:900;color:var(--accent2)}
+.giftMeta{font-size:12px;color:var(--muted);display:grid;gap:2px}
+.giftActions{margin-top:0}
+.giftClaim{background:var(--soft);color:var(--accent2);border:1px solid #d7e2dc}
+.giftClaim.claimed{background:#e7ece8;color:#68766f}
+.giftSource{color:var(--accent2);font-weight:800;text-decoration:none}
+.giftExpiredWrap{margin-top:12px}
+.giftExpiredWrap summary{cursor:pointer;font-weight:900;color:var(--muted)}
+.giftAdminList{margin-top:12px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}
 th{font-size:12px;color:var(--muted);background:#fbf8f4}
@@ -639,6 +671,15 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
         <div id="weatherResult"></div>
       </div>
 
+      <div class="card s12">
+        <h2>ギフトコード</h2>
+        <div id="giftCodeList" class="giftList"></div>
+        <details id="expiredGiftCodes" class="giftExpiredWrap">
+          <summary>期限切れコード</summary>
+          <div id="expiredGiftCodeList" class="giftList"></div>
+        </details>
+      </div>
+
       <div class="card s12 compactCopy">
         <details>
           <summary>Discord用コピー</summary>
@@ -793,6 +834,39 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
         </div>
         <div id="pendingWeatherStatus" class="status"></div>
         <div id="pendingWeatherReports" class="tableWrap"></div>
+      </div>
+
+      <div class="card s12">
+        <h2>ギフトコード管理</h2>
+        <div class="row">
+          <div><label for="giftCodeInput">code</label><input id="giftCodeInput" placeholder="例：CODE123"></div>
+          <div><label for="giftRewardInput">reward</label><input id="giftRewardInput" placeholder="例：願い星×10"></div>
+        </div>
+        <div class="row">
+          <div><label for="giftExpiresAtInput">expiresAt</label><input id="giftExpiresAtInput" type="datetime-local"></div>
+          <div><label for="giftSourceUrlInput">sourceUrl</label><input id="giftSourceUrlInput" placeholder="https://..."></div>
+        </div>
+        <div class="row">
+          <div><label for="giftMemoInput">memo</label><input id="giftMemoInput" placeholder="任意"></div>
+          <div>
+            <label for="giftStatusInput">status</label>
+            <select id="giftStatusInput">
+              <option value="active">active</option>
+              <option value="expired">expired</option>
+              <option value="hidden">hidden</option>
+            </select>
+          </div>
+        </div>
+        <div class="row adminSaveRow">
+          <div><label for="giftAdminKey">管理キー</label><input id="giftAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
+          <div class="buttons">
+            <button id="saveGiftCodeBtn">ギフトコードを保存</button>
+            <button class="secondary" id="clearGiftCodeBtn">新規入力</button>
+            <button class="secondary" id="refreshGiftCodesBtn">一覧を更新</button>
+          </div>
+        </div>
+        <div id="giftCodeStatus" class="status"></div>
+        <div id="giftCodeAdminList" class="giftAdminList tableWrap"></div>
       </div>
 
       <div class="card s12">
@@ -2030,11 +2104,13 @@ const $ = id => document.getElementById(id);
 const ids = [
   "targetDate","todayBtn","tomorrowBtn","todayResult","weatherResult","weatherSummary","discordText","copyBtn","copyStatus",
   "shareImagePreview","saveShareImageBtn","shareImageBtn","shareImageStatus",
+  "giftCodeList","expiredGiftCodes","expiredGiftCodeList",
   "weeklyWeather",
   "obsDate","obsMemo","obsOak","obsFluorite","addObsBtn","obsStatus",
   "reportWeatherDate","reportStartSlot","reportWeatherMemo","reportPostKey","reportWeatherChips","reportWeekChips","submitWeatherReportBtn","weatherReportStatus",
   "adminWeatherDate","adminStartSlot","adminWeatherMemo","adminWeatherChips","adminWeekChips","adminSaveWeatherAdminKey","saveAdminWeatherBtn","adminWeatherStatus",
   "weatherAdminKey","refreshPendingWeatherBtn","pendingWeatherStatus","pendingWeatherReports",
+  "giftCodeInput","giftRewardInput","giftExpiresAtInput","giftSourceUrlInput","giftMemoInput","giftStatusInput","giftAdminKey","saveGiftCodeBtn","clearGiftCodeBtn","refreshGiftCodesBtn","giftCodeStatus","giftCodeAdminList",
   "correctionDate","correctionMemo","correctionExpected","actualFluorite","actualOak","saveCorrectionBtn","saveApplyCorrectionBtn","correctionStatus","correctionsTable",
   "bulkText","parseBtn","applyParsedBtn","parseStatus","parsedTable",
   "cycleTable","obsTable","weatherTable",
@@ -2044,6 +2120,8 @@ const ids = [
 const E = Object.fromEntries(ids.map(id => [id, $(id)]));
 let parsedItems = [];
 let state = load();
+let giftCodes = [];
+let editingGiftCodeId = "";
 
 function clone(v){ return JSON.parse(JSON.stringify(v)); }
 function pad(n){ return String(n).padStart(2,"0"); }
@@ -2407,6 +2485,122 @@ function shareWeeklyLine(weather, date){
   const items = weeklyForecastItems(weather, date);
   return items.map(item => `${item.day}${item.icons}`).join(" ");
 }
+function normalizeGiftCode(item){
+  const status = ["active","expired","hidden"].includes(item?.status) ? item.status : "active";
+  return {
+    id:String(item?.id || ""),
+    code:String(item?.code || "").trim(),
+    reward:String(item?.reward || "").trim(),
+    expiresAt:String(item?.expiresAt || "").trim(),
+    sourceUrl:String(item?.sourceUrl || "").trim(),
+    memo:String(item?.memo || "").trim(),
+    status,
+    createdAt:String(item?.createdAt || ""),
+    updatedAt:String(item?.updatedAt || "")
+  };
+}
+function giftDate(value){
+  const text = String(value || "").trim();
+  if(!text) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(text) ? `${text}T23:59:59` : text;
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function giftExpired(item){
+  if(item.status === "expired") return true;
+  const d = giftDate(item.expiresAt);
+  return Boolean(d && d.getTime() < Date.now());
+}
+function giftVisible(item){ return item.code && item.status !== "hidden"; }
+function activeGiftCodes(){
+  return giftCodes.filter(item => giftVisible(item) && !giftExpired(item)).sort(giftCodeSort);
+}
+function expiredGiftCodes(){
+  return giftCodes.filter(item => giftVisible(item) && giftExpired(item)).sort(giftCodeSort);
+}
+function giftCodeSort(a, b){
+  const ad = giftDate(a.expiresAt);
+  const bd = giftDate(b.expiresAt);
+  const av = ad ? ad.getTime() : Number.MAX_SAFE_INTEGER;
+  const bv = bd ? bd.getTime() : Number.MAX_SAFE_INTEGER;
+  if(av !== bv) return av - bv;
+  return String(a.code).localeCompare(String(b.code), "ja");
+}
+function giftExpiryText(value){
+  const d = giftDate(value);
+  if(!String(value || "").trim()) return "期限なし";
+  if(!d) return String(value);
+  return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}まで`;
+}
+function giftSourceUrl(url){
+  const text = String(url || "").trim();
+  return /^https?:\/\//i.test(text) ? text : "";
+}
+function giftClaimKey(code){ return `giftCodeClaimed:${code}`; }
+function giftClaimed(code){ return localStorage.getItem(giftClaimKey(code)) === "1"; }
+function setGiftClaimed(code, claimed){
+  if(claimed) localStorage.setItem(giftClaimKey(code), "1");
+  else localStorage.removeItem(giftClaimKey(code));
+}
+function giftCardHtml(item, expired=false){
+  const claimed = giftClaimed(item.code);
+  return `
+    <div class="giftCard${claimed ? " claimed" : ""}${expired ? " expired" : ""}">
+      <div class="giftHead">
+        <input class="giftCodeText" value="${esc(item.code)}" readonly aria-label="ギフトコード">
+        <button type="button" class="giftClaim${claimed ? " claimed" : ""}" data-gift-toggle="${esc(item.code)}">${claimed ? "受取済" : "未受取"}</button>
+      </div>
+      ${item.reward ? `<div class="giftReward">報酬：${esc(item.reward)}</div>` : ""}
+      <div class="giftMeta">
+        <div>期限：${esc(giftExpiryText(item.expiresAt))}</div>
+        ${item.memo ? `<div>メモ：${esc(item.memo)}</div>` : ""}
+        ${giftSourceUrl(item.sourceUrl) ? `<div><a class="giftSource" href="${esc(giftSourceUrl(item.sourceUrl))}" target="_blank" rel="noopener noreferrer">情報源を見る</a></div>` : ""}
+      </div>
+      <div class="buttons giftActions"><button type="button" data-gift-copy="${esc(item.code)}">コピー</button></div>
+    </div>
+  `;
+}
+function renderGiftCodes(){
+  if(!E.giftCodeList) return;
+  const active = activeGiftCodes();
+  const expired = expiredGiftCodes();
+  E.giftCodeList.innerHTML = active.length ? active.map(item => giftCardHtml(item)).join("") : `<p class="small">有効なギフトコードはありません。</p>`;
+  E.expiredGiftCodeList.innerHTML = expired.length ? expired.map(item => giftCardHtml(item, true)).join("") : `<p class="small">期限切れコードはありません。</p>`;
+  E.expiredGiftCodes.hidden = expired.length === 0;
+}
+function renderGiftAdminList(){
+  if(!E.giftCodeAdminList) return;
+  E.giftCodeAdminList.innerHTML = giftCodes.length ? `<table><thead><tr><th>code</th><th>reward</th><th>expiresAt</th><th>status</th><th>memo</th><th>操作</th></tr></thead><tbody>${giftCodes.map(item => `<tr><td>${esc(item.code)}</td><td>${esc(item.reward)}</td><td>${esc(item.expiresAt)}</td><td>${esc(item.status)}</td><td>${esc(item.memo)}</td><td><button type="button" class="secondary" data-gift-edit="${esc(item.id)}">編集</button></td></tr>`).join("")}</tbody></table>` : `<p class="small">登録済みギフトコードはありません。</p>`;
+}
+function renderGiftAll(){
+  renderGiftCodes();
+  renderGiftAdminList();
+}
+function giftDateInputValue(value){
+  const text = String(value || "").trim();
+  if(!text) return "";
+  if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(text)) return text.slice(0,16);
+  const d = giftDate(text);
+  return d ? `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}` : "";
+}
+function clearGiftForm(){
+  editingGiftCodeId = "";
+  E.giftCodeInput.value = "";
+  E.giftRewardInput.value = "";
+  E.giftExpiresAtInput.value = "";
+  E.giftSourceUrlInput.value = "";
+  E.giftMemoInput.value = "";
+  E.giftStatusInput.value = "active";
+}
+function fillGiftForm(item){
+  editingGiftCodeId = item.id;
+  E.giftCodeInput.value = item.code;
+  E.giftRewardInput.value = item.reward;
+  E.giftExpiresAtInput.value = giftDateInputValue(item.expiresAt);
+  E.giftSourceUrlInput.value = item.sourceUrl;
+  E.giftMemoInput.value = item.memo;
+  E.giftStatusInput.value = item.status;
+}
 function renderShareImagePreview(date, data, weather){
   if(!E.shareImagePreview) return;
   E.shareImagePreview.innerHTML = `
@@ -2592,7 +2786,9 @@ function discord(dateStr, data, weather){
   const startSlot = normalizeStartSlot(weather?.startSlot);
   const slot = currentSlot(startSlot);
   const w = weather && slot ? weatherText(weather.slots[slot], slot, startSlot, "") : "";
-  return `【今日の採取メモ】\n\n日付：${jpDate(dateStr)}\n\n無垢な蛍石：${data.fluorite || "未入力"}\nツルツルオーク：${data.oak || "未入力"}\n${w ? `\nいまの天気：${w}\n` : ""}\n※観測データをもとにした非公式の予想です。`;
+  const gifts = activeGiftCodes();
+  const giftText = gifts.length ? `\n\n【ギフトコード】\n${gifts.map(item => `${item.code}${item.reward ? `\n報酬：${item.reward}` : ""}\n期限：${giftExpiryText(item.expiresAt)}`).join("\n\n")}` : "";
+  return `【今日の採取メモ】\n\n日付：${jpDate(dateStr)}\n\n無垢な蛍石：${data.fluorite || "未入力"}\nツルツルオーク：${data.oak || "未入力"}\n${w ? `\nいまの天気：${w}\n` : ""}${giftText}\n※観測データをもとにした非公式の予想です。`;
 }
 
 function renderToday(){
@@ -2835,13 +3031,97 @@ async function saveApprovedWeatherToApi(item){
   return result;
 }
 function adminKeyValue(){
-  return (E.adminSaveWeatherAdminKey?.value || E.weatherAdminKey?.value || "").trim();
+  return (E.adminSaveWeatherAdminKey?.value || E.weatherAdminKey?.value || E.giftAdminKey?.value || "").trim();
 }
 function syncAdminKeys(source){
   const value = source.value;
-  [E.adminSaveWeatherAdminKey, E.weatherAdminKey].forEach(input => {
+  [E.adminSaveWeatherAdminKey, E.weatherAdminKey, E.giftAdminKey].forEach(input => {
     if(input && input !== source) input.value = value;
   });
+}
+
+async function fetchGiftCodes(includeHidden=false){
+  if(!WEATHER_API_URL){
+    giftCodes = [];
+    renderGiftAll();
+    if(E.giftCodeStatus) E.giftCodeStatus.textContent = "ギフトコードAPIは未設定です。";
+    return [];
+  }
+  try{
+    const url = new URL(WEATHER_API_URL);
+    url.searchParams.set("action", "getGiftCodes");
+    if(includeHidden) url.searchParams.set("adminKey", adminKeyValue());
+    const response = await fetch(url);
+    const result = await response.json();
+    if(result.ok === false) throw new Error(result.error || "APIエラー");
+    giftCodes = (result.codes || []).map(normalizeGiftCode).filter(item => item.code);
+    renderGiftAll();
+    return giftCodes;
+  }catch(error){
+    renderGiftAll();
+    if(E.giftCodeStatus) E.giftCodeStatus.textContent = `ギフトコードを読み込めませんでした：${error.message}`;
+    return [];
+  }
+}
+
+async function saveGiftCode(){
+  if(!WEATHER_API_URL){
+    E.giftCodeStatus.textContent = "ギフトコードAPIは未設定です。";
+    return;
+  }
+  if(!adminKeyValue()){
+    E.giftCodeStatus.textContent = "管理キーを入力してください。";
+    return;
+  }
+  const item = {
+    id:editingGiftCodeId,
+    code:E.giftCodeInput.value.trim(),
+    reward:E.giftRewardInput.value.trim(),
+    expiresAt:E.giftExpiresAtInput.value,
+    sourceUrl:E.giftSourceUrlInput.value.trim(),
+    memo:E.giftMemoInput.value.trim(),
+    status:E.giftStatusInput.value
+  };
+  if(!item.code){
+    E.giftCodeStatus.textContent = "codeを入力してください。";
+    return;
+  }
+  E.giftCodeStatus.textContent = "保存中です…";
+  try{
+    const result = await apiPost({
+      action:"saveGiftCode",
+      adminKey:adminKeyValue(),
+      ...item
+    });
+    if(result.ok === false) throw new Error(result.error || "APIエラー");
+    E.giftCodeStatus.textContent = "ギフトコードを保存しました。";
+    toast("ギフトコードを保存しました");
+    clearGiftForm();
+    await fetchGiftCodes(true);
+    renderToday();
+  }catch(error){
+    E.giftCodeStatus.textContent = `保存できませんでした：${error.message}`;
+  }
+}
+
+function findGiftCodeInput(code){
+  return [...document.querySelectorAll(".giftCodeText")].find(input => input.value === code);
+}
+
+async function copyGiftCode(code){
+  try{
+    await navigator.clipboard.writeText(code);
+    setGiftClaimed(code, true);
+    renderGiftCodes();
+    toast("ギフトコードをコピーしました");
+  }catch(error){
+    const input = findGiftCodeInput(code);
+    if(input){
+      input.focus();
+      input.select();
+    }
+    toast("手動でコピーしてください");
+  }
 }
 
 async function submitWeatherReport(){
@@ -3035,10 +3315,11 @@ function init(){
   E.cycleLength.value = state.settings.cycleLength;
   E.rolloverHour.value = 6;
   renderToday();
-  [E.adminSaveWeatherAdminKey, E.weatherAdminKey].forEach(input => {
+  [E.adminSaveWeatherAdminKey, E.weatherAdminKey, E.giftAdminKey].forEach(input => {
     if(input) input.addEventListener("input", () => syncAdminKeys(input));
   });
   fetchApprovedWeather();
+  fetchGiftCodes().then(renderToday);
 
   document.querySelectorAll(".tab").forEach(btn => {
     btn.onclick = () => {
@@ -3062,6 +3343,31 @@ function init(){
     }catch(e){
       E.copyStatus.textContent = "手動で選択してコピーしてください";
     }
+  };
+  [E.giftCodeList, E.expiredGiftCodeList].forEach(list => {
+    if(!list) return;
+    list.onclick = event => {
+      const copy = event.target.closest("[data-gift-copy]");
+      const toggle = event.target.closest("[data-gift-toggle]");
+      if(copy) copyGiftCode(copy.dataset.giftCopy);
+      if(toggle){
+        const code = toggle.dataset.giftToggle;
+        setGiftClaimed(code, !giftClaimed(code));
+        renderGiftCodes();
+      }
+    };
+  });
+  E.saveGiftCodeBtn.onclick = saveGiftCode;
+  E.clearGiftCodeBtn.onclick = () => {
+    clearGiftForm();
+    E.giftCodeStatus.textContent = "新規入力に戻しました。";
+  };
+  E.refreshGiftCodesBtn.onclick = () => fetchGiftCodes(true);
+  E.giftCodeAdminList.onclick = event => {
+    const edit = event.target.closest("[data-gift-edit]");
+    if(!edit) return;
+    const item = giftCodes.find(x => x.id === edit.dataset.giftEdit);
+    if(item) fillGiftForm(item);
   };
   if(E.shareImageBtn){
     const canUseShareFiles = Boolean(navigator.share && window.File && navigator.canShare);

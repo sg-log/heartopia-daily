@@ -31,6 +31,22 @@ approvedAt
 
 天気枠は複数選択を保つため、セル内にJSON配列として保存されます。
 
+ギフトコード機能を使う場合は、同じスプレッドシート内に `gift_codes` シートも追加し、1行目へ次の列名を左から順番に入力します。
+
+```text
+id
+code
+reward
+expiresAt
+sourceUrl
+memo
+status
+createdAt
+updatedAt
+```
+
+`status` は `active` / `expired` / `hidden` を使います。`hidden` は公開ページに表示されません。
+
 ## 2. Apps Scriptを設定する
 
 1. スプレッドシートの「拡張機能」→「Apps Script」を開きます。

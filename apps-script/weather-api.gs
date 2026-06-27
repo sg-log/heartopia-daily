@@ -6,6 +6,10 @@ const HEADERS = [
   "week1", "week2", "week3", "week4", "week5",
   "memo", "status", "投稿者", "createdAt", "approvedAt"
 ];
+const GIFT_SHEET_NAME = "gift_codes";
+const GIFT_HEADERS = [
+  "id", "code", "reward", "expiresAt", "sourceUrl", "memo", "status", "createdAt", "updatedAt"
+];
 
 function doGet(e) {
   try {
@@ -16,6 +20,12 @@ function doGet(e) {
     }
     if (action === "approved") {
       return json_({ ok: true, reports: listByStatus_("approved") });
+    }
+    if (action === "getGiftCodes") {
+      const adminKey = (e.parameter || {}).adminKey;
+      const includeHidden = Boolean(adminKey);
+      if (includeHidden) requireKey_(adminKey, ADMIN_KEY, "管理キー");
+      return json_({ ok: true, codes: listGiftCodes_(includeHidden) });
     }
     return json_({ ok: false, error: "unknown action" });
   } catch (error) {
@@ -31,6 +41,7 @@ function doPost(e) {
     if (action === "saveApproved") return saveApproved_(body);
     if (action === "approve") return changeStatus_(body, "approved");
     if (action === "reject") return changeStatus_(body, "rejected");
+    if (action === "saveGiftCode" || action === "updateGiftCode") return saveGiftCode_(body);
     return json_({ ok: false, error: "unknown action" });
   } catch (error) {
     return json_({ ok: false, error: error.message });
@@ -201,6 +212,90 @@ function listByStatus_(status) {
   });
 }
 
+function saveGiftCode_(body) {
+  requireKey_(body.adminKey, ADMIN_KEY, "管理キー");
+  const code = String(body.code || "").trim();
+  if (!code) throw new Error("コードがありません");
+
+  const sheet = getGiftSheet_();
+  const values = sheet.getDataRange().getValues();
+  const now = new Date().toISOString();
+  const idColumn = GIFT_HEADERS.indexOf("id");
+  const codeColumn = GIFT_HEADERS.indexOf("code");
+  const targetId = String(body.id || "").trim();
+  const item = {
+    id: targetId || Utilities.getUuid(),
+    code: code,
+    reward: String(body.reward || "").trim(),
+    expiresAt: String(body.expiresAt || "").trim(),
+    sourceUrl: String(body.sourceUrl || "").trim(),
+    memo: String(body.memo || "").trim(),
+    status: normalizeGiftStatus_(body.status),
+    createdAt: now,
+    updatedAt: now
+  };
+
+  for (let i = 1; i < values.length; i++) {
+    const rowId = String(values[i][idColumn] || "");
+    const rowCode = String(values[i][codeColumn] || "");
+    if ((targetId && rowId === targetId) || (!targetId && rowCode === code)) {
+      item.id = rowId || item.id;
+      item.createdAt = String(values[i][GIFT_HEADERS.indexOf("createdAt")] || now);
+      sheet.getRange(i + 1, 1, 1, GIFT_HEADERS.length).setValues([giftRow_(item)]);
+      return json_({ ok: true, mode: "updated", code: item });
+    }
+  }
+
+  sheet.appendRow(giftRow_(item));
+  return json_({ ok: true, mode: "created", code: item });
+}
+
+function listGiftCodes_(includeHidden) {
+  const values = getGiftSheet_().getDataRange().getValues();
+  if (values.length < 2) return [];
+
+  const headers = values[0].map(String);
+  return values.slice(1).map(function(row) {
+    const item = {};
+    headers.forEach(function(header, index) {
+      item[header] = row[index] == null ? "" : row[index];
+    });
+    item.status = normalizeGiftStatus_(item.status);
+    item.expiresAt = formatDateTimeValue_(item.expiresAt);
+    item.createdAt = item.createdAt instanceof Date ? item.createdAt.toISOString() : String(item.createdAt || "");
+    item.updatedAt = item.updatedAt instanceof Date ? item.updatedAt.toISOString() : String(item.updatedAt || "");
+    return item;
+  }).filter(function(item) {
+    return item.code && (includeHidden || item.status !== "hidden");
+  });
+}
+
+function giftRow_(item) {
+  return [
+    item.id,
+    item.code,
+    item.reward,
+    item.expiresAt,
+    item.sourceUrl,
+    item.memo,
+    item.status,
+    item.createdAt,
+    item.updatedAt
+  ];
+}
+
+function normalizeGiftStatus_(value) {
+  const status = String(value || "active").trim();
+  return ["active", "expired", "hidden"].indexOf(status) >= 0 ? status : "active";
+}
+
+function formatDateTimeValue_(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm");
+  }
+  return String(value || "").trim();
+}
+
 function formatDateValue(value) {
   if (value instanceof Date && !isNaN(value.getTime())) {
     return Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy-MM-dd");
@@ -294,6 +389,20 @@ function getSheet_() {
   return sheet;
 }
 
+function getGiftSheet_() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = spreadsheet.getSheetByName(GIFT_SHEET_NAME);
+  if (!sheet) sheet = spreadsheet.insertSheet(GIFT_SHEET_NAME);
+  if (sheet.getLastRow() === 0) sheet.appendRow(GIFT_HEADERS);
+
+  const currentHeaders = sheet.getRange(1, 1, 1, GIFT_HEADERS.length).getValues()[0];
+  if (GIFT_HEADERS.some(function(header, index) { return String(currentHeaders[index]) !== header; })) {
+    throw new Error("gift_codes 1行目の列名をREADME記載の順番に合わせてください");
+  }
+  sheet.getRange(1, GIFT_HEADERS.indexOf("code") + 1, Math.max(sheet.getMaxRows(), 1), 1).setNumberFormat("@");
+  return sheet;
+}
+
 function parseBody_(e) {
   const parameters = (e && e.parameter) || {};
   if (parameters.action) {
@@ -316,6 +425,11 @@ function parseBody_(e) {
       memo: String(parameters.memo || ""),
       poster: String(parameters.poster || ""),
       author: String(parameters.poster || parameters.author || parameters["投稿者"] || ""),
+      code: String(parameters.code || ""),
+      reward: String(parameters.reward || ""),
+      expiresAt: String(parameters.expiresAt || ""),
+      sourceUrl: String(parameters.sourceUrl || ""),
+      status: String(parameters.status || ""),
       slots: hasNewSlots ? {
         slot0: parseSlotParameter_(parameters.slot0),
         slot1: parseSlotParameter_(parameters.slot1),
