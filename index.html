@@ -384,6 +384,7 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 .shareImageFocusLine{color:var(--accent2)}
 .shareImageActions{margin-top:8px}
 .giftList{display:grid;gap:10px}
+#gift-codes{scroll-margin-top:84px}
 .giftCard{
   border:1px solid #e4ded5;
   background:#fffefa;
@@ -394,27 +395,50 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 }
 .giftCard.claimed{opacity:.68;background:#f8f7f3}
 .giftCard.expired{opacity:.62;background:#f3f1ed}
-.giftHead{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.giftHead{display:flex;justify-content:flex-start;gap:8px;align-items:center;flex-wrap:wrap}
 .giftCodeText{
+  display:inline-flex;
+  align-items:center;
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   font-size:18px;
   font-weight:900;
   color:var(--heading);
   letter-spacing:.02em;
-  flex:1;
-  min-width:160px;
+  flex:0 1 auto;
+  width:auto;
+  min-width:9ch;
+  max-width:min(24ch,100%);
   background:#fbf8f4;
-  border-color:#e7e0d6;
+  border:1px solid #e7e0d6;
+  border-radius:12px;
+  padding:9px 11px;
+  overflow:auto;
+  white-space:nowrap;
 }
 .giftReward{font-weight:900;color:var(--accent2)}
 .giftMeta{font-size:12px;color:var(--muted);display:grid;gap:2px}
-.giftActions{margin-top:0}
+.giftCopy,.giftClaim{padding:9px 13px}
 .giftClaim{background:var(--soft);color:var(--accent2);border:1px solid #d7e2dc}
 .giftClaim.claimed{background:#e7ece8;color:#68766f}
 .giftSource{color:var(--accent2);font-weight:800;text-decoration:none}
 .giftExpiredWrap{margin-top:12px}
 .giftExpiredWrap summary{cursor:pointer;font-weight:900;color:var(--muted)}
 .giftAdminList{margin-top:12px}
+.siteNotice{
+  max-width:1120px;
+  margin:0 auto 14px;
+  padding:9px 13px;
+  border:1px solid #e4ded5;
+  border-radius:999px;
+  background:#fbf8f4;
+  color:var(--subtle);
+  font-size:13px;
+  font-weight:700;
+}
+.siteNoticeDate{color:var(--accent2);font-weight:900;margin-right:.6em}
+.adminFooterLink{margin-top:12px;text-align:right}
+.adminFooterLink a{font-size:12px;color:var(--muted);font-weight:800;text-decoration:none}
+.adminFooterLink a:hover{color:var(--accent2)}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}
 th{font-size:12px;color:var(--muted);background:#fbf8f4}
@@ -645,9 +669,11 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
   <section class="tabs">
     <button class="tab active" data-tab="today">今日の場所</button>
     <button class="tab" data-tab="weather">天気メモ</button>
+    <button class="tab" data-anchor="gift-codes">ギフコ</button>
     <button class="tab" data-tab="about">このサイトについて</button>
     <button class="tab admin" data-tab="admin" id="adminTab" hidden>管理</button>
   </section>
+  <div id="siteNotice" class="siteNotice" hidden></div>
 
   <section id="today" class="panel active">
     <div class="grid">
@@ -671,8 +697,9 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
         <div id="weatherResult"></div>
       </div>
 
-      <div class="card s12">
+      <div class="card s12" id="gift-codes">
         <h2>ギフトコード</h2>
+        <p class="small">コピーで受取済。受取状態はタップで切替できます。</p>
         <div id="giftCodeList" class="giftList"></div>
         <details id="expiredGiftCodes" class="giftExpiredWrap">
           <summary>期限切れコード</summary>
@@ -756,6 +783,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
         <div class="notice">
           個人が作成した非公式サイトです。ゲーム運営および関連サービスとは関係ありません。
         </div>
+        <p class="adminFooterLink"><a href="?admin=1">管理画面</a></p>
       </div>
 
       <div class="card s6">
@@ -867,6 +895,19 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
         </div>
         <div id="giftCodeStatus" class="status"></div>
         <div id="giftCodeAdminList" class="giftAdminList tableWrap"></div>
+      </div>
+
+      <div class="card s12">
+        <h2>お知らせ管理</h2>
+        <div class="row">
+          <div><label for="noticeDateInput">noticeDate</label><input id="noticeDateInput" type="date"></div>
+          <div><label for="noticeTextInput">noticeText</label><input id="noticeTextInput" placeholder="例：ギフトコード機能を追加しました"></div>
+        </div>
+        <div class="row adminSaveRow">
+          <div><label for="noticeAdminKey">管理キー</label><input id="noticeAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
+          <div class="buttons"><button id="saveNoticeBtn">お知らせを保存</button></div>
+        </div>
+        <div id="noticeStatus" class="status"></div>
       </div>
 
       <div class="card s12">
@@ -2103,6 +2144,7 @@ const STORAGE_KEY = "heartopiaDaily.publishReady.v1";
 const $ = id => document.getElementById(id);
 const ids = [
   "targetDate","todayBtn","tomorrowBtn","todayResult","weatherResult","weatherSummary","discordText","copyBtn","copyStatus",
+  "siteNotice",
   "shareImagePreview","saveShareImageBtn","shareImageBtn","shareImageStatus",
   "giftCodeList","expiredGiftCodes","expiredGiftCodeList",
   "weeklyWeather",
@@ -2111,6 +2153,7 @@ const ids = [
   "adminWeatherDate","adminStartSlot","adminWeatherMemo","adminWeatherChips","adminWeekChips","adminSaveWeatherAdminKey","saveAdminWeatherBtn","adminWeatherStatus",
   "weatherAdminKey","refreshPendingWeatherBtn","pendingWeatherStatus","pendingWeatherReports",
   "giftCodeInput","giftRewardInput","giftExpiresAtInput","giftSourceUrlInput","giftMemoInput","giftStatusInput","giftAdminKey","saveGiftCodeBtn","clearGiftCodeBtn","refreshGiftCodesBtn","giftCodeStatus","giftCodeAdminList",
+  "noticeDateInput","noticeTextInput","noticeAdminKey","saveNoticeBtn","noticeStatus",
   "correctionDate","correctionMemo","correctionExpected","actualFluorite","actualOak","saveCorrectionBtn","saveApplyCorrectionBtn","correctionStatus","correctionsTable",
   "bulkText","parseBtn","applyParsedBtn","parseStatus","parsedTable",
   "cycleTable","obsTable","weatherTable",
@@ -2122,6 +2165,7 @@ let parsedItems = [];
 let state = load();
 let giftCodes = [];
 let editingGiftCodeId = "";
+let siteNotice = { noticeDate:"", noticeText:"", updatedAt:"" };
 
 function clone(v){ return JSON.parse(JSON.stringify(v)); }
 function pad(n){ return String(n).padStart(2,"0"); }
@@ -2547,7 +2591,8 @@ function giftCardHtml(item, expired=false){
   return `
     <div class="giftCard${claimed ? " claimed" : ""}${expired ? " expired" : ""}">
       <div class="giftHead">
-        <input class="giftCodeText" value="${esc(item.code)}" readonly aria-label="ギフトコード">
+        <code class="giftCodeText" data-gift-code-text="${esc(item.code)}">${esc(item.code)}</code>
+        <button type="button" class="giftCopy" data-gift-copy="${esc(item.code)}">コピー</button>
         <button type="button" class="giftClaim${claimed ? " claimed" : ""}" data-gift-toggle="${esc(item.code)}">${claimed ? "受取済" : "未受取"}</button>
       </div>
       ${item.reward ? `<div class="giftReward">報酬：${esc(item.reward)}</div>` : ""}
@@ -2556,7 +2601,6 @@ function giftCardHtml(item, expired=false){
         ${item.memo ? `<div>メモ：${esc(item.memo)}</div>` : ""}
         ${giftSourceUrl(item.sourceUrl) ? `<div><a class="giftSource" href="${esc(giftSourceUrl(item.sourceUrl))}" target="_blank" rel="noopener noreferrer">情報源を見る</a></div>` : ""}
       </div>
-      <div class="buttons giftActions"><button type="button" data-gift-copy="${esc(item.code)}">コピー</button></div>
     </div>
   `;
 }
@@ -2600,6 +2644,35 @@ function fillGiftForm(item){
   E.giftSourceUrlInput.value = item.sourceUrl;
   E.giftMemoInput.value = item.memo;
   E.giftStatusInput.value = item.status;
+}
+function normalizeSiteNotice(item){
+  return {
+    noticeDate:String(item?.noticeDate || ""),
+    noticeText:String(item?.noticeText || "").trim(),
+    updatedAt:String(item?.updatedAt || "")
+  };
+}
+function noticeDateText(value){
+  const text = String(value || "").trim();
+  if(!text) return "";
+  const d = new Date(`${text}T00:00:00`);
+  if(Number.isNaN(d.getTime())) return text;
+  return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+}
+function renderSiteNotice(){
+  if(!E.siteNotice) return;
+  if(!siteNotice.noticeText){
+    E.siteNotice.hidden = true;
+    E.siteNotice.innerHTML = "";
+    return;
+  }
+  const date = noticeDateText(siteNotice.noticeDate);
+  E.siteNotice.hidden = false;
+  E.siteNotice.innerHTML = `${date ? `<span class="siteNoticeDate">${esc(date)}</span>` : ""}<span>${esc(siteNotice.noticeText)}</span>`;
+}
+function fillNoticeForm(){
+  if(E.noticeDateInput) E.noticeDateInput.value = siteNotice.noticeDate || dateValue(gameToday());
+  if(E.noticeTextInput) E.noticeTextInput.value = siteNotice.noticeText || "";
 }
 function renderShareImagePreview(date, data, weather){
   if(!E.shareImagePreview) return;
@@ -3031,11 +3104,11 @@ async function saveApprovedWeatherToApi(item){
   return result;
 }
 function adminKeyValue(){
-  return (E.adminSaveWeatherAdminKey?.value || E.weatherAdminKey?.value || E.giftAdminKey?.value || "").trim();
+  return (E.adminSaveWeatherAdminKey?.value || E.weatherAdminKey?.value || E.giftAdminKey?.value || E.noticeAdminKey?.value || "").trim();
 }
 function syncAdminKeys(source){
   const value = source.value;
-  [E.adminSaveWeatherAdminKey, E.weatherAdminKey, E.giftAdminKey].forEach(input => {
+  [E.adminSaveWeatherAdminKey, E.weatherAdminKey, E.giftAdminKey, E.noticeAdminKey].forEach(input => {
     if(input && input !== source) input.value = value;
   });
 }
@@ -3105,7 +3178,7 @@ async function saveGiftCode(){
 }
 
 function findGiftCodeInput(code){
-  return [...document.querySelectorAll(".giftCodeText")].find(input => input.value === code);
+  return [...document.querySelectorAll(".giftCodeText")].find(node => node.dataset.giftCodeText === code);
 }
 
 async function copyGiftCode(code){
@@ -3117,10 +3190,66 @@ async function copyGiftCode(code){
   }catch(error){
     const input = findGiftCodeInput(code);
     if(input){
-      input.focus();
-      input.select();
+      const range = document.createRange();
+      range.selectNodeContents(input);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
     }
     toast("手動でコピーしてください");
+  }
+}
+
+async function fetchSiteNotice(){
+  if(!WEATHER_API_URL){
+    siteNotice = { noticeDate:"", noticeText:"", updatedAt:"" };
+    renderSiteNotice();
+    fillNoticeForm();
+    if(E.noticeStatus) E.noticeStatus.textContent = "お知らせAPIは未設定です。";
+    return siteNotice;
+  }
+  try{
+    const url = new URL(WEATHER_API_URL);
+    url.searchParams.set("action", "getSiteNotice");
+    const response = await fetch(url);
+    const result = await response.json();
+    if(result.ok === false) throw new Error(result.error || "APIエラー");
+    siteNotice = normalizeSiteNotice(result.notice);
+    renderSiteNotice();
+    fillNoticeForm();
+    return siteNotice;
+  }catch(error){
+    renderSiteNotice();
+    if(E.noticeStatus) E.noticeStatus.textContent = `お知らせを読み込めませんでした：${error.message}`;
+    return siteNotice;
+  }
+}
+
+async function saveSiteNotice(){
+  if(!WEATHER_API_URL){
+    E.noticeStatus.textContent = "お知らせAPIは未設定です。";
+    return;
+  }
+  if(!adminKeyValue()){
+    E.noticeStatus.textContent = "管理キーを入力してください。";
+    return;
+  }
+  E.noticeStatus.textContent = "保存中です…";
+  try{
+    const result = await apiPost({
+      action:"saveSiteNotice",
+      adminKey:adminKeyValue(),
+      noticeDate:E.noticeDateInput.value,
+      noticeText:E.noticeTextInput.value.trim()
+    });
+    if(result.ok === false) throw new Error(result.error || "APIエラー");
+    siteNotice = normalizeSiteNotice(result.notice);
+    renderSiteNotice();
+    fillNoticeForm();
+    E.noticeStatus.textContent = "お知らせを保存しました。";
+    toast("お知らせを保存しました");
+  }catch(error){
+    E.noticeStatus.textContent = `保存できませんでした：${error.message}`;
   }
 }
 
@@ -3299,6 +3428,7 @@ function init(){
   setupAdminVisibility();
   E.targetDate.value = dateValue(gameToday());
   E.obsDate.value = E.targetDate.value;
+  E.noticeDateInput.value = E.targetDate.value;
   E.reportWeatherDate.value = E.targetDate.value;
   E.adminWeatherDate.value = E.targetDate.value;
   E.correctionDate.value = E.targetDate.value;
@@ -3315,14 +3445,24 @@ function init(){
   E.cycleLength.value = state.settings.cycleLength;
   E.rolloverHour.value = 6;
   renderToday();
-  [E.adminSaveWeatherAdminKey, E.weatherAdminKey, E.giftAdminKey].forEach(input => {
+  [E.adminSaveWeatherAdminKey, E.weatherAdminKey, E.giftAdminKey, E.noticeAdminKey].forEach(input => {
     if(input) input.addEventListener("input", () => syncAdminKeys(input));
   });
   fetchApprovedWeather();
   fetchGiftCodes().then(renderToday);
+  fetchSiteNotice();
 
   document.querySelectorAll(".tab").forEach(btn => {
     btn.onclick = () => {
+      if(btn.dataset.anchor){
+        document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+        document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
+        document.querySelector('[data-tab="today"]')?.classList.add("active");
+        document.getElementById("today")?.classList.add("active");
+        renderToday();
+        document.getElementById(btn.dataset.anchor)?.scrollIntoView({behavior:"smooth", block:"start"});
+        return;
+      }
       document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
       document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
       btn.classList.add("active");
@@ -3369,6 +3509,7 @@ function init(){
     const item = giftCodes.find(x => x.id === edit.dataset.giftEdit);
     if(item) fillGiftForm(item);
   };
+  E.saveNoticeBtn.onclick = saveSiteNotice;
   if(E.shareImageBtn){
     const canUseShareFiles = Boolean(navigator.share && window.File && navigator.canShare);
     E.shareImageBtn.disabled = !canUseShareFiles;

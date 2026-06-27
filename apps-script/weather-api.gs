@@ -10,6 +10,8 @@ const GIFT_SHEET_NAME = "gift_codes";
 const GIFT_HEADERS = [
   "id", "code", "reward", "expiresAt", "sourceUrl", "memo", "status", "createdAt", "updatedAt"
 ];
+const NOTICE_SHEET_NAME = "site_notice";
+const NOTICE_HEADERS = ["noticeDate", "noticeText", "updatedAt"];
 
 function doGet(e) {
   try {
@@ -27,6 +29,9 @@ function doGet(e) {
       if (includeHidden) requireKey_(adminKey, ADMIN_KEY, "管理キー");
       return json_({ ok: true, codes: listGiftCodes_(includeHidden) });
     }
+    if (action === "getSiteNotice") {
+      return json_({ ok: true, notice: getSiteNotice_() });
+    }
     return json_({ ok: false, error: "unknown action" });
   } catch (error) {
     return json_({ ok: false, error: error.message });
@@ -42,6 +47,7 @@ function doPost(e) {
     if (action === "approve") return changeStatus_(body, "approved");
     if (action === "reject") return changeStatus_(body, "rejected");
     if (action === "saveGiftCode" || action === "updateGiftCode") return saveGiftCode_(body);
+    if (action === "saveSiteNotice") return saveSiteNotice_(body);
     return json_({ ok: false, error: "unknown action" });
   } catch (error) {
     return json_({ ok: false, error: error.message });
@@ -296,6 +302,43 @@ function formatDateTimeValue_(value) {
   return String(value || "").trim();
 }
 
+function getSiteNotice_() {
+  const values = getNoticeSheet_().getDataRange().getValues();
+  if (values.length < 2) return { noticeDate: "", noticeText: "", updatedAt: "" };
+
+  const row = values[1];
+  return {
+    noticeDate: formatDateValue(row[NOTICE_HEADERS.indexOf("noticeDate")]),
+    noticeText: String(row[NOTICE_HEADERS.indexOf("noticeText")] || ""),
+    updatedAt: row[NOTICE_HEADERS.indexOf("updatedAt")] instanceof Date
+      ? row[NOTICE_HEADERS.indexOf("updatedAt")].toISOString()
+      : String(row[NOTICE_HEADERS.indexOf("updatedAt")] || "")
+  };
+}
+
+function saveSiteNotice_(body) {
+  requireKey_(body.adminKey, ADMIN_KEY, "管理キー");
+  const now = new Date().toISOString();
+  const item = {
+    noticeDate: formatDateValue(body.noticeDate),
+    noticeText: String(body.noticeText || "").trim(),
+    updatedAt: now
+  };
+
+  const sheet = getNoticeSheet_();
+  const row = noticeRow_(item);
+  if (sheet.getLastRow() >= 2) {
+    sheet.getRange(2, 1, 1, NOTICE_HEADERS.length).setValues([row]);
+  } else {
+    sheet.appendRow(row);
+  }
+  return json_({ ok: true, notice: item });
+}
+
+function noticeRow_(item) {
+  return [item.noticeDate, item.noticeText, item.updatedAt];
+}
+
 function formatDateValue(value) {
   if (value instanceof Date && !isNaN(value.getTime())) {
     return Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy-MM-dd");
@@ -403,6 +446,19 @@ function getGiftSheet_() {
   return sheet;
 }
 
+function getNoticeSheet_() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = spreadsheet.getSheetByName(NOTICE_SHEET_NAME);
+  if (!sheet) sheet = spreadsheet.insertSheet(NOTICE_SHEET_NAME);
+  if (sheet.getLastRow() === 0) sheet.appendRow(NOTICE_HEADERS);
+
+  const currentHeaders = sheet.getRange(1, 1, 1, NOTICE_HEADERS.length).getValues()[0];
+  if (NOTICE_HEADERS.some(function(header, index) { return String(currentHeaders[index]) !== header; })) {
+    throw new Error("site_notice 1行目の列名をREADME記載の順番に合わせてください");
+  }
+  return sheet;
+}
+
 function parseBody_(e) {
   const parameters = (e && e.parameter) || {};
   if (parameters.action) {
@@ -430,6 +486,8 @@ function parseBody_(e) {
       expiresAt: String(parameters.expiresAt || ""),
       sourceUrl: String(parameters.sourceUrl || ""),
       status: String(parameters.status || ""),
+      noticeDate: String(parameters.noticeDate || ""),
+      noticeText: String(parameters.noticeText || ""),
       slots: hasNewSlots ? {
         slot0: parseSlotParameter_(parameters.slot0),
         slot1: parseSlotParameter_(parameters.slot1),

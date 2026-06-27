@@ -47,6 +47,16 @@ updatedAt
 
 `status` は `active` / `expired` / `hidden` を使います。`hidden` は公開ページに表示されません。
 
+お知らせ機能を使う場合は、同じスプレッドシート内に `site_notice` シートも追加し、1行目へ次の列名を左から順番に入力します。
+
+```text
+noticeDate
+noticeText
+updatedAt
+```
+
+お知らせは2行目の1件だけを公開ページに表示します。`noticeText` が空の場合は表示されません。
+
 ## 2. Apps Scriptを設定する
 
 1. スプレッドシートの「拡張機能」→「Apps Script」を開きます。
