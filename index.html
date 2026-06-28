@@ -76,7 +76,13 @@ button:disabled{opacity:.48;cursor:not-allowed}
 button.secondary{background:var(--soft);color:var(--accent2);border:1px solid #d7e2dc}
 button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 .buttons{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-.dateShortcuts{gap:7px;margin-top:8px}
+.todayCardTitle{margin-bottom:10px}
+.todayCardTitle h2{margin:0}
+.todayCardTitle .small{margin:3px 0 0}
+.dateControlLine{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.todayDateField{flex:0 1 210px}
+.todayDateField input{max-width:210px}
+.dateShortcuts{gap:7px;margin-top:0}
 .dateShortcuts button{
   padding:7px 12px;
   background:#f7faf7;
@@ -89,10 +95,17 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 .dateShortcuts button:hover{background:var(--soft)}
 .adminSaveRow{align-items:end}
 .adminSaveRow .buttons{margin-top:0}
-.tabs{display:flex;gap:8px;flex-wrap:wrap}
-.tab{background:var(--soft);color:var(--accent2)}
-.tab.active{background:var(--accent);color:#fff}
-.tab.admin{opacity:.78}
+.tabs{display:flex;gap:7px;flex-wrap:wrap}
+.tab{
+  background:rgba(255,254,250,.84);
+  color:var(--accent2);
+  border:1px solid #dfe5de;
+  border-radius:13px;
+  padding:8px 14px;
+  box-shadow:none;
+}
+.tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.tab.admin{opacity:.82;background:#f7f5ef;color:var(--muted)}
 .panel{display:none}
 .panel.active{display:grid;gap:16px}
 .datepill{
@@ -425,20 +438,28 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 .giftExpiredWrap summary{cursor:pointer;font-weight:900;color:var(--muted)}
 .giftAdminList{margin-top:12px}
 .siteNotice{
-  max-width:1120px;
-  margin:0 auto 14px;
-  padding:9px 13px;
-  border:1px solid #e4ded5;
-  border-radius:999px;
-  background:#fbf8f4;
+  justify-self:start;
+  width:fit-content;
+  max-width:100%;
+  margin:0 0 12px;
+  padding:8px 11px;
+  border:1px solid #e6e0d7;
+  border-radius:10px;
+  background:rgba(251,248,244,.78);
   color:var(--subtle);
-  font-size:13px;
+  font-size:12px;
   font-weight:700;
+  line-height:1.5;
+  text-align:left;
 }
 .siteNoticeDate{color:var(--accent2);font-weight:900;margin-right:.6em}
 .adminFooterLink{margin-top:12px;text-align:right}
 .adminFooterLink a{font-size:12px;color:var(--muted);font-weight:800;text-decoration:none}
 .adminFooterLink a:hover{color:var(--accent2)}
+#admin.adminLocked .grid > .card:not(.adminGate){display:none}
+#admin:not(.adminLocked) .adminGate{display:none}
+.adminGateBox{max-width:460px}
+.adminLogoutRow{display:flex;justify-content:flex-end;margin-top:10px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}
 th{font-size:12px;color:var(--muted);background:#fbf8f4}
@@ -630,6 +651,8 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
   .todayCard{padding-top:12px}
   .todayCard label{display:none}
   .todayCard .buttons{margin-top:6px}
+  .todayCard .dateShortcuts{margin-top:0}
+  .dateControlLine{align-items:center}
   .todayCard .small{margin:5px 0}
   .weatherCard{padding:10px 11px}
   .weatherCard h2{font-size:14px;margin-bottom:7px}
@@ -646,17 +669,6 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
   .compactWeatherWeek .weeklyWeatherIcons{font-size:16px}
 }
 
-@media(min-width:821px){
-  .todayCard::before{
-    content:"今日の採取場所";
-    display:block;
-    font-size:18px;
-    font-weight:800;
-    color:var(--heading);
-    margin-bottom:12px;
-  }
-}
-
 </style>
 </head>
 <body>
@@ -671,24 +683,26 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
     <button class="tab" data-tab="weather">天気メモ</button>
     <button class="tab" data-anchor="gift-codes">ギフコ</button>
     <button class="tab" data-tab="about">このサイトについて</button>
-    <button class="tab admin" data-tab="admin" id="adminTab" hidden>管理</button>
   </section>
   <div id="siteNotice" class="siteNotice" hidden></div>
 
   <section id="today" class="panel active">
     <div class="grid">
       <div class="card s8 todayCard">
-        <div class="row one">
-          <div>
+        <div class="todayCardTitle">
+          <h2>今日の採取場所</h2>
+          <p class="small">採取場所は朝6時に切り替わります。</p>
+        </div>
+        <div class="dateControlLine">
+          <div class="todayDateField">
             <label for="targetDate">日付を選ぶ</label>
             <input id="targetDate" type="date">
           </div>
+          <div class="buttons dateShortcuts">
+            <button id="todayBtn">今日</button>
+            <button class="secondary" id="tomorrowBtn">明日</button>
+          </div>
         </div>
-        <div class="buttons dateShortcuts">
-          <button id="todayBtn">今日</button>
-          <button class="secondary" id="tomorrowBtn">明日</button>
-        </div>
-        <p class="small">朝6時切替で計算しています。</p>
         <div class="hero" id="todayResult"></div>
       </div>
 
@@ -806,11 +820,24 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
 
   <section id="admin" class="panel">
     <div class="grid">
+      <div class="card s12 adminGate">
+        <div class="adminGateBox">
+          <h2>管理画面</h2>
+          <p class="notice">管理キーを入力してください。</p>
+          <div class="row one">
+            <div><label for="adminGateKey">管理キー</label><input id="adminGateKey" type="password" autocomplete="off" placeholder="管理キー"></div>
+          </div>
+          <div class="buttons"><button id="openAdminBtn">管理画面を開く</button></div>
+          <div id="adminGateStatus" class="status"></div>
+        </div>
+      </div>
+
       <div class="card s12">
         <h2>管理</h2>
         <p class="notice">
           この画面は身内テスト用の管理エリアです。現在、2026-02-18 から 2026-06-25 までの観測ログ128件を取り込み済みです。観測データの登録、バックアップ、内部設定の確認に使います。公開時は通常表示されません。
         </p>
+        <div class="adminLogoutRow"><button class="secondary" id="logoutAdminBtn">管理画面を閉じる</button></div>
       </div>
 
       <div class="card s6">
@@ -905,7 +932,10 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
         </div>
         <div class="row adminSaveRow">
           <div><label for="noticeAdminKey">管理キー</label><input id="noticeAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
-          <div class="buttons"><button id="saveNoticeBtn">お知らせを保存</button></div>
+          <div class="buttons">
+            <button id="saveNoticeBtn">お知らせを保存</button>
+            <button class="secondary" id="clearNoticeBtn">お知らせを空にする</button>
+          </div>
         </div>
         <div id="noticeStatus" class="status"></div>
       </div>
@@ -2148,12 +2178,13 @@ const ids = [
   "shareImagePreview","saveShareImageBtn","shareImageBtn","shareImageStatus",
   "giftCodeList","expiredGiftCodes","expiredGiftCodeList",
   "weeklyWeather",
+  "adminGateKey","openAdminBtn","adminGateStatus","logoutAdminBtn",
   "obsDate","obsMemo","obsOak","obsFluorite","addObsBtn","obsStatus",
   "reportWeatherDate","reportStartSlot","reportWeatherMemo","reportPostKey","reportWeatherChips","reportWeekChips","submitWeatherReportBtn","weatherReportStatus",
   "adminWeatherDate","adminStartSlot","adminWeatherMemo","adminWeatherChips","adminWeekChips","adminSaveWeatherAdminKey","saveAdminWeatherBtn","adminWeatherStatus",
   "weatherAdminKey","refreshPendingWeatherBtn","pendingWeatherStatus","pendingWeatherReports",
   "giftCodeInput","giftRewardInput","giftExpiresAtInput","giftSourceUrlInput","giftMemoInput","giftStatusInput","giftAdminKey","saveGiftCodeBtn","clearGiftCodeBtn","refreshGiftCodesBtn","giftCodeStatus","giftCodeAdminList",
-  "noticeDateInput","noticeTextInput","noticeAdminKey","saveNoticeBtn","noticeStatus",
+  "noticeDateInput","noticeTextInput","noticeAdminKey","saveNoticeBtn","clearNoticeBtn","noticeStatus",
   "correctionDate","correctionMemo","correctionExpected","actualFluorite","actualOak","saveCorrectionBtn","saveApplyCorrectionBtn","correctionStatus","correctionsTable",
   "bulkText","parseBtn","applyParsedBtn","parseStatus","parsedTable",
   "cycleTable","obsTable","weatherTable",
@@ -2166,6 +2197,8 @@ let state = load();
 let giftCodes = [];
 let editingGiftCodeId = "";
 let siteNotice = { noticeDate:"", noticeText:"", updatedAt:"" };
+const ADMIN_SESSION_KEY = "heartopiaAdminKey";
+let adminSessionKey = sessionStorage.getItem(ADMIN_SESSION_KEY) || "";
 
 function clone(v){ return JSON.parse(JSON.stringify(v)); }
 function pad(n){ return String(n).padStart(2,"0"); }
@@ -2661,7 +2694,7 @@ function noticeDateText(value){
 }
 function renderSiteNotice(){
   if(!E.siteNotice) return;
-  if(!siteNotice.noticeText){
+  if(isAdminRoute() || !siteNotice.noticeText){
     E.siteNotice.hidden = true;
     E.siteNotice.innerHTML = "";
     return;
@@ -3104,13 +3137,23 @@ async function saveApprovedWeatherToApi(item){
   return result;
 }
 function adminKeyValue(){
-  return (E.adminSaveWeatherAdminKey?.value || E.weatherAdminKey?.value || E.giftAdminKey?.value || E.noticeAdminKey?.value || "").trim();
+  return (adminSessionKey || E.adminGateKey?.value || E.adminSaveWeatherAdminKey?.value || E.weatherAdminKey?.value || E.giftAdminKey?.value || E.noticeAdminKey?.value || "").trim();
+}
+function adminKeyInputs(){
+  return [E.adminGateKey, E.adminSaveWeatherAdminKey, E.weatherAdminKey, E.giftAdminKey, E.noticeAdminKey];
+}
+function setAdminKey(value, persist=true){
+  adminSessionKey = String(value || "").trim();
+  if(persist){
+    if(adminSessionKey) sessionStorage.setItem(ADMIN_SESSION_KEY, adminSessionKey);
+    else sessionStorage.removeItem(ADMIN_SESSION_KEY);
+  }
+  adminKeyInputs().forEach(input => {
+    if(input) input.value = adminSessionKey;
+  });
 }
 function syncAdminKeys(source){
-  const value = source.value;
-  [E.adminSaveWeatherAdminKey, E.weatherAdminKey, E.giftAdminKey, E.noticeAdminKey].forEach(input => {
-    if(input && input !== source) input.value = value;
-  });
+  setAdminKey(source.value);
 }
 
 async function fetchGiftCodes(includeHidden=false){
@@ -3121,11 +3164,15 @@ async function fetchGiftCodes(includeHidden=false){
     return [];
   }
   try{
-    const url = new URL(WEATHER_API_URL);
-    url.searchParams.set("action", "getGiftCodes");
-    if(includeHidden) url.searchParams.set("adminKey", adminKeyValue());
-    const response = await fetch(url);
-    const result = await response.json();
+    let result;
+    if(includeHidden){
+      result = await apiPost({action:"getGiftCodes", adminKey:adminKeyValue()});
+    }else{
+      const url = new URL(WEATHER_API_URL);
+      url.searchParams.set("action", "getGiftCodes");
+      const response = await fetch(url);
+      result = await response.json();
+    }
     if(result.ok === false) throw new Error(result.error || "APIエラー");
     giftCodes = (result.codes || []).map(normalizeGiftCode).filter(item => item.code);
     renderGiftAll();
@@ -3171,6 +3218,7 @@ async function saveGiftCode(){
     toast("ギフトコードを保存しました");
     clearGiftForm();
     await fetchGiftCodes(true);
+    await fetchSiteNotice();
     renderToday();
   }catch(error){
     E.giftCodeStatus.textContent = `保存できませんでした：${error.message}`;
@@ -3243,9 +3291,7 @@ async function saveSiteNotice(){
       noticeText:E.noticeTextInput.value.trim()
     });
     if(result.ok === false) throw new Error(result.error || "APIエラー");
-    siteNotice = normalizeSiteNotice(result.notice);
-    renderSiteNotice();
-    fillNoticeForm();
+    await fetchSiteNotice();
     E.noticeStatus.textContent = "お知らせを保存しました。";
     toast("お知らせを保存しました");
   }catch(error){
@@ -3323,11 +3369,7 @@ async function fetchPendingWeatherReports(){
   }
   E.pendingWeatherStatus.textContent = "読み込み中です…";
   try{
-    const url = new URL(WEATHER_API_URL);
-    url.searchParams.set("action","pending");
-    url.searchParams.set("adminKey", adminKeyValue());
-    const response = await fetch(url);
-    const result = await response.json();
+    const result = await apiPost({action:"pending", adminKey:adminKeyValue()});
     if(result.ok === false) throw new Error(result.error || "APIエラー");
     const reports = result.reports || result.data || [];
     E.pendingWeatherStatus.textContent = reports.length ? `${reports.length}件の未承認報告があります。` : "未承認の天気報告はありません。";
@@ -3406,22 +3448,41 @@ function toast(msg){
   setTimeout(() => E.toast.classList.remove("show"), 1600);
 }
 
-
-function setupAdminVisibility(){
+function isAdminRoute(){
   const params = new URLSearchParams(window.location.search);
-  const adminEnabled = params.get("admin") === "1" || window.location.hash === "#admin";
-  const adminTab = document.getElementById("adminTab");
-
-  if(adminEnabled && adminTab){
-    adminTab.hidden = false;
+  return params.get("admin") === "1" || window.location.hash === "#admin";
+}
+function setAdminPanelActive(){
+  document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+  document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
+  document.getElementById("adminTab")?.classList.add("active");
+  document.getElementById("admin")?.classList.add("active");
+}
+function setAdminUnlocked(unlocked){
+  const adminPanel = document.getElementById("admin");
+  if(!adminPanel) return;
+  adminPanel.classList.toggle("adminLocked", !unlocked);
+  if(unlocked){
+    setAdminKey(adminKeyValue());
+    if(E.adminGateStatus) E.adminGateStatus.textContent = "";
+    fetchGiftCodes(true);
   }
+}
+function setupAdminVisibility(){
+  const adminEnabled = isAdminRoute();
 
   if(!adminEnabled){
     const adminPanel = document.getElementById("admin");
     if(adminPanel){
       adminPanel.classList.remove("active");
+      adminPanel.classList.remove("adminLocked");
     }
+    return;
   }
+
+  setAdminPanelActive();
+  setAdminKey(adminSessionKey, false);
+  setAdminUnlocked(Boolean(adminSessionKey));
 }
 
 function init(){
@@ -3445,7 +3506,7 @@ function init(){
   E.cycleLength.value = state.settings.cycleLength;
   E.rolloverHour.value = 6;
   renderToday();
-  [E.adminSaveWeatherAdminKey, E.weatherAdminKey, E.giftAdminKey, E.noticeAdminKey].forEach(input => {
+  adminKeyInputs().forEach(input => {
     if(input) input.addEventListener("input", () => syncAdminKeys(input));
   });
   fetchApprovedWeather();
@@ -3454,6 +3515,10 @@ function init(){
 
   document.querySelectorAll(".tab").forEach(btn => {
     btn.onclick = () => {
+      if(btn.dataset.adminLink != null && !isAdminRoute()){
+        window.location.href = "?admin=1";
+        return;
+      }
       if(btn.dataset.anchor){
         document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
         document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
@@ -3467,9 +3532,28 @@ function init(){
       document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
       btn.classList.add("active");
       document.getElementById(btn.dataset.tab).classList.add("active");
+      if(btn.dataset.adminLink != null) setAdminUnlocked(Boolean(adminSessionKey));
       renderToday();
     };
   });
+  E.openAdminBtn.onclick = () => {
+    const key = E.adminGateKey.value.trim();
+    if(!key){
+      E.adminGateStatus.textContent = "管理キーを入力してください。";
+      return;
+    }
+    setAdminKey(key);
+    setAdminUnlocked(true);
+    toast("管理画面を開きました");
+  };
+  E.adminGateKey.onkeydown = event => {
+    if(event.key === "Enter") E.openAdminBtn.click();
+  };
+  E.logoutAdminBtn.onclick = () => {
+    setAdminKey("");
+    sessionStorage.removeItem(ADMIN_SESSION_KEY);
+    window.location.href = window.location.pathname;
+  };
 
   E.targetDate.onchange = renderToday;
   E.todayBtn.onclick = () => { E.targetDate.value = dateValue(gameToday()); renderToday(); };
@@ -3510,6 +3594,10 @@ function init(){
     if(item) fillGiftForm(item);
   };
   E.saveNoticeBtn.onclick = saveSiteNotice;
+  E.clearNoticeBtn.onclick = () => {
+    E.noticeTextInput.value = "";
+    saveSiteNotice();
+  };
   if(E.shareImageBtn){
     const canUseShareFiles = Boolean(navigator.share && window.File && navigator.canShare);
     E.shareImageBtn.disabled = !canUseShareFiles;

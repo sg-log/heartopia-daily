@@ -1,5 +1,5 @@
-const POST_KEY = "kuma82";
-const ADMIN_KEY = "Kuma29";
+const POST_KEY_PROPERTY = "POST_KEY";
+const ADMIN_KEY_PROPERTY = "ADMIN_KEY";
 const SHEET_NAME = "weather_reports";
 const HEADERS = [
   "id", "date", "startSlot", "slot0", "slot1", "slot2", "slot3", "slot4",
@@ -17,17 +17,13 @@ function doGet(e) {
   try {
     const action = String((e && e.parameter && e.parameter.action) || "");
     if (action === "pending") {
-      requireKey_((e.parameter || {}).adminKey, ADMIN_KEY, "管理キー");
-      return json_({ ok: true, reports: listByStatus_("pending") });
+      return json_({ ok: false, error: "pending はPOSTで取得してください" });
     }
     if (action === "approved") {
       return json_({ ok: true, reports: listByStatus_("approved") });
     }
     if (action === "getGiftCodes") {
-      const adminKey = (e.parameter || {}).adminKey;
-      const includeHidden = Boolean(adminKey);
-      if (includeHidden) requireKey_(adminKey, ADMIN_KEY, "管理キー");
-      return json_({ ok: true, codes: listGiftCodes_(includeHidden) });
+      return json_({ ok: true, codes: listGiftCodes_(false) });
     }
     if (action === "getSiteNotice") {
       return json_({ ok: true, notice: getSiteNotice_() });
@@ -43,6 +39,14 @@ function doPost(e) {
     const body = parseBody_(e);
     const action = String(body.action || "");
     if (action === "submit") return submit_(body);
+    if (action === "pending") {
+      requireKey_(body.adminKey, adminKey_(), "管理キー");
+      return json_({ ok: true, reports: listByStatus_("pending") });
+    }
+    if (action === "getGiftCodes") {
+      requireKey_(body.adminKey, adminKey_(), "管理キー");
+      return json_({ ok: true, codes: listGiftCodes_(true) });
+    }
     if (action === "saveApproved") return saveApproved_(body);
     if (action === "approve") return changeStatus_(body, "approved");
     if (action === "reject") return changeStatus_(body, "rejected");
@@ -55,7 +59,7 @@ function doPost(e) {
 }
 
 function submit_(body) {
-  requireKey_(body.postKey, POST_KEY, "投稿キー");
+  requireKey_(body.postKey, postKey_(), "投稿キー");
   if (!body.date) throw new Error("日付がありません");
 
   const startSlot = normalizeStartSlot_(body.startSlot);
@@ -89,7 +93,7 @@ function submit_(body) {
 }
 
 function saveApproved_(body) {
-  requireKey_(body.adminKey, ADMIN_KEY, "管理キー");
+  requireKey_(body.adminKey, adminKey_(), "管理キー");
   if (!body.date) throw new Error("日付がありません");
 
   const date = formatDateValue(body.date);
@@ -168,7 +172,7 @@ function approvedRow_(item) {
 }
 
 function changeStatus_(body, status) {
-  requireKey_(body.adminKey, ADMIN_KEY, "管理キー");
+  requireKey_(body.adminKey, adminKey_(), "管理キー");
   if (!body.id) throw new Error("idがありません");
 
   const sheet = getSheet_();
@@ -219,7 +223,7 @@ function listByStatus_(status) {
 }
 
 function saveGiftCode_(body) {
-  requireKey_(body.adminKey, ADMIN_KEY, "管理キー");
+  requireKey_(body.adminKey, adminKey_(), "管理キー");
   const code = String(body.code || "").trim();
   if (!code) throw new Error("コードがありません");
 
@@ -248,11 +252,13 @@ function saveGiftCode_(body) {
       item.id = rowId || item.id;
       item.createdAt = String(values[i][GIFT_HEADERS.indexOf("createdAt")] || now);
       sheet.getRange(i + 1, 1, 1, GIFT_HEADERS.length).setValues([giftRow_(item)]);
+      saveAutoGiftNotice_("updated");
       return json_({ ok: true, mode: "updated", code: item });
     }
   }
 
   sheet.appendRow(giftRow_(item));
+  saveAutoGiftNotice_("created");
   return json_({ ok: true, mode: "created", code: item });
 }
 
@@ -306,18 +312,13 @@ function getSiteNotice_() {
   const values = getNoticeSheet_().getDataRange().getValues();
   if (values.length < 2) return { noticeDate: "", noticeText: "", updatedAt: "" };
 
-  const row = values[1];
-  return {
-    noticeDate: formatDateValue(row[NOTICE_HEADERS.indexOf("noticeDate")]),
-    noticeText: String(row[NOTICE_HEADERS.indexOf("noticeText")] || ""),
-    updatedAt: row[NOTICE_HEADERS.indexOf("updatedAt")] instanceof Date
-      ? row[NOTICE_HEADERS.indexOf("updatedAt")].toISOString()
-      : String(row[NOTICE_HEADERS.indexOf("updatedAt")] || "")
-  };
+  const manual = noticeItemFromRow_(values[1] || []);
+  if (manual.noticeText) return manual;
+  return noticeItemFromRow_(values[2] || []);
 }
 
 function saveSiteNotice_(body) {
-  requireKey_(body.adminKey, ADMIN_KEY, "管理キー");
+  requireKey_(body.adminKey, adminKey_(), "管理キー");
   const now = new Date().toISOString();
   const item = {
     noticeDate: formatDateValue(body.noticeDate),
@@ -337,6 +338,42 @@ function saveSiteNotice_(body) {
 
 function noticeRow_(item) {
   return [item.noticeDate, item.noticeText, item.updatedAt];
+}
+
+function noticeItemFromRow_(row) {
+  return {
+    noticeDate: formatDateValue(row[NOTICE_HEADERS.indexOf("noticeDate")]),
+    noticeText: String(row[NOTICE_HEADERS.indexOf("noticeText")] || ""),
+    updatedAt: row[NOTICE_HEADERS.indexOf("updatedAt")] instanceof Date
+      ? row[NOTICE_HEADERS.indexOf("updatedAt")].toISOString()
+      : String(row[NOTICE_HEADERS.indexOf("updatedAt")] || "")
+  };
+}
+
+function saveAutoGiftNotice_(mode) {
+  const sheet = getNoticeSheet_();
+  const values = sheet.getDataRange().getValues();
+  const manual = noticeItemFromRow_(values[1] || []);
+  const now = new Date();
+  const date = Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  const text = mode === "updated"
+    ? "ギフトコードを更新しました。上の「ギフコ」から確認できます。"
+    : "新しいギフトコードを追加しました。上の「ギフコ」から確認できます。";
+  const item = {
+    noticeDate: date,
+    noticeText: text,
+    updatedAt: now.toISOString()
+  };
+
+  if (sheet.getLastRow() < 2) {
+    sheet.getRange(2, 1, 1, NOTICE_HEADERS.length).setValues([noticeRow_({
+      noticeDate: "",
+      noticeText: "",
+      updatedAt: ""
+    })]);
+  }
+  sheet.getRange(3, 1, 1, NOTICE_HEADERS.length).setValues([noticeRow_(item)]);
+  return manual.noticeText ? manual : item;
 }
 
 function formatDateValue(value) {
@@ -549,6 +586,20 @@ function requireKey_(actual, expected, label) {
   if (!actual || String(actual) !== String(expected)) {
     throw new Error(label + "が違います");
   }
+}
+
+function postKey_() {
+  return scriptProperty_(POST_KEY_PROPERTY, "投稿キー");
+}
+
+function adminKey_() {
+  return scriptProperty_(ADMIN_KEY_PROPERTY, "管理キー");
+}
+
+function scriptProperty_(name, label) {
+  const value = PropertiesService.getScriptProperties().getProperty(name);
+  if (!value) throw new Error(label + "が未設定です");
+  return value;
 }
 
 function json_(data) {
