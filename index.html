@@ -6,6 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
 <meta name="description" content="Heartopia Slow Lifeのツルツルオークと無垢な蛍石の場所を確認できる非公式メモサイトです。">
 <title>Heartopia Daily | 今日の採取場所メモ</title>
 <style>
@@ -93,6 +94,11 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
   font-weight:800;
 }
 .dateShortcuts button:hover{background:var(--soft)}
+.shareTodayBtn{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+}
 .adminSaveRow{align-items:end}
 .adminSaveRow .buttons{margin-top:0}
 .tabs{display:flex;gap:7px;flex-wrap:wrap}
@@ -398,6 +404,25 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 .shareImageActions{margin-top:8px}
 .giftList{display:grid;gap:10px}
 #gift-codes{scroll-margin-top:84px}
+.giftDetails > summary{
+  cursor:pointer;
+  list-style:none;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  font-size:20px;
+  font-weight:900;
+  color:var(--heading);
+}
+.giftDetails > summary::-webkit-details-marker{display:none}
+.giftDetails > summary::after{
+  content:"＋";
+  color:var(--accent2);
+  font-weight:900;
+}
+.giftDetails[open] > summary::after{content:"−"}
+.giftDetailsBody{margin-top:10px}
 .giftCard{
   border:1px solid #e4ded5;
   background:#fffefa;
@@ -688,7 +713,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
 
   <section id="today" class="panel active">
     <div class="grid">
-      <div class="card s8 todayCard">
+      <div class="card s8 todayCard" id="placeCard">
         <div class="todayCardTitle">
           <h2>今日の採取場所</h2>
           <p class="small">採取場所は朝6時に切り替わります。</p>
@@ -701,6 +726,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
           <div class="buttons dateShortcuts">
             <button id="todayBtn">今日</button>
             <button class="secondary" id="tomorrowBtn">明日</button>
+            <button class="secondary shareTodayBtn" id="shareTodayImageBtn"><span aria-hidden="true">↗</span><span>共有</span></button>
           </div>
         </div>
         <div class="hero" id="todayResult"></div>
@@ -712,12 +738,16 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
       </div>
 
       <div class="card s12" id="gift-codes">
-        <h2>ギフトコード</h2>
-        <p class="small">コピーで受取済。受取状態はタップで切替できます。</p>
-        <div id="giftCodeList" class="giftList"></div>
-        <details id="expiredGiftCodes" class="giftExpiredWrap">
-          <summary>期限切れコード</summary>
-          <div id="expiredGiftCodeList" class="giftList"></div>
+        <details class="giftDetails">
+          <summary>ギフトコード</summary>
+          <div class="giftDetailsBody">
+            <p class="small">コピーで受取済。受取状態はタップで切替できます。</p>
+            <div id="giftCodeList" class="giftList"></div>
+            <details id="expiredGiftCodes" class="giftExpiredWrap">
+              <summary>期限切れコード</summary>
+              <div id="expiredGiftCodeList" class="giftList"></div>
+            </details>
+          </div>
         </details>
       </div>
 
@@ -2173,7 +2203,7 @@ const SEED = {
 const STORAGE_KEY = "heartopiaDaily.publishReady.v1";
 const $ = id => document.getElementById(id);
 const ids = [
-  "targetDate","todayBtn","tomorrowBtn","todayResult","weatherResult","weatherSummary","discordText","copyBtn","copyStatus",
+  "targetDate","todayBtn","tomorrowBtn","shareTodayImageBtn","todayResult","weatherResult","weatherSummary","discordText","copyBtn","copyStatus",
   "siteNotice",
   "shareImagePreview","saveShareImageBtn","shareImageBtn","shareImageStatus",
   "giftCodeList","expiredGiftCodes","expiredGiftCodeList",
@@ -2562,7 +2592,7 @@ function shareWeeklyLine(weather, date){
   const items = weeklyForecastItems(weather, date);
   return items.map(item => `${item.day}${item.icons}`).join(" ");
 }
-function normalizeGiftCode(item){
+function normalizeGiftCode(item, order=0){
   const status = ["active","expired","hidden"].includes(item?.status) ? item.status : "active";
   return {
     id:String(item?.id || ""),
@@ -2573,7 +2603,8 @@ function normalizeGiftCode(item){
     memo:String(item?.memo || "").trim(),
     status,
     createdAt:String(item?.createdAt || ""),
-    updatedAt:String(item?.updatedAt || "")
+    updatedAt:String(item?.updatedAt || ""),
+    order:Number(order) || 0
   };
 }
 function giftDate(value){
@@ -2596,12 +2627,19 @@ function expiredGiftCodes(){
   return giftCodes.filter(item => giftVisible(item) && giftExpired(item)).sort(giftCodeSort);
 }
 function giftCodeSort(a, b){
-  const ad = giftDate(a.expiresAt);
-  const bd = giftDate(b.expiresAt);
-  const av = ad ? ad.getTime() : Number.MAX_SAFE_INTEGER;
-  const bv = bd ? bd.getTime() : Number.MAX_SAFE_INTEGER;
-  if(av !== bv) return av - bv;
+  const at = giftSortTime(a);
+  const bt = giftSortTime(b);
+  if(at != null && bt != null && at !== bt) return bt - at;
+  if(at != null && bt == null) return -1;
+  if(at == null && bt != null) return 1;
+  if(a.order !== b.order) return b.order - a.order;
   return String(a.code).localeCompare(String(b.code), "ja");
+}
+function giftSortTime(item){
+  const updated = giftDate(item.updatedAt);
+  if(updated) return updated.getTime();
+  const created = giftDate(item.createdAt);
+  return created ? created.getTime() : null;
 }
 function giftExpiryText(value){
   const d = giftDate(value);
@@ -2647,7 +2685,8 @@ function renderGiftCodes(){
 }
 function renderGiftAdminList(){
   if(!E.giftCodeAdminList) return;
-  E.giftCodeAdminList.innerHTML = giftCodes.length ? `<table><thead><tr><th>code</th><th>reward</th><th>expiresAt</th><th>status</th><th>memo</th><th>操作</th></tr></thead><tbody>${giftCodes.map(item => `<tr><td>${esc(item.code)}</td><td>${esc(item.reward)}</td><td>${esc(item.expiresAt)}</td><td>${esc(item.status)}</td><td>${esc(item.memo)}</td><td><button type="button" class="secondary" data-gift-edit="${esc(item.id)}">編集</button></td></tr>`).join("")}</tbody></table>` : `<p class="small">登録済みギフトコードはありません。</p>`;
+  const items = giftCodes.slice().sort(giftCodeSort);
+  E.giftCodeAdminList.innerHTML = items.length ? `<table><thead><tr><th>code</th><th>reward</th><th>expiresAt</th><th>status</th><th>memo</th><th>操作</th></tr></thead><tbody>${items.map(item => `<tr><td>${esc(item.code)}</td><td>${esc(item.reward)}</td><td>${esc(item.expiresAt)}</td><td>${esc(item.status)}</td><td>${esc(item.memo)}</td><td><button type="button" class="secondary" data-gift-edit="${esc(item.id)}">編集</button></td></tr>`).join("")}</tbody></table>` : `<p class="small">登録済みギフトコードはありません。</p>`;
 }
 function renderGiftAll(){
   renderGiftCodes();
@@ -2887,6 +2926,120 @@ async function createShareImageBlob(){
     const canvas = await drawShareImageCanvas(date, data, weather, {withImages:false});
     return await canvasToPngBlob(canvas);
   }
+}
+async function saveShareImageFile(statusEl, message="画像を保存しました"){
+  const blob = await createShareImageBlob();
+  if(!blob) throw new Error("画像を生成できませんでした");
+  const date = E.targetDate.value;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `heartopia-daily-${date}.png`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  if(statusEl) statusEl.textContent = message;
+  toast("画像を保存しました");
+}
+async function shareShareImageFile(statusEl){
+  const blob = await createShareImageBlob();
+  if(!blob) throw new Error("画像を生成できませんでした");
+  const date = E.targetDate.value;
+  const fallbackMessage = "この環境では直接共有できないため、画像を保存します。保存した画像をDiscordへ添付してください。";
+  if(navigator.share && window.File && navigator.canShare){
+    const file = new File([blob], `heartopia-daily-${date}.png`, {type:"image/png"});
+    if(!navigator.canShare({files:[file]})){
+      if(statusEl) statusEl.textContent = fallbackMessage;
+      alert(fallbackMessage);
+      await saveShareImageFile(statusEl, `${fallbackMessage} 画像を保存しました。`);
+      return;
+    }
+    await navigator.share({files:[file], title:"Heartopia Daily", text:"今日の採取場所メモ"});
+    if(statusEl) statusEl.textContent = "共有を開きました";
+    toast("共有を開きました");
+    return;
+  }
+  if(statusEl) statusEl.textContent = fallbackMessage;
+  alert(fallbackMessage);
+  await saveShareImageFile(statusEl, `${fallbackMessage} 画像を保存しました。`);
+}
+function isMobileShareDevice(){
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && window.matchMedia?.("(pointer: coarse)").matches);
+}
+async function waitForImagesIn(element){
+  const images = Array.from(element.querySelectorAll("img"));
+  await Promise.all(images.map(img => {
+    if(img.complete && img.naturalWidth > 0) return Promise.resolve();
+    return new Promise(resolve => {
+      img.addEventListener("load", resolve, {once:true});
+      img.addEventListener("error", resolve, {once:true});
+    });
+  }));
+}
+async function createPlaceCardImageBlob(){
+  if(!window.html2canvas) throw new Error("画像化ライブラリを読み込めませんでした");
+  const target = document.getElementById("placeCard");
+  if(!target) throw new Error("採取場所カードが見つかりません");
+  if(document.fonts?.ready) await document.fonts.ready;
+  await waitForImagesIn(target);
+  const canvas = await html2canvas(target, {
+    backgroundColor:"#f5f0e8",
+    scale:2,
+    useCORS:true,
+    allowTaint:false,
+    logging:false,
+    scrollX:-window.scrollX,
+    scrollY:-window.scrollY
+  });
+  return await canvasToPngBlob(canvas);
+}
+async function copyPngBlobToClipboard(blob){
+  if(!navigator.clipboard?.write || !window.ClipboardItem) {
+    throw new Error("画像コピーに対応していません");
+  }
+  await navigator.clipboard.write([
+    new ClipboardItem({"image/png": blob})
+  ]);
+}
+async function savePlaceCardImageFile(blob, message="画像を保存しました"){
+  if(!blob) throw new Error("画像を生成できませんでした");
+  const date = E.targetDate.value;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `heartopia-place-${date}.png`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast(message);
+}
+async function sharePlaceCardImageFile(){
+  const blob = await createPlaceCardImageBlob();
+  if(!blob) throw new Error("画像を生成できませんでした");
+  const date = E.targetDate.value;
+  const fallbackMessage = "この環境では直接共有できないため、画像を保存します。保存した画像をDiscordへ添付してください。";
+  if(isMobileShareDevice() && navigator.share && window.File && navigator.canShare){
+    const file = new File([blob], `heartopia-place-${date}.png`, {type:"image/png"});
+    if(navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:"Heartopia Daily", text:"今日の採取場所メモ"});
+      toast("共有を開きました");
+      return;
+    }
+  }
+  if(!isMobileShareDevice()){
+    try{
+      await copyPngBlobToClipboard(blob);
+      alert("画像をコピーしました。Discordに貼り付けてください。");
+      toast("画像をコピーしました");
+      return;
+    }catch(error){
+      console.warn("画像コピーに失敗しました", error);
+    }
+  }
+  alert(fallbackMessage);
+  await savePlaceCardImageFile(blob, "画像を保存しました");
 }
 function discord(dateStr, data, weather){
   const startSlot = normalizeStartSlot(weather?.startSlot);
@@ -3174,7 +3327,7 @@ async function fetchGiftCodes(includeHidden=false){
       result = await response.json();
     }
     if(result.ok === false) throw new Error(result.error || "APIエラー");
-    giftCodes = (result.codes || []).map(normalizeGiftCode).filter(item => item.code);
+    giftCodes = (result.codes || []).map((item, index) => normalizeGiftCode(item, index)).filter(item => item.code);
     renderGiftAll();
     return giftCodes;
   }catch(error){
@@ -3603,34 +3756,23 @@ function init(){
     E.shareImageBtn.disabled = !canUseShareFiles;
     E.shareImageBtn.title = canUseShareFiles ? "" : "このブラウザでは画像共有に対応していません";
   }
+  E.shareTodayImageBtn.onclick = async () => {
+    try{
+      await sharePlaceCardImageFile();
+    }catch(error){
+      toast(`画像を共有できませんでした：${error.message}`);
+    }
+  };
   E.saveShareImageBtn.onclick = async () => {
     try{
-      const blob = await createShareImageBlob();
-      if(!blob) throw new Error("画像を生成できませんでした");
-      const date = E.targetDate.value;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `heartopia-daily-${date}.png`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      E.shareImageStatus.textContent = "画像を保存しました";
-      toast("画像を保存しました");
+      await saveShareImageFile(E.shareImageStatus);
     }catch(error){
       E.shareImageStatus.textContent = `画像を保存できませんでした：${error.message}`;
     }
   };
   E.shareImageBtn.onclick = async () => {
     try{
-      const blob = await createShareImageBlob();
-      if(!blob) throw new Error("画像を生成できませんでした");
-      const date = E.targetDate.value;
-      const file = new File([blob], `heartopia-daily-${date}.png`, {type:"image/png"});
-      if(!navigator.canShare?.({files:[file]})) throw new Error("このブラウザでは画像共有に対応していません");
-      await navigator.share({files:[file], title:"Heartopia Daily", text:"今日の採取場所メモ"});
-      E.shareImageStatus.textContent = "共有を開きました";
+      await shareShareImageFile(E.shareImageStatus);
     }catch(error){
       E.shareImageStatus.textContent = `画像を共有できませんでした：${error.message}`;
     }
