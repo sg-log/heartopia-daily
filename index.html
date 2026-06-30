@@ -99,6 +99,8 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
   align-items:center;
   gap:4px;
 }
+.todayCard.capture-mode .dateControlLine{display:none}
+.todayCard.capture-mode .todayCardTitle{margin-bottom:8px}
 .adminSaveRow{align-items:end}
 .adminSaveRow .buttons{margin-top:0}
 .tabs{display:flex;gap:7px;flex-wrap:wrap}
@@ -2983,16 +2985,21 @@ async function createPlaceCardImageBlob(){
   if(!target) throw new Error("採取場所カードが見つかりません");
   if(document.fonts?.ready) await document.fonts.ready;
   await waitForImagesIn(target);
-  const canvas = await html2canvas(target, {
-    backgroundColor:"#f5f0e8",
-    scale:2,
-    useCORS:true,
-    allowTaint:false,
-    logging:false,
-    scrollX:-window.scrollX,
-    scrollY:-window.scrollY
-  });
-  return await canvasToPngBlob(canvas);
+  target.classList.add("capture-mode");
+  try{
+    const canvas = await html2canvas(target, {
+      backgroundColor:"#f5f0e8",
+      scale:2,
+      useCORS:true,
+      allowTaint:false,
+      logging:false,
+      scrollX:-window.scrollX,
+      scrollY:-window.scrollY
+    });
+    return await canvasToPngBlob(canvas);
+  }finally{
+    target.classList.remove("capture-mode");
+  }
 }
 async function copyPngBlobToClipboard(blob){
   if(!navigator.clipboard?.write || !window.ClipboardItem) {
