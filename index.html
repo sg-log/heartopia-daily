@@ -483,10 +483,62 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 .adminFooterLink{margin-top:12px;text-align:right}
 .adminFooterLink a{font-size:12px;color:var(--muted);font-weight:800;text-decoration:none}
 .adminFooterLink a:hover{color:var(--accent2)}
-#admin.adminLocked .grid > .card:not(.adminGate){display:none}
+#admin.adminLocked .adminShell{display:none}
 #admin:not(.adminLocked) .adminGate{display:none}
 .adminGateBox{max-width:460px}
+.adminShell{
+  grid-column:span 12;
+  display:grid;
+  gap:16px;
+  align-items:start;
+}
 .adminLogoutRow{display:flex;justify-content:flex-end;margin-top:10px}
+.adminSubtabs{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+  padding:6px;
+  border:1px solid #e6e0d7;
+  border-radius:16px;
+  background:rgba(251,248,244,.82);
+}
+.adminSubtab{
+  flex:1 1 132px;
+  min-height:44px;
+  padding:10px 14px;
+  border-radius:13px;
+  background:#fffaf4;
+  color:var(--accent2);
+  border:1px solid #e5ded4;
+  box-shadow:none;
+}
+.adminSubtab.active{
+  background:var(--soft);
+  color:var(--heading);
+  border-color:#cfded6;
+  box-shadow:inset 0 0 0 1px #dce8e2;
+}
+.adminTabPanel{
+  display:none;
+  gap:16px;
+  align-items:start;
+}
+.adminTabPanel.active{display:grid}
+.adminSettingsGrid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:16px;
+  align-items:start;
+}
+.adminDetails summary{
+  cursor:pointer;
+  font-weight:900;
+  color:var(--heading);
+  font-size:20px;
+  line-height:1.3;
+}
+.adminDetails summary + *{margin-top:12px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}
 th{font-size:12px;color:var(--muted);background:#fbf8f4}
@@ -616,6 +668,9 @@ th{font-size:12px;color:var(--muted);background:#fbf8f4}
 @media(max-width:820px){
   .grid{grid-template-columns:1fr}
   .s8,.s4,.s6,.s12{grid-column:span 1}
+  .adminShell{grid-column:span 1}
+  .adminSettingsGrid{grid-template-columns:1fr}
+  .adminSubtab{flex:1 1 calc(50% - 8px)}
   .row,.row.one,.items{grid-template-columns:1fr}
   .card{padding:15px}
   .itemIcon{height:135px}
@@ -927,285 +982,314 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
         </div>
       </div>
 
-      <div class="card s12">
-        <h2>管理</h2>
-        <p class="notice">
-          この画面は身内テスト用の管理エリアです。現在、2026-02-18 から 2026-06-25 までの観測ログ128件を取り込み済みです。観測データの登録、バックアップ、内部設定の確認に使います。公開時は通常表示されません。
-        </p>
-        <div class="adminLogoutRow"><button class="secondary" id="logoutAdminBtn">管理画面を閉じる</button></div>
-      </div>
+      <div class="adminShell s12">
+        <div class="card s12">
+          <h2>管理</h2>
+          <p class="notice">
+            この画面は身内テスト用の管理エリアです。よく使う更新作業を日常更新にまとめ、修正やデータ確認は別タブに整理しています。公開時は通常表示されません。
+          </p>
+          <div class="adminLogoutRow"><button class="secondary" id="logoutAdminBtn">管理画面を閉じる</button></div>
+        </div>
 
-      <div class="card s6">
-        <h2>木と石を登録</h2>
-        <div class="row">
-          <div><label for="obsDate">日付</label><input id="obsDate" type="date"></div>
-          <div><label for="obsMemo">メモ</label><input id="obsMemo" placeholder="任意"></div>
+        <div class="adminSubtabs" role="tablist" aria-label="管理画面メニュー">
+          <button type="button" class="adminSubtab active" data-admin-subtab="daily" role="tab" aria-selected="true">日常更新</button>
+          <button type="button" class="adminSubtab" data-admin-subtab="manage" role="tab" aria-selected="false">修正・管理</button>
+          <button type="button" class="adminSubtab" data-admin-subtab="data" role="tab" aria-selected="false">データ・設定</button>
         </div>
-        <div class="row">
-          <div><label for="obsOak">ツルツルオーク</label><input id="obsOak" placeholder="例：11番"></div>
-          <div><label for="obsFluorite">無垢な蛍石</label><input id="obsFluorite" placeholder="例：7番"></div>
-        </div>
-        <div class="buttons"><button id="addObsBtn">登録して反映</button></div>
-        <div id="obsStatus" class="status"></div>
-      </div>
 
-      <div class="card s6">
-        <h2>天気を手動登録・編集</h2>
-        <div class="row">
-          <div><label for="adminWeatherDate">日付</label><input id="adminWeatherDate" type="date"></div>
-          <div>
-            <label for="adminStartSlot">最初の時間</label>
-            <select id="adminStartSlot">
-              <option value="00">00時</option>
-              <option value="06">06時</option>
-              <option value="12">12時</option>
-              <option value="18">18時</option>
-            </select>
-          </div>
-        </div>
-        <div class="row one">
-          <div><label for="adminWeatherMemo">メモ</label><input id="adminWeatherMemo" placeholder="任意"></div>
-        </div>
-        <div id="adminWeatherChips"></div>
-        <h3>週間予報</h3>
-        <div id="adminWeekChips"></div>
-        <div class="row adminSaveRow">
-          <div><label for="adminSaveWeatherAdminKey">管理キー</label><input id="adminSaveWeatherAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
-          <div class="buttons"><button id="saveAdminWeatherBtn">天気を保存</button></div>
-        </div>
-        <div id="adminWeatherStatus" class="status"></div>
-      </div>
-
-      <div class="card s6">
-        <h2>登録済み天気を修正</h2>
-        <div class="row">
-          <div><label for="approvedWeatherDate">日付</label><input id="approvedWeatherDate" type="date"></div>
-          <div class="buttons"><button class="secondary" id="loadApprovedWeatherBtn">登録済みを読み込む</button></div>
-        </div>
-        <div class="row">
-          <div>
-            <label for="approvedStartSlot">最初の時間</label>
-            <select id="approvedStartSlot">
-              <option value="00">00時</option>
-              <option value="06">06時</option>
-              <option value="12">12時</option>
-              <option value="18">18時</option>
-            </select>
-          </div>
-          <div><label for="approvedWeatherMemo">メモ</label><input id="approvedWeatherMemo" placeholder="任意"></div>
-        </div>
-        <div id="approvedWeatherChips"></div>
-        <h3>週間予報</h3>
-        <div id="approvedWeekChips"></div>
-        <div class="row adminSaveRow">
-          <div><label for="approvedWeatherAdminKey">管理キー</label><input id="approvedWeatherAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
-          <div class="buttons"><button id="saveApprovedWeatherBtn">修正を保存</button></div>
-        </div>
-        <div id="approvedWeatherStatus" class="status"></div>
-      </div>
-
-      <div class="card s6">
-        <h2>かんたん天気入力</h2>
-        <div class="quickWeatherTools">
-          <div class="quickWeatherDate"><label for="quickWeatherDate">日付</label><input id="quickWeatherDate" type="date"></div>
-          <div class="quickWeatherShortcuts">
-            <button type="button" class="secondary" id="quickWeatherTodayBtn">今日</button>
-            <button type="button" class="secondary" id="quickWeatherTomorrowBtn">明日</button>
-          </div>
-        </div>
-        <div id="quickWeatherChips"></div>
-        <div class="row adminSaveRow">
-          <div><label for="quickWeatherAdminKey">管理キー</label><input id="quickWeatherAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
-          <div class="buttons"><button id="saveQuickWeatherBtn">かんたん天気を保存</button></div>
-        </div>
-        <div id="quickWeatherStatus" class="status"></div>
-      </div>
-
-      <div class="card s12">
-        <h2>未承認の天気報告</h2>
-        <div class="row">
-          <div><label for="weatherAdminKey">管理キー</label><input id="weatherAdminKey" type="password" autocomplete="off"></div>
-          <div class="buttons"><button class="secondary" id="refreshPendingWeatherBtn">一覧を更新</button></div>
-        </div>
-        <div id="pendingWeatherStatus" class="status"></div>
-        <div id="pendingWeatherReports" class="tableWrap"></div>
-      </div>
-
-      <div class="card s12">
-        <h2>ギフコかんたん追加</h2>
-        <div class="row">
-          <div><label for="quickGiftUrlInput">投稿URL</label><input id="quickGiftUrlInput" placeholder="https://x.com/..."></div>
-          <div>
-            <label for="quickGiftAdminKey">管理キー</label>
-            <input id="quickGiftAdminKey" type="password" autocomplete="off" placeholder="管理キー">
-            <div class="buttons"><button type="button" class="secondary" id="loadQuickGiftUrlBtn">URLから読み込む</button></div>
-          </div>
-        </div>
-        <div class="row one">
-          <div><label for="quickGiftTextInput">投稿文</label><textarea id="quickGiftTextInput" placeholder="公式X/Twitterの投稿文を貼り付け"></textarea></div>
-        </div>
-        <div class="row one">
-          <div>
-            <label for="quickGiftImageInput">スクショ</label>
-            <input id="quickGiftImageInput" type="file" accept="image/*">
-            <div id="quickGiftDrop" class="quickGiftDrop" tabindex="0">ここにスクショを貼り付けるか、上のボタンからアップロードできます。</div>
-            <img id="quickGiftPreview" class="quickGiftPreview" alt="スクショプレビュー" hidden>
-          </div>
-        </div>
-        <div class="buttons">
-          <button id="draftQuickGiftBtn">下書き作成</button>
-          <button class="secondary" id="ocrQuickGiftBtn">スクショを読み取る</button>
-          <button class="secondary" id="clearQuickGiftBtn">クリア</button>
-        </div>
-        <div id="quickGiftStatus" class="status"></div>
-        <textarea id="quickGiftOcrText" class="quickGiftOcrText" readonly hidden placeholder="OCRで読み取った全文"></textarea>
-        <div id="quickGiftConfirm" class="quickGiftConfirm" hidden>
-          <h3>これでいいですか？</h3>
-          <div class="row">
-            <div>
-              <label for="quickGiftCodeConfirm">code</label>
-              <input id="quickGiftCodeConfirm" placeholder="例：oceanguardians">
-              <select id="quickGiftCodeCandidateSelect" class="quickGiftCandidateSelect" hidden></select>
+        <div class="adminTabPanel active" data-admin-panel="daily" role="tabpanel">
+          <div class="card s12">
+            <h2>天気を登録</h2>
+            <div class="quickWeatherTools">
+              <div class="quickWeatherDate"><label for="quickWeatherDate">日付</label><input id="quickWeatherDate" type="date"></div>
+              <div class="quickWeatherDate">
+                <label for="quickWeatherStartSlot">最初の時間</label>
+                <select id="quickWeatherStartSlot">
+                  <option value="00">00時</option>
+                  <option value="06">06時</option>
+                  <option value="12">12時</option>
+                  <option value="18">18時</option>
+                </select>
+              </div>
+              <div class="quickWeatherShortcuts">
+                <button type="button" class="secondary" id="quickWeatherTodayBtn">今日</button>
+                <button type="button" class="secondary" id="quickWeatherTomorrowBtn">明日</button>
+              </div>
             </div>
-            <div><label for="quickGiftRewardConfirm">reward</label><input id="quickGiftRewardConfirm" placeholder="例：月の水晶×100"></div>
+            <div id="quickWeatherChips"></div>
+            <h3>週間予報</h3>
+            <p class="small">選択日の2日後〜6日後の天気をまとめて保存できます。</p>
+            <div id="quickWeekChips"></div>
+            <div class="row adminSaveRow">
+              <div><label for="quickWeatherAdminKey">管理キー</label><input id="quickWeatherAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
+              <div class="buttons"><button id="saveQuickWeatherBtn">天気と週間予報を保存</button></div>
+            </div>
+            <div id="quickWeatherStatus" class="status"></div>
           </div>
-          <div class="row">
-            <div><label for="quickGiftExpiresConfirm">expiresAt</label><input id="quickGiftExpiresConfirm" type="datetime-local"></div>
-            <div><label for="quickGiftSourceConfirm">sourceUrl</label><input id="quickGiftSourceConfirm" placeholder="https://..."></div>
-          </div>
-          <div class="row">
-            <div><label for="quickGiftMemoConfirm">memo</label><input id="quickGiftMemoConfirm" placeholder="任意"></div>
-            <div>
-              <label for="quickGiftStatusConfirm">status</label>
-              <select id="quickGiftStatusConfirm">
-                <option value="active">active</option>
-                <option value="expired">expired</option>
-                <option value="hidden">hidden</option>
-              </select>
+
+          <div class="card s12">
+            <h2>ギフコかんたん追加</h2>
+            <div class="row">
+              <div><label for="quickGiftUrlInput">投稿URL</label><input id="quickGiftUrlInput" placeholder="https://x.com/..."></div>
+              <div>
+                <label for="quickGiftAdminKey">管理キー</label>
+                <input id="quickGiftAdminKey" type="password" autocomplete="off" placeholder="管理キー">
+                <div class="buttons"><button type="button" class="secondary" id="loadQuickGiftUrlBtn">URLから読み込む</button></div>
+              </div>
+            </div>
+            <div class="row one">
+              <div><label for="quickGiftTextInput">投稿文</label><textarea id="quickGiftTextInput" placeholder="公式X/Twitterの投稿文を貼り付け"></textarea></div>
+            </div>
+            <div class="row one">
+              <div>
+                <label for="quickGiftImageInput">スクショ</label>
+                <input id="quickGiftImageInput" type="file" accept="image/*">
+                <div id="quickGiftDrop" class="quickGiftDrop" tabindex="0">ここにスクショを貼り付けるか、上のボタンからアップロードできます。</div>
+                <img id="quickGiftPreview" class="quickGiftPreview" alt="スクショプレビュー" hidden>
+              </div>
+            </div>
+            <div class="buttons">
+              <button id="draftQuickGiftBtn">下書き作成</button>
+              <button class="secondary" id="ocrQuickGiftBtn">スクショを読み取る</button>
+              <button class="secondary" id="clearQuickGiftBtn">クリア</button>
+            </div>
+            <div id="quickGiftStatus" class="status"></div>
+            <textarea id="quickGiftOcrText" class="quickGiftOcrText" readonly hidden placeholder="OCRで読み取った全文"></textarea>
+            <div id="quickGiftConfirm" class="quickGiftConfirm" hidden>
+              <h3>これでいいですか？</h3>
+              <div class="row">
+                <div>
+                  <label for="quickGiftCodeConfirm">code</label>
+                  <input id="quickGiftCodeConfirm" placeholder="例：oceanguardians">
+                  <select id="quickGiftCodeCandidateSelect" class="quickGiftCandidateSelect" hidden></select>
+                </div>
+                <div><label for="quickGiftRewardConfirm">reward</label><input id="quickGiftRewardConfirm" placeholder="例：月の水晶×100"></div>
+              </div>
+              <div class="row">
+                <div><label for="quickGiftExpiresConfirm">expiresAt</label><input id="quickGiftExpiresConfirm" type="datetime-local"></div>
+                <div><label for="quickGiftSourceConfirm">sourceUrl</label><input id="quickGiftSourceConfirm" placeholder="https://..."></div>
+              </div>
+              <div class="row">
+                <div><label for="quickGiftMemoConfirm">memo</label><input id="quickGiftMemoConfirm" placeholder="任意"></div>
+                <div>
+                  <label for="quickGiftStatusConfirm">status</label>
+                  <select id="quickGiftStatusConfirm">
+                    <option value="active">active</option>
+                    <option value="expired">expired</option>
+                    <option value="hidden">hidden</option>
+                  </select>
+                </div>
+              </div>
+              <div class="buttons"><button id="saveQuickGiftBtn">OKで保存</button></div>
             </div>
           </div>
-          <div class="buttons"><button id="saveQuickGiftBtn">OKで保存</button></div>
-        </div>
-      </div>
 
-      <div class="card s12">
-        <h2>ギフトコード管理</h2>
-        <div class="row">
-          <div><label for="giftCodeInput">code</label><input id="giftCodeInput" placeholder="例：CODE123"></div>
-          <div><label for="giftRewardInput">reward</label><input id="giftRewardInput" placeholder="例：願い星×10"></div>
-        </div>
-        <div class="row">
-          <div><label for="giftExpiresAtInput">expiresAt</label><input id="giftExpiresAtInput" type="datetime-local"></div>
-          <div><label for="giftSourceUrlInput">sourceUrl</label><input id="giftSourceUrlInput" placeholder="https://..."></div>
-        </div>
-        <div class="row">
-          <div><label for="giftMemoInput">memo</label><input id="giftMemoInput" placeholder="任意"></div>
-          <div>
-            <label for="giftStatusInput">status</label>
-            <select id="giftStatusInput">
-              <option value="active">active</option>
-              <option value="expired">expired</option>
-              <option value="hidden">hidden</option>
-            </select>
+          <div class="card s12">
+            <h2>未承認の天気報告</h2>
+            <div class="row">
+              <div><label for="weatherAdminKey">管理キー</label><input id="weatherAdminKey" type="password" autocomplete="off"></div>
+              <div class="buttons"><button class="secondary" id="refreshPendingWeatherBtn">一覧を更新</button></div>
+            </div>
+            <div id="pendingWeatherStatus" class="status"></div>
+            <div id="pendingWeatherReports" class="tableWrap"></div>
           </div>
         </div>
-        <div class="row adminSaveRow">
-          <div><label for="giftAdminKey">管理キー</label><input id="giftAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
-          <div class="buttons">
-            <button id="saveGiftCodeBtn">ギフトコードを保存</button>
-            <button class="secondary" id="clearGiftCodeBtn">新規入力</button>
-            <button class="secondary" id="refreshGiftCodesBtn">一覧を更新</button>
+
+        <div class="adminTabPanel" data-admin-panel="manage" role="tabpanel">
+          <div class="card s12">
+            <h2>登録済み天気を修正</h2>
+            <div class="row">
+              <div><label for="approvedWeatherDate">日付</label><input id="approvedWeatherDate" type="date"></div>
+              <div class="buttons"><button class="secondary" id="loadApprovedWeatherBtn">登録済みを読み込む</button></div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="approvedStartSlot">最初の時間</label>
+                <select id="approvedStartSlot">
+                  <option value="00">00時</option>
+                  <option value="06">06時</option>
+                  <option value="12">12時</option>
+                  <option value="18">18時</option>
+                </select>
+              </div>
+              <div><label for="approvedWeatherMemo">メモ</label><input id="approvedWeatherMemo" placeholder="任意"></div>
+            </div>
+            <div id="approvedWeatherChips"></div>
+            <h3>週間予報</h3>
+            <div id="approvedWeekChips"></div>
+            <div class="row adminSaveRow">
+              <div><label for="approvedWeatherAdminKey">管理キー</label><input id="approvedWeatherAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
+              <div class="buttons"><button id="saveApprovedWeatherBtn">修正を保存</button></div>
+            </div>
+            <div id="approvedWeatherStatus" class="status"></div>
           </div>
-        </div>
-        <div id="giftCodeStatus" class="status"></div>
-        <div id="giftCodeAdminList" class="giftAdminList tableWrap"></div>
-      </div>
 
-      <div class="card s12">
-        <h2>お知らせ管理</h2>
-        <div class="row">
-          <div><label for="noticeDateInput">noticeDate</label><input id="noticeDateInput" type="date"></div>
-          <div><label for="noticeTextInput">noticeText</label><input id="noticeTextInput" placeholder="例：ギフトコード機能を追加しました"></div>
-        </div>
-        <div class="row adminSaveRow">
-          <div><label for="noticeAdminKey">管理キー</label><input id="noticeAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
-          <div class="buttons">
-            <button id="saveNoticeBtn">お知らせを保存</button>
-            <button class="secondary" id="clearNoticeBtn">お知らせを空にする</button>
+          <div class="card s12">
+            <h2>ギフトコード管理</h2>
+            <div class="row">
+              <div><label for="giftCodeInput">code</label><input id="giftCodeInput" placeholder="例：CODE123"></div>
+              <div><label for="giftRewardInput">reward</label><input id="giftRewardInput" placeholder="例：願い星×10"></div>
+            </div>
+            <div class="row">
+              <div><label for="giftExpiresAtInput">expiresAt</label><input id="giftExpiresAtInput" type="datetime-local"></div>
+              <div><label for="giftSourceUrlInput">sourceUrl</label><input id="giftSourceUrlInput" placeholder="https://..."></div>
+            </div>
+            <div class="row">
+              <div><label for="giftMemoInput">memo</label><input id="giftMemoInput" placeholder="任意"></div>
+              <div>
+                <label for="giftStatusInput">status</label>
+                <select id="giftStatusInput">
+                  <option value="active">active</option>
+                  <option value="expired">expired</option>
+                  <option value="hidden">hidden</option>
+                </select>
+              </div>
+            </div>
+            <div class="row adminSaveRow">
+              <div><label for="giftAdminKey">管理キー</label><input id="giftAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
+              <div class="buttons">
+                <button id="saveGiftCodeBtn">ギフトコードを保存</button>
+                <button class="secondary" id="clearGiftCodeBtn">新規入力</button>
+                <button class="secondary" id="refreshGiftCodesBtn">一覧を更新</button>
+              </div>
+            </div>
+            <div id="giftCodeStatus" class="status"></div>
+            <div id="giftCodeAdminList" class="giftAdminList tableWrap"></div>
           </div>
-        </div>
-        <div id="noticeStatus" class="status"></div>
-      </div>
 
-      <div class="card s12">
-        <h2>訂正ログ</h2>
-        <div class="row">
-          <div><label for="correctionDate">日付</label><input id="correctionDate" type="date"></div>
-          <div><label for="correctionMemo">メモ</label><input id="correctionMemo" placeholder="例：友達から報告"></div>
-        </div>
-        <div id="correctionExpected" class="expectedBox"></div>
-        <div class="row">
-          <div><label for="actualFluorite">実際の無垢な蛍石</label><input id="actualFluorite" placeholder="例：5番"></div>
-          <div><label for="actualOak">実際のツルツルオーク</label><input id="actualOak" placeholder="例：9番"></div>
-        </div>
-        <div class="buttons">
-          <button class="secondary" id="saveCorrectionBtn">保存</button>
-          <button id="saveApplyCorrectionBtn">保存して表示用データにも反映</button>
-        </div>
-        <div id="correctionStatus" class="status"></div>
-        <div id="correctionsTable" class="tableWrap"></div>
-      </div>
+          <div class="card s12">
+            <h2>お知らせ管理</h2>
+            <div class="row">
+              <div><label for="noticeDateInput">noticeDate</label><input id="noticeDateInput" type="date"></div>
+              <div><label for="noticeTextInput">noticeText</label><input id="noticeTextInput" placeholder="例：ギフトコード機能を追加しました"></div>
+            </div>
+            <div class="row adminSaveRow">
+              <div><label for="noticeAdminKey">管理キー</label><input id="noticeAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
+              <div class="buttons">
+                <button id="saveNoticeBtn">お知らせを保存</button>
+                <button class="secondary" id="clearNoticeBtn">お知らせを空にする</button>
+              </div>
+            </div>
+            <div id="noticeStatus" class="status"></div>
+          </div>
 
-      <div class="card s6">
-        <h2>Webで拾った文章をまとめて貼る</h2>
-        <textarea id="bulkText" placeholder="例：
+          <details class="card s12 adminDetails">
+            <summary>詳細な天気登録・編集</summary>
+            <div class="row">
+              <div><label for="adminWeatherDate">日付</label><input id="adminWeatherDate" type="date"></div>
+              <div>
+                <label for="adminStartSlot">最初の時間</label>
+                <select id="adminStartSlot">
+                  <option value="00">00時</option>
+                  <option value="06">06時</option>
+                  <option value="12">12時</option>
+                  <option value="18">18時</option>
+                </select>
+              </div>
+            </div>
+            <div class="row one">
+              <div><label for="adminWeatherMemo">メモ</label><input id="adminWeatherMemo" placeholder="任意"></div>
+            </div>
+            <div id="adminWeatherChips"></div>
+            <h3>週間予報</h3>
+            <div id="adminWeekChips"></div>
+            <div class="row adminSaveRow">
+              <div><label for="adminSaveWeatherAdminKey">管理キー</label><input id="adminSaveWeatherAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
+              <div class="buttons"><button id="saveAdminWeatherBtn">天気を保存</button></div>
+            </div>
+            <div id="adminWeatherStatus" class="status"></div>
+          </details>
+
+          <details class="card s12 adminDetails">
+            <summary>採取場所の周期データを修正</summary>
+            <p class="notice">採取場所は登録済みの周期データから自動表示されます。仕様変更やデータ訂正時のみ使用してください。</p>
+            <div class="row">
+              <div><label for="obsDate">日付</label><input id="obsDate" type="date"></div>
+              <div><label for="obsMemo">メモ</label><input id="obsMemo" placeholder="任意"></div>
+            </div>
+            <div class="row">
+              <div><label for="obsOak">ツルツルオーク</label><input id="obsOak" placeholder="例：11番"></div>
+              <div><label for="obsFluorite">無垢な蛍石</label><input id="obsFluorite" placeholder="例：7番"></div>
+            </div>
+            <div class="buttons"><button id="addObsBtn">登録して反映</button></div>
+            <div id="obsStatus" class="status"></div>
+          </details>
+        </div>
+
+        <div class="adminTabPanel" data-admin-panel="data" role="tabpanel">
+          <details class="card s12 adminDetails">
+            <summary>訂正ログ</summary>
+            <div class="row">
+              <div><label for="correctionDate">日付</label><input id="correctionDate" type="date"></div>
+              <div><label for="correctionMemo">メモ</label><input id="correctionMemo" placeholder="例：友達から報告"></div>
+            </div>
+            <div id="correctionExpected" class="expectedBox"></div>
+            <div class="row">
+              <div><label for="actualFluorite">実際の無垢な蛍石</label><input id="actualFluorite" placeholder="例：5番"></div>
+              <div><label for="actualOak">実際のツルツルオーク</label><input id="actualOak" placeholder="例：9番"></div>
+            </div>
+            <div class="buttons">
+              <button class="secondary" id="saveCorrectionBtn">保存</button>
+              <button id="saveApplyCorrectionBtn">保存して表示用データにも反映</button>
+            </div>
+            <div id="correctionStatus" class="status"></div>
+            <div id="correctionsTable" class="tableWrap"></div>
+          </details>
+
+          <details class="card s12 adminDetails">
+            <summary>Webで拾った文章をまとめて貼る</summary>
+            <textarea id="bulkText" placeholder="例：
 2026/06/25
 ツルツルオーク 11番地
 無垢な蛍石 7番地"></textarea>
-        <div class="buttons">
-          <button id="parseBtn">読み取り</button>
-          <button class="secondary" id="applyParsedBtn">読み取った分を登録</button>
-        </div>
-        <div id="parseStatus" class="status"></div>
-        <div id="parsedTable"></div>
-      </div>
+            <div class="buttons">
+              <button id="parseBtn">読み取り</button>
+              <button class="secondary" id="applyParsedBtn">読み取った分を登録</button>
+            </div>
+            <div id="parseStatus" class="status"></div>
+            <div id="parsedTable"></div>
+          </details>
 
-      <div class="card s12">
-        <h2>蓄積データ</h2>
-        <details open><summary>表示用データ</summary><div id="cycleTable"></div></details>
-        <br>
-        <details><summary>観測ログ</summary><div id="obsTable"></div></details>
-        <br>
-        <details><summary>天気ログ</summary><div id="weatherTable" class="tableWrap"></div></details>
-      </div>
+          <div class="card s12">
+            <h2>各種データ</h2>
+            <details open><summary>表示用データ</summary><div id="cycleTable"></div></details>
+            <br>
+            <details><summary>観測ログ</summary><div id="obsTable"></div></details>
+            <br>
+            <details><summary>天気ログ</summary><div id="weatherTable" class="tableWrap"></div></details>
+          </div>
 
-      <div class="card s6">
-        <h2>内部設定</h2>
-        <p class="small">通常は変更不要です。日付切替は朝6時固定です。</p>
-        <div class="row">
-          <div><label for="baseDate">基準日</label><input id="baseDate" type="date"></div>
-          <div><label for="baseCycleDay">基準日の内部順</label><input id="baseCycleDay" type="number" min="1" max="50"></div>
-        </div>
-        <div class="row one">
-          <div><label for="cycleLength">周期日数</label><input id="cycleLength" type="number" min="2" max="365"></div>
-        </div>
-        <input id="rolloverHour" type="hidden" value="6">
-        <div class="buttons"><button id="saveSettingsBtn">設定を保存</button></div>
-      </div>
+          <div class="adminSettingsGrid">
+            <div class="card s12">
+              <h2>内部設定</h2>
+              <p class="small">通常は変更不要です。日付切替は朝6時固定です。</p>
+              <div class="row">
+                <div><label for="baseDate">基準日</label><input id="baseDate" type="date"></div>
+                <div><label for="baseCycleDay">基準日の内部順</label><input id="baseCycleDay" type="number" min="1" max="50"></div>
+              </div>
+              <div class="row one">
+                <div><label for="cycleLength">周期日数</label><input id="cycleLength" type="number" min="2" max="365"></div>
+              </div>
+              <input id="rolloverHour" type="hidden" value="6">
+              <div class="buttons"><button id="saveSettingsBtn">設定を保存</button></div>
+            </div>
 
-      <div class="card s6">
-        <h2>バックアップ</h2>
-        <p class="small">ブラウザ内保存なので、編集したらJSONを書き出しておくのがおすすめです。</p>
-        <div class="buttons">
-          <button id="exportBtn">JSONを書き出し</button>
-          <button class="secondary" id="showImportBtn">JSONを読み込み</button>
-          <button class="danger" id="resetBtn">初期データに戻す</button>
+            <div class="card s12">
+              <h2>バックアップ</h2>
+              <p class="small">ブラウザ内保存なので、編集したらJSONを書き出しておくのがおすすめです。</p>
+              <div class="buttons">
+                <button id="exportBtn">JSONを書き出し</button>
+                <button class="secondary" id="showImportBtn">JSONを読み込み</button>
+                <button class="danger" id="resetBtn">初期データに戻す</button>
+              </div>
+              <div id="importBox" style="display:none;margin-top:12px">
+                <textarea id="importText" placeholder="ここにJSONを貼り付け"></textarea>
+                <div class="buttons"><button id="importBtn">読み込む</button></div>
+              </div>
+              <div id="backupStatus" class="status"></div>
+            </div>
+          </div>
         </div>
-        <div id="importBox" style="display:none;margin-top:12px">
-          <textarea id="importText" placeholder="ここにJSONを貼り付け"></textarea>
-          <div class="buttons"><button id="importBtn">読み込む</button></div>
-        </div>
-        <div id="backupStatus" class="status"></div>
       </div>
     </div>
   </section>
@@ -2381,7 +2465,7 @@ const ids = [
   "reportWeatherDate","reportStartSlot","reportWeatherMemo","reportPostKey","reportWeatherChips","reportWeekChips","submitWeatherReportBtn","weatherReportStatus",
   "adminWeatherDate","adminStartSlot","adminWeatherMemo","adminWeatherChips","adminWeekChips","adminSaveWeatherAdminKey","saveAdminWeatherBtn","adminWeatherStatus",
   "approvedWeatherDate","loadApprovedWeatherBtn","approvedStartSlot","approvedWeatherMemo","approvedWeatherChips","approvedWeekChips","approvedWeatherAdminKey","saveApprovedWeatherBtn","approvedWeatherStatus",
-  "quickWeatherDate","quickWeatherTodayBtn","quickWeatherTomorrowBtn","quickWeatherChips","quickWeatherAdminKey","saveQuickWeatherBtn","quickWeatherStatus",
+  "quickWeatherDate","quickWeatherStartSlot","quickWeatherTodayBtn","quickWeatherTomorrowBtn","quickWeatherChips","quickWeekChips","quickWeatherAdminKey","saveQuickWeatherBtn","quickWeatherStatus",
   "weatherAdminKey","refreshPendingWeatherBtn","pendingWeatherStatus","pendingWeatherReports",
   "quickGiftUrlInput","quickGiftAdminKey","loadQuickGiftUrlBtn","quickGiftTextInput","quickGiftImageInput","quickGiftDrop","quickGiftPreview","draftQuickGiftBtn","ocrQuickGiftBtn","clearQuickGiftBtn","quickGiftStatus","quickGiftOcrText","quickGiftConfirm",
   "quickGiftCodeConfirm","quickGiftCodeCandidateSelect","quickGiftRewardConfirm","quickGiftExpiresConfirm","quickGiftSourceConfirm","quickGiftMemoConfirm","quickGiftStatusConfirm","saveQuickGiftBtn",
@@ -2621,7 +2705,8 @@ function slotLabel(key, startSlot){
   const index = slotIndex(key);
   if(index < 0) return "";
   const hour = slotHourAt(startSlot, index);
-  return `${hour}時`;
+  const startIndex = WEATHER_START_SLOTS.indexOf(normalizeStartSlot(startSlot));
+  return `${startIndex + index >= WEATHER_START_SLOTS.length ? "翌" : ""}${hour}時`;
 }
 function slotLabels(startSlot){
   return WEATHER_SLOT_KEYS.map(key => [key, slotLabel(key, startSlot)]);
@@ -3832,19 +3917,18 @@ function chipGroupHtml(prefix, startSlot){
     </div>
   `).join("");
 }
-function quickWeatherGroupHtml(prefix){
-  const labels = ["00時","06時","12時","18時","翌00時"];
-  return WEATHER_SLOT_KEYS.map((key, index) => `
+function quickWeatherGroupHtml(prefix, startSlot){
+  return slotLabels(startSlot).map(([key, label]) => `
     <div class="quickWeatherSlot">
-      <div class="quickWeatherTime">${esc(labels[index])}</div>
+      <div class="quickWeatherTime">${esc(label)}</div>
       <div class="chipGroup" id="${esc(prefix)}-${esc(key)}">
-        ${WEATHER_OPTIONS.map(option => `<button type="button" class="weatherChip" data-weather-option="${esc(option.value)}" aria-label="${esc(option.label)}"><span class="weatherChipIcon" aria-hidden="true">${esc(weatherIcon(option.value, key, "00"))}</span><span class="weatherChipLabel">${esc(weatherChipLabel(option))}</span></button>`).join("")}
+        ${WEATHER_OPTIONS.map(option => `<button type="button" class="weatherChip" data-weather-option="${esc(option.value)}" aria-label="${esc(option.label)}"><span class="weatherChipIcon" aria-hidden="true">${esc(weatherIcon(option.value, key, startSlot))}</span><span class="weatherChipLabel">${esc(weatherChipLabel(option))}</span></button>`).join("")}
         <button type="button" class="weatherChip secondary" data-weather-clear="1" aria-label="未登録"><span class="weatherChipIcon" aria-hidden="true">—</span><span class="weatherChipLabel">—</span></button>
       </div>
     </div>
   `).join("");
 }
-function weekChipGroupHtml(prefix, baseDate){
+function weekChipGroupHtml(prefix, baseDate, includeClear=false){
   const base = baseDate || E.targetDate.value || dateValue(gameToday());
   return WEATHER_WEEK_KEYS.map((key, index) => {
     return `
@@ -3852,6 +3936,7 @@ function weekChipGroupHtml(prefix, baseDate){
         <label>${esc(weekDateLabel(base, index))}</label>
         <div class="chipGroup" id="${esc(prefix)}-${esc(key)}">
           ${WEATHER_OPTIONS.map(option => `<button type="button" class="weatherChip" data-weather-option="${esc(option.value)}" aria-label="${esc(option.label)}"><span class="weatherChipIcon" aria-hidden="true">${esc(weatherIcon(option.value))}</span><span class="weatherChipLabel">${esc(weatherChipLabel(option))}</span></button>`).join("")}
+          ${includeClear ? `<button type="button" class="weatherChip secondary" data-weather-clear="1" aria-label="未登録"><span class="weatherChipIcon" aria-hidden="true">—</span><span class="weatherChipLabel">—</span></button>` : ""}
         </div>
       </div>
     `;
@@ -3895,19 +3980,20 @@ function weatherWeekContainer(prefix){
   return {
     "report-week":E.reportWeekChips,
     "admin-week":E.adminWeekChips,
-    "approved-week":E.approvedWeekChips
+    "approved-week":E.approvedWeekChips,
+    "quick-week":E.quickWeekChips
   }[prefix];
 }
 function renderChipGroups(prefix, startSlot, slots={}){
   const container = weatherChipContainer(prefix);
   if(!container) return;
-  container.innerHTML = prefix === "quick-weather" ? quickWeatherGroupHtml(prefix) : chipGroupHtml(prefix, startSlot);
+  container.innerHTML = prefix === "quick-weather" ? quickWeatherGroupHtml(prefix, startSlot) : chipGroupHtml(prefix, startSlot);
   setChipSelections(prefix, slots);
 }
 function renderWeekChipGroups(prefix, baseDate, weeks={}){
   const container = weatherWeekContainer(prefix);
   if(!container) return;
-  container.innerHTML = weekChipGroupHtml(prefix, baseDate);
+  container.innerHTML = weekChipGroupHtml(prefix, baseDate, prefix === "quick-week");
   setWeekSelections(prefix, weeks);
 }
 
@@ -3960,9 +4046,11 @@ async function loadApprovedWeatherForm(fetchRemote=false){
   const display = weatherData(targetDate);
   if(display){
     E.quickWeatherDate.value = targetDate;
-    renderChipGroups("quick-weather", "00", display.slots || {});
+    E.quickWeatherStartSlot.value = normalizeStartSlot(display.startSlot, currentStartSlot());
+    renderChipGroups("quick-weather", E.quickWeatherStartSlot.value, display.slots || {});
+    renderWeekChipGroups("quick-week", E.quickWeatherDate.value, display.weeks || {});
     E.quickWeatherStatus.textContent = "蓄積表示から読み込みました。必要な枠だけ修正して保存できます。";
-    E.approvedWeatherStatus.textContent = "蓄積表示から読み込みました。元データはないため、かんたん天気入力側に 00 / 06 / 12 / 18 / 翌00 を反映しました。";
+    E.approvedWeatherStatus.textContent = "蓄積表示から読み込みました。元データはないため、日常更新の天気登録側に表示中の天気を反映しました。";
     return;
   }
   E.approvedWeatherStatus.textContent = "該当データがありません。この日付の元データはありません。";
@@ -3989,7 +4077,9 @@ async function saveApprovedWeatherForm(){
 
 function loadQuickWeatherFromDate(){
   const w = rawWeatherData(E.quickWeatherDate.value);
-  renderChipGroups("quick-weather", "00", w?.slots || {});
+  E.quickWeatherStartSlot.value = normalizeStartSlot(w?.startSlot, currentStartSlot());
+  renderChipGroups("quick-weather", E.quickWeatherStartSlot.value, w?.slots || {});
+  renderWeekChipGroups("quick-week", E.quickWeatherDate.value, w?.weeks || {});
 }
 
 async function saveQuickWeather(){
@@ -4000,9 +4090,9 @@ async function saveQuickWeather(){
   const old = rawWeatherData(E.quickWeatherDate.value);
   const item = {
     date:E.quickWeatherDate.value,
-    startSlot:"00",
+    startSlot:E.quickWeatherStartSlot.value,
     slots:chipSelections("quick-weather"),
-    weeks:old?.weeks || {},
+    weeks:weekSelections("quick-week"),
     memo:old?.memo || ""
   };
   try{
@@ -4068,13 +4158,17 @@ async function apiPost(payload){
 
 async function saveApprovedWeatherToApi(item){
   if(!WEATHER_API_URL) return {ok:false, skipped:true};
+  const slots = item.slots || {};
+  const weeks = item.weeks || {};
   const result = await apiPost({
     action:"saveApproved",
     adminKey:adminKeyValue(),
     date:item.date,
     startSlot:item.startSlot,
-    slots:item.slots,
-    weeks:item.weeks,
+    slots,
+    weeks,
+    ...Object.fromEntries(WEATHER_SLOT_KEYS.map(key => [key, slots[key] || []])),
+    ...Object.fromEntries(WEATHER_WEEK_KEYS.map(key => [key, weeks[key] || []])),
     memo:item.memo,
     author:"管理者"
   });
@@ -4421,6 +4515,21 @@ function setAdminPanelActive(){
   document.getElementById("adminTab")?.classList.add("active");
   document.getElementById("admin")?.classList.add("active");
 }
+function setAdminSubtab(name = "daily"){
+  document.querySelectorAll("[data-admin-subtab]").forEach(btn => {
+    const active = btn.dataset.adminSubtab === name;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  document.querySelectorAll("[data-admin-panel]").forEach(panel => {
+    panel.classList.toggle("active", panel.dataset.adminPanel === name);
+  });
+}
+function setupAdminSubtabs(){
+  document.querySelectorAll("[data-admin-subtab]").forEach(btn => {
+    btn.onclick = () => setAdminSubtab(btn.dataset.adminSubtab);
+  });
+}
 function setAdminUnlocked(unlocked){
   const adminPanel = document.getElementById("admin");
   if(!adminPanel) return;
@@ -4450,6 +4559,8 @@ function setupAdminVisibility(){
 
 function init(){
   setupAdminVisibility();
+  setupAdminSubtabs();
+  setAdminSubtab("daily");
   E.targetDate.value = dateValue(gameToday());
   E.obsDate.value = E.targetDate.value;
   E.noticeDateInput.value = E.targetDate.value;
@@ -4461,13 +4572,15 @@ function init(){
   E.reportStartSlot.value = currentStartSlot();
   E.adminStartSlot.value = currentStartSlot();
   E.approvedStartSlot.value = currentStartSlot();
+  E.quickWeatherStartSlot.value = currentStartSlot();
   renderChipGroups("report-weather", E.reportStartSlot.value);
   renderChipGroups("admin-weather", E.adminStartSlot.value);
   renderChipGroups("approved-weather", E.approvedStartSlot.value);
-  renderChipGroups("quick-weather", "00");
+  renderChipGroups("quick-weather", E.quickWeatherStartSlot.value);
   renderWeekChipGroups("report-week", E.reportWeatherDate.value);
   renderWeekChipGroups("admin-week", E.adminWeatherDate.value);
   renderWeekChipGroups("approved-week", E.approvedWeatherDate.value);
+  renderWeekChipGroups("quick-week", E.quickWeatherDate.value);
   loadAdminWeatherForm();
   loadApprovedWeatherForm();
   loadQuickWeatherFromDate();
@@ -4503,7 +4616,10 @@ function init(){
       document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
       btn.classList.add("active");
       document.getElementById(btn.dataset.tab).classList.add("active");
-      if(btn.dataset.adminLink != null) setAdminUnlocked(Boolean(adminSessionKey));
+      if(btn.dataset.adminLink != null){
+        setAdminUnlocked(Boolean(adminSessionKey));
+        setAdminSubtab("daily");
+      }
       renderToday();
     };
   });
@@ -4673,6 +4789,15 @@ function init(){
       chip.classList.toggle("selected", !wasSelected);
     }
   };
+  E.quickWeekChips.onclick = event => {
+    const clear = event.target.closest("[data-weather-clear]");
+    if(clear){
+      clear.closest(".chipGroup")?.querySelectorAll(".weatherChip.selected").forEach(chip => chip.classList.remove("selected"));
+      return;
+    }
+    const chip = event.target.closest(".weatherChip");
+    if(chip) chip.classList.toggle("selected");
+  };
   E.submitWeatherReportBtn.onclick = submitWeatherReport;
   E.reportWeatherDate.onchange = () => {
     const weeks = weekSelections("report-week");
@@ -4731,6 +4856,10 @@ function init(){
   };
   E.saveApprovedWeatherBtn.onclick = saveApprovedWeatherForm;
   E.quickWeatherDate.onchange = loadQuickWeatherFromDate;
+  E.quickWeatherStartSlot.onchange = () => {
+    const slots = chipSelections("quick-weather");
+    renderChipGroups("quick-weather", E.quickWeatherStartSlot.value, slots);
+  };
   E.quickWeatherTodayBtn.onclick = () => {
     E.quickWeatherDate.value = dateValue(gameToday());
     loadQuickWeatherFromDate();
