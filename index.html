@@ -3324,7 +3324,9 @@ async function saveGiftItem(item, statusEl){
     ...item
   });
   if(result.ok === false) throw new Error(result.error || "APIエラー");
-  statusEl.textContent = "ギフトコードを保存しました。";
+  statusEl.textContent = result.discordWarning
+    ? "ギフトコードは保存しましたが、Discord通知に失敗しました。"
+    : "ギフトコードを保存しました。";
   toast("ギフトコードを保存しました");
   await fetchGiftCodes(true);
   await fetchSiteNotice();
@@ -4157,7 +4159,9 @@ async function saveGiftCode(){
       ...item
     });
     if(result.ok === false) throw new Error(result.error || "APIエラー");
-    E.giftCodeStatus.textContent = "ギフトコードを保存しました。";
+    E.giftCodeStatus.textContent = result.discordWarning
+      ? "ギフトコードは保存しましたが、Discord通知に失敗しました。"
+      : "ギフトコードを保存しました。";
     toast("ギフトコードを保存しました");
     clearGiftForm();
     await fetchGiftCodes(true);

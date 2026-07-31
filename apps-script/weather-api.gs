@@ -1,5 +1,7 @@
 const POST_KEY_PROPERTY = "POST_KEY";
 const ADMIN_KEY_PROPERTY = "ADMIN_KEY";
+const DISCORD_WEBHOOK_URL_PROPERTY = "DISCORD_WEBHOOK_URL";
+const HEARTOPIA_DAILY_URL = "https://sg-log.github.io/heartopia-daily/";
 const SHEET_NAME = "weather_reports";
 const HEADERS = [
   "id", "date", "startSlot", "slot0", "slot1", "slot2", "slot3", "slot4",
@@ -264,7 +266,79 @@ function saveGiftCode_(body) {
 
   sheet.appendRow(giftRow_(item));
   saveAutoGiftNotice_("created");
-  return json_({ ok: true, mode: "created", code: item });
+  const notifyResult = item.status === "active"
+    ? notifyDiscordGiftCode_(item)
+    : { notified: false };
+  const response = { ok: true, mode: "created", code: item, discordNotified: Boolean(notifyResult.notified) };
+  if (notifyResult.warning) {
+    response.discordWarning = notifyResult.warning;
+  }
+  return json_(response);
+}
+
+function notifyDiscordGiftCode_(item) {
+  const webhookUrl = PropertiesService.getScriptProperties().getProperty(DISCORD_WEBHOOK_URL_PROPERTY);
+  if (!webhookUrl) return { notified: false };
+
+  try {
+    const lines = [
+      "🎁 新しいギフトコードを追加しました！",
+      "",
+      "コード：" + inlineDiscordCode_(item.code)
+    ];
+    if (item.reward) {
+      lines.push("報酬：", sanitizeDiscordText_(item.reward));
+    }
+    if (item.expiresAt) {
+      lines.push("", "期限：" + formatDiscordGiftExpiry_(item.expiresAt));
+    }
+    if (item.sourceUrl) {
+      lines.push("", "元ポスト：" + sanitizeDiscordUrl_(item.sourceUrl));
+    }
+    lines.push("", "Heartopia Daily：", HEARTOPIA_DAILY_URL);
+
+    const response = UrlFetchApp.fetch(webhookUrl, {
+      method: "post",
+      contentType: "application/json",
+      muteHttpExceptions: true,
+      payload: JSON.stringify({
+        content: lines.join("\n"),
+        allowed_mentions: { parse: [] }
+      })
+    });
+    const code = response.getResponseCode();
+    if (code < 200 || code >= 300) {
+      return { notified: false, warning: "Discord通知に失敗しました" };
+    }
+    return { notified: true };
+  } catch (error) {
+    return { notified: false, warning: "Discord通知に失敗しました" };
+  }
+}
+
+function inlineDiscordCode_(value) {
+  return "`" + String(value || "").replace(/`/g, "") + "`";
+}
+
+function sanitizeDiscordText_(value) {
+  return String(value || "")
+    .replace(/@everyone/gi, "@\u200beveryone")
+    .replace(/@here/gi, "@\u200bhere")
+    .replace(/<@&?\d+>/g, "")
+    .trim();
+}
+
+function sanitizeDiscordUrl_(value) {
+  const text = String(value || "").trim();
+  return /^https?:\/\//i.test(text) ? text : "";
+}
+
+function formatDiscordGiftExpiry_(value) {
+  const text = String(value || "").trim();
+  const normalized = formatDateTimeValue_(text);
+  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (match) return match[1] + "/" + match[2] + "/" + match[3] + " " + match[4] + ":" + match[5];
+  return sanitizeDiscordText_(text);
 }
 
 function xPostOembed_(body) {
