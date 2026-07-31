@@ -3,11 +3,14 @@ const ADMIN_KEY_PROPERTY = "ADMIN_KEY";
 const DISCORD_WEBHOOK_URL_PROPERTY = "DISCORD_WEBHOOK_URL";
 const HEARTOPIA_DAILY_URL = "https://sg-log.github.io/heartopia-daily/";
 const SHEET_NAME = "weather_reports";
+const OLD_WEEK_HEADERS = ["week1", "week2", "week3", "week4", "week5"];
+const WEEK_HEADERS = ["week1", "week2", "week3", "week4", "week5", "week6", "week7"];
+const OLD_HEADERS = [
+  "id", "date", "startSlot", "slot0", "slot1", "slot2", "slot3", "slot4"
+].concat(OLD_WEEK_HEADERS, ["memo", "status", "投稿者", "createdAt", "approvedAt"]);
 const HEADERS = [
-  "id", "date", "startSlot", "slot0", "slot1", "slot2", "slot3", "slot4",
-  "week1", "week2", "week3", "week4", "week5",
-  "memo", "status", "投稿者", "createdAt", "approvedAt"
-];
+  "id", "date", "startSlot", "slot0", "slot1", "slot2", "slot3", "slot4"
+].concat(WEEK_HEADERS, ["memo", "status", "投稿者", "createdAt", "approvedAt"]);
 const GIFT_SHEET_NAME = "gift_codes";
 const GIFT_HEADERS = [
   "id", "code", "reward", "expiresAt", "sourceUrl", "memo", "status", "createdAt", "updatedAt"
@@ -83,18 +86,16 @@ function submit_(body) {
     encodeSlot_(slots.slot1),
     encodeSlot_(slots.slot2),
     encodeSlot_(slots.slot3),
-    encodeSlot_(slots.slot4),
-    encodeSlot_(weeks.week1),
-    encodeSlot_(weeks.week2),
-    encodeSlot_(weeks.week3),
-    encodeSlot_(weeks.week4),
-    encodeSlot_(weeks.week5),
+    encodeSlot_(slots.slot4)
+  ].concat(WEEK_HEADERS.map(function(key) {
+    return encodeSlot_(weeks[key]);
+  }), [
     String(body.memo || ""),
     "pending",
     String(body.author || body["投稿者"] || ""),
     now,
     ""
-  ];
+  ]);
   getSheet_().appendRow(row);
   return json_({ ok: true, id: row[0], status: "pending" });
 }
@@ -164,18 +165,16 @@ function approvedRow_(item) {
     encodeSlot_(item.slots.slot1),
     encodeSlot_(item.slots.slot2),
     encodeSlot_(item.slots.slot3),
-    encodeSlot_(item.slots.slot4),
-    encodeSlot_(item.weeks.week1),
-    encodeSlot_(item.weeks.week2),
-    encodeSlot_(item.weeks.week3),
-    encodeSlot_(item.weeks.week4),
-    encodeSlot_(item.weeks.week5),
+    encodeSlot_(item.slots.slot4)
+  ].concat(WEEK_HEADERS.map(function(key) {
+    return encodeSlot_(item.weeks[key]);
+  }), [
     item.memo,
     "approved",
     item.author,
     item.createdAt,
     item.approvedAt
-  ];
+  ]);
 }
 
 function changeStatus_(body, status) {
@@ -218,13 +217,10 @@ function listByStatus_(status) {
       slot3: decodeSlot_(item.slot3),
       slot4: decodeSlot_(item.slot4)
     };
-    item.weeks = {
-      week1: decodeSlot_(item.week1),
-      week2: decodeSlot_(item.week2),
-      week3: decodeSlot_(item.week3),
-      week4: decodeSlot_(item.week4),
-      week5: decodeSlot_(item.week5)
-    };
+    item.weeks = {};
+    WEEK_HEADERS.forEach(function(key) {
+      item.weeks[key] = decodeSlot_(item[key]);
+    });
     return item;
   });
 }
@@ -611,27 +607,73 @@ function normalizeSlots_(body) {
 
 function normalizeWeeks_(body) {
   const source = body.weeks || {};
-  if (["week1", "week2", "week3", "week4", "week5"].some(function(key) { return source[key] != null; })) {
-    return {
-      week1: normalizeSlotList_(source.week1),
-      week2: normalizeSlotList_(source.week2),
-      week3: normalizeSlotList_(source.week3),
-      week4: normalizeSlotList_(source.week4),
-      week5: normalizeSlotList_(source.week5)
-    };
+  if (WEEK_HEADERS.some(function(key) { return source[key] != null; })) {
+    const weeks = {};
+    WEEK_HEADERS.forEach(function(key) {
+      weeks[key] = normalizeSlotList_(source[key]);
+    });
+    return weeks;
   }
-  return {
-    week1: normalizeSlotList_(body.week1),
-    week2: normalizeSlotList_(body.week2),
-    week3: normalizeSlotList_(body.week3),
-    week4: normalizeSlotList_(body.week4),
-    week5: normalizeSlotList_(body.week5)
-  };
+  const weeks = {};
+  WEEK_HEADERS.forEach(function(key) {
+    weeks[key] = normalizeSlotList_(body[key]);
+  });
+  return weeks;
 }
 
 function normalizeSlotList_(value) {
   if (Array.isArray(value)) return value.map(String).filter(Boolean);
   return parseSlotParameter_(value);
+}
+
+function migrateWeatherWeeksTo7Days() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = spreadsheet.getSheetByName(SHEET_NAME);
+  if (!sheet) throw new Error(SHEET_NAME + " シートが見つかりません");
+
+  const lastColumn = sheet.getLastColumn();
+  const headerWidth = Math.max(lastColumn, HEADERS.length);
+  const headers = sheet.getRange(1, 1, 1, headerWidth).getValues()[0].map(function(value) {
+    return String(value || "");
+  });
+
+  if (headersMatch_(headers.slice(0, HEADERS.length), HEADERS)) {
+    Logger.log("移行済みです。変更はありません。");
+    return;
+  }
+
+  if (lastColumn !== OLD_HEADERS.length || !headersMatch_(headers.slice(0, OLD_HEADERS.length), OLD_HEADERS)) {
+    throw new Error("想定外のヘッダーです。移行せず停止しました。");
+  }
+
+  const backupName = SHEET_NAME + "_backup_" + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd_HHmmss");
+  sheet.copyTo(spreadsheet).setName(backupName);
+
+  const rowCount = Math.max(sheet.getLastRow() - 1, 0);
+  const weekStartColumn = OLD_HEADERS.indexOf("week1") + 1;
+  const week5Column = OLD_HEADERS.indexOf("week5") + 1;
+  const oldWeekValues = rowCount
+    ? sheet.getRange(2, weekStartColumn, rowCount, OLD_WEEK_HEADERS.length).getValues()
+    : [];
+
+  sheet.insertColumnsAfter(week5Column, 2);
+  sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+
+  if (rowCount) {
+    const migratedWeeks = oldWeekValues.map(function(row) {
+      return ["", row[0] || "", row[1] || "", row[2] || "", row[3] || "", row[4] || "", ""];
+    });
+    sheet.getRange(2, weekStartColumn, rowCount, WEEK_HEADERS.length).setValues(migratedWeeks);
+  }
+
+  Logger.log("週間予報7日化の移行が完了しました。処理件数: " + rowCount + " 件。バックアップ: " + backupName);
+}
+
+function headersMatch_(actual, expected) {
+  if (actual.length < expected.length) return false;
+  return expected.every(function(header, index) {
+    return String(actual[index] || "") === header;
+  });
 }
 
 function getSheet_() {
@@ -684,9 +726,15 @@ function parseBody_(e) {
     const hasOldSlots = ["t18a", "t00", "t06", "t12", "t18b"].some(function(key) {
       return parameters[key] != null;
     });
-    const hasWeeks = ["week1", "week2", "week3", "week4", "week5"].some(function(key) {
+    const hasWeeks = WEEK_HEADERS.some(function(key) {
       return parameters[key] != null;
     });
+    const weeks = {};
+    if (hasWeeks) {
+      WEEK_HEADERS.forEach(function(key) {
+        weeks[key] = parseSlotParameter_(parameters[key]);
+      });
+    }
     return {
       action: String(parameters.action || ""),
       postKey: String(parameters.postKey || ""),
@@ -719,13 +767,7 @@ function parseBody_(e) {
         t12: parseSlotParameter_(parameters.t12),
         t18b: parseSlotParameter_(parameters.t18b)
       } : {},
-      weeks: hasWeeks ? {
-        week1: parseSlotParameter_(parameters.week1),
-        week2: parseSlotParameter_(parameters.week2),
-        week3: parseSlotParameter_(parameters.week3),
-        week4: parseSlotParameter_(parameters.week4),
-        week5: parseSlotParameter_(parameters.week5)
-      } : {}
+      weeks: hasWeeks ? weeks : {}
     };
   }
 

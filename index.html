@@ -198,7 +198,7 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 .weatherLine.current .weatherLineText{font-weight:900}
 .weeklyWeather{
   display:grid;
-  grid-template-columns:repeat(5,minmax(0,1fr));
+  grid-template-columns:repeat(7,minmax(0,1fr));
   gap:0;
   margin-top:8px;
   border:1px solid #e8e1d8;
@@ -226,8 +226,8 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
   border:0;
   background:transparent;
   border-radius:0;
-  padding:0 2px;
-  font-size:11px;
+  padding:0 1px;
+  font-size:10.5px;
   min-width:0;
   width:100%;
   min-height:52px;
@@ -257,13 +257,13 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
   align-items:center;
   flex-wrap:wrap;
   gap:1px 2px;
-  font-size:16px;
+  font-size:15px;
   line-height:1;
   min-height:18px;
 }
 .compactWeatherWeek{
   display:grid;
-  grid-template-columns:repeat(5,minmax(0,1fr));
+  grid-template-columns:repeat(7,minmax(0,1fr));
   gap:0;
   margin-top:10px;
   border:1px solid #e8e1d8;
@@ -291,7 +291,7 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
   line-height:1.1;
 }
 .compactWeatherWeek .weeklyWeatherIcons{
-  font-size:17px;
+  font-size:15px;
 }
 .focusWeather{
   margin-top:10px;
@@ -921,7 +921,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
         </div>
         <div id="reportWeatherChips"></div>
         <h3>週間予報</h3>
-        <p class="small">2日後〜6日後のざっくり天気を記録できます。</p>
+        <p class="small">翌日〜7日後のざっくり天気を記録できます。</p>
         <div id="reportWeekChips"></div>
         <div class="row one">
           <div><label for="reportPostKey">投稿キー</label><input id="reportPostKey" type="password" autocomplete="off"></div>
@@ -1018,7 +1018,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
             </div>
             <div id="quickWeatherChips"></div>
             <h3>週間予報</h3>
-            <p class="small">選択日の2日後〜6日後の天気をまとめて保存できます。</p>
+            <p class="small">選択日の翌日〜7日後の天気をまとめて保存できます。</p>
             <div id="quickWeekChips"></div>
             <div class="row adminSaveRow">
               <div><label for="quickWeatherAdminKey">管理キー</label><input id="quickWeatherAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
@@ -1310,8 +1310,9 @@ const WEATHER_OPTIONS = [
 ];
 const WEATHER_START_SLOTS = ["00","06","12","18"];
 const WEATHER_SLOT_KEYS = ["slot0","slot1","slot2","slot3","slot4"];
-const WEATHER_WEEK_KEYS = ["week1","week2","week3","week4","week5"];
-const WEATHER_WEEK_START_OFFSET = 2;
+const WEATHER_WEEK_START_OFFSET = 1;
+const WEATHER_WEEK_DAYS = 7;
+const WEATHER_WEEK_KEYS = Array.from({length:WEATHER_WEEK_DAYS}, (_, index) => `week${index + 1}`);
 const FOCUS_WEATHER_VALUES = ["雨","虹","流星群","桜","雪","猛暑"];
 const WEATHER_OPTION_MAP = Object.fromEntries(WEATHER_OPTIONS.map(option => [option.value, option]));
 const SUNNY_ICONS = {
@@ -2580,6 +2581,16 @@ function normalizeWeatherSlots(w){
 }
 function normalizeWeatherWeeks(w){
   const source = w.weeks || w.weekly || w;
+  const hasLegacyFiveDayWeeks = WEATHER_WEEK_DAYS === 7
+    && (source.week1 != null || source.week2 != null || source.week3 != null || source.week4 != null || source.week5 != null)
+    && source.week6 == null
+    && source.week7 == null;
+  if(hasLegacyFiveDayWeeks){
+    return Object.fromEntries(WEATHER_WEEK_KEYS.map((key, index) => {
+      if(index === 0 || index === WEATHER_WEEK_DAYS - 1) return [key, []];
+      return [key, weatherValues(source[`week${index}`])];
+    }));
+  }
   return Object.fromEntries(WEATHER_WEEK_KEYS.map(key => [key, weatherValues(source[key])]));
 }
 

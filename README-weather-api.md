@@ -22,6 +22,8 @@ week2
 week3
 week4
 week5
+week6
+week7
 memo
 status
 投稿者
@@ -30,6 +32,7 @@ approvedAt
 ```
 
 天気枠は複数選択を保つため、セル内にJSON配列として保存されます。
+既存の5日分構成から更新する場合は、Apps Scriptエディタで `migrateWeatherWeeksTo7Days` を一度だけ実行してから再デプロイしてください。
 
 天気一覧:
 
