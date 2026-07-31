@@ -43,6 +43,10 @@ function doPost(e) {
       requireKey_(body.adminKey, adminKey_(), "管理キー");
       return json_({ ok: true, reports: listByStatus_("pending") });
     }
+    if (action === "approved") {
+      requireKey_(body.adminKey, adminKey_(), "管理キー");
+      return json_({ ok: true, reports: listByStatus_("approved") });
+    }
     if (action === "getGiftCodes") {
       requireKey_(body.adminKey, adminKey_(), "管理キー");
       return json_({ ok: true, codes: listGiftCodes_(true) });
@@ -52,6 +56,7 @@ function doPost(e) {
     if (action === "reject") return changeStatus_(body, "rejected");
     if (action === "saveGiftCode" || action === "updateGiftCode") return saveGiftCode_(body);
     if (action === "saveSiteNotice") return saveSiteNotice_(body);
+    if (action === "xPostOembed") return xPostOembed_(body);
     return json_({ ok: false, error: "unknown action" });
   } catch (error) {
     return json_({ ok: false, error: error.message });
@@ -196,7 +201,7 @@ function listByStatus_(status) {
 
   const headers = values[0].map(String);
   return values.slice(1).filter(function(row) {
-    return String(row[headers.indexOf("status")]) === status;
+    return normalizeStatusText_(row[headers.indexOf("status")]) === status;
   }).map(function(row) {
     const item = {};
     headers.forEach(function(header, index) {
@@ -248,7 +253,7 @@ function saveGiftCode_(body) {
   for (let i = 1; i < values.length; i++) {
     const rowId = String(values[i][idColumn] || "");
     const rowCode = String(values[i][codeColumn] || "");
-    if ((targetId && rowId === targetId) || (!targetId && rowCode === code)) {
+    if ((targetId && rowId === targetId) || rowCode === code) {
       item.id = rowId || item.id;
       item.createdAt = String(values[i][GIFT_HEADERS.indexOf("createdAt")] || now);
       sheet.getRange(i + 1, 1, 1, GIFT_HEADERS.length).setValues([giftRow_(item)]);
@@ -260,6 +265,83 @@ function saveGiftCode_(body) {
   sheet.appendRow(giftRow_(item));
   saveAutoGiftNotice_("created");
   return json_({ ok: true, mode: "created", code: item });
+}
+
+function xPostOembed_(body) {
+  requireKey_(body.adminKey, adminKey_(), "管理キー");
+  const sourceUrl = normalizeXPostUrl_(body.url);
+  if (!sourceUrl) throw new Error("対応しているX/Twitter投稿URLではありません");
+
+  const endpoint = "https://publish.x.com/oembed"
+    + "?url=" + encodeURIComponent(sourceUrl)
+    + "&omit_script=true&dnt=true&lang=ja";
+  const response = UrlFetchApp.fetch(endpoint, {
+    method: "get",
+    muteHttpExceptions: true,
+    followRedirects: true
+  });
+  if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
+    return json_({ ok: false, error: "投稿本文を取得できませんでした。スクショまたは投稿文を使用してください。" });
+  }
+
+  let data;
+  try {
+    data = JSON.parse(response.getContentText());
+  } catch (error) {
+    return json_({ ok: false, error: "投稿本文を取得できませんでした。スクショまたは投稿文を使用してください。" });
+  }
+  const text = textFromOembedHtml_(String(data.html || ""));
+  if (!text) {
+    return json_({ ok: false, error: "投稿本文を取得できませんでした。スクショまたは投稿文を使用してください。" });
+  }
+  return json_({ ok: true, text: text, sourceUrl: sourceUrl });
+}
+
+function normalizeXPostUrl_(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^https:\/\/(x\.com|twitter\.com)\/([A-Za-z0-9_]{1,20})\/status\/(\d+)(?:[/?#].*)?$/i);
+  if (!match) return "";
+  return "https://" + match[1].toLowerCase() + "/" + match[2] + "/status/" + match[3];
+}
+
+function textFromOembedHtml_(html) {
+  const blockquoteMatch = html.match(/<blockquote\b[\s\S]*?<\/blockquote>/i);
+  const blockquote = blockquoteMatch ? blockquoteMatch[0] : html;
+  const paragraphMatch = blockquote.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i);
+  if (!paragraphMatch) return "";
+  return decodeHtmlEntities_(paragraphMatch[1]
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/a>/gi, "")
+    .replace(/<a\b[^>]*>/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map(function(line) { return line.trim(); })
+    .join("\n"))
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function decodeHtmlEntities_(text) {
+  const named = {
+    amp: "&",
+    lt: "<",
+    gt: ">",
+    quot: '"',
+    apos: "'",
+    nbsp: " ",
+    times: "×"
+  };
+  return String(text || "")
+    .replace(/&#(\d+);/g, function(_, code) {
+      return String.fromCharCode(Number(code));
+    })
+    .replace(/&#x([0-9a-f]+);/gi, function(_, code) {
+      return String.fromCharCode(parseInt(code, 16));
+    })
+    .replace(/&([a-z]+);/gi, function(_, name) {
+      return Object.prototype.hasOwnProperty.call(named, name.toLowerCase()) ? named[name.toLowerCase()] : "";
+    });
 }
 
 function listGiftCodes_(includeHidden) {
@@ -297,7 +379,7 @@ function giftRow_(item) {
 }
 
 function normalizeGiftStatus_(value) {
-  const status = String(value || "active").trim();
+  const status = String(value || "active").trim().toLowerCase();
   return ["active", "expired", "hidden"].indexOf(status) >= 0 ? status : "active";
 }
 
@@ -305,7 +387,15 @@ function formatDateTimeValue_(value) {
   if (value instanceof Date && !isNaN(value.getTime())) {
     return Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm");
   }
-  return String(value || "").trim();
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(text)) return text.slice(0, 16);
+  const date = formatDateValue(text);
+  const time = text.match(/(\d{1,2})[:：](\d{2})/);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return date + "T" + pad2_(time ? time[1] : 23) + ":" + pad2_(time ? time[2] : 59);
+  }
+  return text;
 }
 
 function getSiteNotice_() {
@@ -384,12 +474,27 @@ function formatDateValue(value) {
   const text = String(value || "").trim();
   if (!text) return "";
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  let match = text.match(/^(20\d{2})\s*[年\/.-]\s*(\d{1,2})\s*[月\/.-]\s*(\d{1,2})\s*日?/);
+  if (match) return match[1] + "-" + pad2_(match[2]) + "-" + pad2_(match[3]);
+  match = text.match(/^(\d{1,2})\s*[月\/.-]\s*(\d{1,2})\s*日?/);
+  if (match) {
+    const now = new Date();
+    return Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy") + "-" + pad2_(match[1]) + "-" + pad2_(match[2]);
+  }
 
   const parsed = new Date(text);
   if (!isNaN(parsed.getTime())) {
     return Utilities.formatDate(parsed, Session.getScriptTimeZone(), "yyyy-MM-dd");
   }
   return text;
+}
+
+function pad2_(value) {
+  return String(value).padStart(2, "0");
+}
+
+function normalizeStatusText_(value) {
+  return String(value || "").trim().toLowerCase();
 }
 
 function normalizeStartSlot_(value) {
@@ -522,6 +627,7 @@ function parseBody_(e) {
       reward: String(parameters.reward || ""),
       expiresAt: String(parameters.expiresAt || ""),
       sourceUrl: String(parameters.sourceUrl || ""),
+      url: String(parameters.url || ""),
       status: String(parameters.status || ""),
       noticeDate: String(parameters.noticeDate || ""),
       noticeText: String(parameters.noticeText || ""),
@@ -558,12 +664,17 @@ function parseSlotParameter_(value) {
   if (!value) return [];
   try {
     const parsed = JSON.parse(String(value));
-    return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [String(parsed)];
+    return Array.isArray(parsed) ? parsed.map(String).filter(validWeatherText_) : [String(parsed)].filter(validWeatherText_);
   } catch (error) {
     return String(value).split(/[・,、/]/).map(function(item) {
       return item.trim();
-    }).filter(Boolean);
+    }).filter(validWeatherText_);
   }
+}
+
+function validWeatherText_(value) {
+  const text = String(value || "").trim();
+  return Boolean(text && text !== "—" && text !== "-");
 }
 
 function encodeSlot_(value) {
