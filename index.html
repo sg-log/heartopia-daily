@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800;900&display=swap" rel="stylesheet">
@@ -993,7 +994,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
         <p class="small">翌日〜7日後のざっくり天気を記録できます。</p>
         <div id="reportWeekChips"></div>
         <div class="row one">
-          <div><label for="reportPostKey">投稿キー</label><input id="reportPostKey" type="password" autocomplete="off"></div>
+          <div><label for="reportPostKey">投稿キー</label><input id="reportPostKey" type="password" autocomplete="off" spellcheck="false"></div>
         </div>
         <div class="buttons"><button id="submitWeatherReportBtn">送信</button></div>
         <div id="weatherReportStatus" class="status"></div>
@@ -1044,7 +1045,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
           <h2>管理画面</h2>
           <p class="notice">管理キーを入力してください。</p>
           <div class="row one">
-            <div><label for="adminGateKey">管理キー</label><input id="adminGateKey" type="password" autocomplete="off" placeholder="管理キー"></div>
+            <div><label for="adminGateKey">管理キー</label><input id="adminGateKey" type="password" autocomplete="off" spellcheck="false" placeholder="管理キー"></div>
           </div>
           <div class="buttons"><button id="openAdminBtn">管理画面を開く</button></div>
           <div id="adminGateStatus" class="status"></div>
@@ -1112,7 +1113,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
             <p class="small">選択日の翌日〜7日後の天気をまとめて保存できます。</p>
             <div id="quickWeekChips"></div>
             <div class="row adminSaveRow">
-              <div><label for="quickWeatherAdminKey">管理キー</label><input id="quickWeatherAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
+              <div><label for="quickWeatherAdminKey">管理キー</label><input id="quickWeatherAdminKey" type="password" autocomplete="off" spellcheck="false" placeholder="管理キー"></div>
               <div class="buttons"><button id="saveQuickWeatherBtn">天気と週間予報を保存</button></div>
             </div>
             <div id="quickWeatherStatus" class="status"></div>
@@ -1124,7 +1125,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
               <div><label for="quickGiftUrlInput">投稿URL</label><input id="quickGiftUrlInput" placeholder="https://x.com/..."></div>
               <div>
                 <label for="quickGiftAdminKey">管理キー</label>
-                <input id="quickGiftAdminKey" type="password" autocomplete="off" placeholder="管理キー">
+                <input id="quickGiftAdminKey" type="password" autocomplete="off" spellcheck="false" placeholder="管理キー">
                 <div class="buttons"><button type="button" class="secondary" id="loadQuickGiftUrlBtn">URLから読み込む</button></div>
               </div>
             </div>
@@ -1178,7 +1179,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
           <div class="card s12">
             <h2>未承認の天気報告</h2>
             <div class="row">
-              <div><label for="weatherAdminKey">管理キー</label><input id="weatherAdminKey" type="password" autocomplete="off"></div>
+              <div><label for="weatherAdminKey">管理キー</label><input id="weatherAdminKey" type="password" autocomplete="off" spellcheck="false"></div>
               <div class="buttons"><button class="secondary" id="refreshPendingWeatherBtn">一覧を更新</button></div>
             </div>
             <div id="pendingWeatherStatus" class="status"></div>
@@ -1209,7 +1210,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
             <h3>週間予報</h3>
             <div id="approvedWeekChips"></div>
             <div class="row adminSaveRow">
-              <div><label for="approvedWeatherAdminKey">管理キー</label><input id="approvedWeatherAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
+              <div><label for="approvedWeatherAdminKey">管理キー</label><input id="approvedWeatherAdminKey" type="password" autocomplete="off" spellcheck="false" placeholder="管理キー"></div>
               <div class="buttons"><button id="saveApprovedWeatherBtn">修正を保存</button></div>
             </div>
             <div id="approvedWeatherStatus" class="status"></div>
@@ -1237,7 +1238,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
               </div>
             </div>
             <div class="row adminSaveRow">
-              <div><label for="giftAdminKey">管理キー</label><input id="giftAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
+              <div><label for="giftAdminKey">管理キー</label><input id="giftAdminKey" type="password" autocomplete="off" spellcheck="false" placeholder="管理キー"></div>
               <div class="buttons">
                 <button id="saveGiftCodeBtn">ギフトコードを保存</button>
                 <button class="secondary" id="clearGiftCodeBtn">新規入力</button>
@@ -1255,7 +1256,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
               <div><label for="noticeTextInput">noticeText</label><input id="noticeTextInput" placeholder="例：ギフトコード機能を追加しました"></div>
             </div>
             <div class="row adminSaveRow">
-              <div><label for="noticeAdminKey">管理キー</label><input id="noticeAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
+              <div><label for="noticeAdminKey">管理キー</label><input id="noticeAdminKey" type="password" autocomplete="off" spellcheck="false" placeholder="管理キー"></div>
               <div class="buttons">
                 <button id="saveNoticeBtn">お知らせを保存</button>
                 <button class="secondary" id="clearNoticeBtn">お知らせを空にする</button>
@@ -1285,7 +1286,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
             <h3>週間予報</h3>
             <div id="adminWeekChips"></div>
             <div class="row adminSaveRow">
-              <div><label for="adminSaveWeatherAdminKey">管理キー</label><input id="adminSaveWeatherAdminKey" type="password" autocomplete="off" placeholder="管理キー"></div>
+              <div><label for="adminSaveWeatherAdminKey">管理キー</label><input id="adminSaveWeatherAdminKey" type="password" autocomplete="off" spellcheck="false" placeholder="管理キー"></div>
               <div class="buttons"><button id="saveAdminWeatherBtn">天気を保存</button></div>
             </div>
             <div id="adminWeatherStatus" class="status"></div>
@@ -3396,7 +3397,7 @@ function loadTesseract(){
   if(window.Tesseract) return Promise.resolve(window.Tesseract);
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+    script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
     script.async = true;
     script.onload = () => window.Tesseract ? resolve(window.Tesseract) : reject(new Error("OCRライブラリを読み込めませんでした"));
     script.onerror = () => reject(new Error("OCRライブラリを読み込めませんでした"));

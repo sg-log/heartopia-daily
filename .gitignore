@@ -1,0 +1,7 @@
+assets/weather-templates/source/
+*.bak
+*.tmp
+*.log
+.env
+.env.*
+!.env.example

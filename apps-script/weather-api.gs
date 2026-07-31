@@ -17,6 +17,21 @@ const GIFT_HEADERS = [
 ];
 const NOTICE_SHEET_NAME = "site_notice";
 const NOTICE_HEADERS = ["noticeDate", "noticeText", "updatedAt"];
+const MAX_POST_BODY_BYTES = 64 * 1024;
+const LOCK_TIMEOUT_MS = 10000;
+const VALID_WEATHER_VALUES = ["晴", "雨", "流星群", "虹", "猛暑", "雪", "桜"];
+const VALID_START_SLOTS = ["00", "06", "12", "18"];
+const TEXT_LIMITS = {
+  id: 200,
+  memo: 1000,
+  author: 100,
+  code: 100,
+  reward: 1000,
+  expiresAt: 40,
+  sourceUrl: 1000,
+  noticeText: 1000,
+  xPostUrl: 1000
+};
 
 function doGet(e) {
   try {
@@ -25,17 +40,17 @@ function doGet(e) {
       return json_({ ok: false, error: "pending はPOSTで取得してください" });
     }
     if (action === "approved") {
-      return json_({ ok: true, reports: listByStatus_("approved") });
+      return json_({ ok: true, reports: listByStatus_("approved").map(publicWeatherItem_) });
     }
     if (action === "getGiftCodes") {
-      return json_({ ok: true, codes: listGiftCodes_(false) });
+      return json_({ ok: true, codes: listGiftCodes_(false).map(publicGiftItem_) });
     }
     if (action === "getSiteNotice") {
-      return json_({ ok: true, notice: getSiteNotice_() });
+      return json_({ ok: true, notice: publicNoticeItem_(getSiteNotice_()) });
     }
     return json_({ ok: false, error: "unknown action" });
   } catch (error) {
-    return json_({ ok: false, error: error.message });
+    return json_({ ok: false, error: safeErrorMessage_(error) });
   }
 }
 
@@ -64,20 +79,49 @@ function doPost(e) {
     if (action === "xPostOembed") return xPostOembed_(body);
     return json_({ ok: false, error: "unknown action" });
   } catch (error) {
-    return json_({ ok: false, error: error.message });
+    return json_({ ok: false, error: safeErrorMessage_(error) });
   }
+}
+
+function publicWeatherItem_(item) {
+  return {
+    date: item.date,
+    startSlot: item.startSlot,
+    slots: item.slots || {},
+    weeks: item.weeks || {},
+    memo: String(item.memo || "")
+  };
+}
+
+function publicGiftItem_(item) {
+  return {
+    code: item.code,
+    reward: item.reward,
+    expiresAt: item.expiresAt,
+    sourceUrl: item.sourceUrl,
+    memo: item.memo,
+    status: item.status
+  };
+}
+
+function publicNoticeItem_(item) {
+  return {
+    noticeDate: item.noticeDate,
+    noticeText: item.noticeText
+  };
 }
 
 function submit_(body) {
   requireKey_(body.postKey, postKey_(), "投稿キー");
   if (!body.date) throw new Error("日付がありません");
 
-  const startSlot = normalizeStartSlot_(body.startSlot);
-  const slots = normalizeSlots_(body);
-  const weeks = normalizeWeeks_(body);
-  const date = formatDateValue(body.date);
-  if (!date) throw new Error("日付の形式が正しくありません");
+  const startSlot = validateStartSlotForWrite_(body.startSlot);
+  const slots = normalizeSlotsForWrite_(body);
+  const weeks = normalizeWeeksForWrite_(body);
+  const date = validateDateForWrite_(body.date);
   const now = new Date().toISOString();
+  const memo = safeSheetText_(limitText_(body.memo, TEXT_LIMITS.memo, "メモ"));
+  const author = safeSheetText_(limitText_(body.author || body["投稿者"], TEXT_LIMITS.author, "投稿者"));
   const row = [
     Utilities.getUuid(),
     date,
@@ -90,13 +134,15 @@ function submit_(body) {
   ].concat(WEEK_HEADERS.map(function(key) {
     return encodeSlot_(weeks[key]);
   }), [
-    String(body.memo || ""),
+    memo,
     "pending",
-    String(body.author || body["投稿者"] || ""),
+    author,
     now,
     ""
   ]);
-  getSheet_().appendRow(row);
+  withScriptLock_(function() {
+    getSheet_().appendRow(row);
+  });
   return json_({ ok: true, id: row[0], status: "pending" });
 }
 
@@ -104,56 +150,59 @@ function saveApproved_(body) {
   requireKey_(body.adminKey, adminKey_(), "管理キー");
   if (!body.date) throw new Error("日付がありません");
 
-  const date = formatDateValue(body.date);
-  if (!date) throw new Error("日付の形式が正しくありません");
+  const date = validateDateForWrite_(body.date);
 
-  const startSlot = normalizeStartSlot_(body.startSlot);
-  const slots = normalizeSlots_(body);
-  const weeks = normalizeWeeks_(body);
+  const startSlot = validateStartSlotForWrite_(body.startSlot);
+  const slots = normalizeSlotsForWrite_(body);
+  const weeks = normalizeWeeksForWrite_(body);
   const now = new Date().toISOString();
-  const sheet = getSheet_();
-  const values = sheet.getDataRange().getValues();
-  const idColumn = HEADERS.indexOf("id");
-  const dateColumn = HEADERS.indexOf("date");
-  const statusColumn = HEADERS.indexOf("status");
-  let updated = 0;
+  const memo = safeSheetText_(limitText_(body.memo, TEXT_LIMITS.memo, "メモ"));
+  const author = safeSheetText_(limitText_(body.author || body["投稿者"] || "管理者", TEXT_LIMITS.author, "投稿者"));
+  return withScriptLock_(function() {
+    const sheet = getSheet_();
+    const values = sheet.getDataRange().getValues();
+    const idColumn = HEADERS.indexOf("id");
+    const dateColumn = HEADERS.indexOf("date");
+    const statusColumn = HEADERS.indexOf("status");
+    let updated = 0;
 
-  for (let i = 1; i < values.length; i++) {
-    if (formatDateValue(values[i][dateColumn]) !== date) continue;
-    if (String(values[i][statusColumn]) !== "approved") continue;
+    for (let i = 1; i < values.length; i++) {
+      if (formatDateValue(values[i][dateColumn]) !== date) continue;
+      if (String(values[i][statusColumn]) !== "approved") continue;
+
+      const row = approvedRow_({
+        id: String(values[i][idColumn] || Utilities.getUuid()),
+        date: date,
+        startSlot: startSlot,
+        slots: slots,
+        weeks: weeks,
+        memo: memo,
+        author: author,
+        createdAt: String(values[i][HEADERS.indexOf("createdAt")] || now),
+        approvedAt: now
+      });
+      sheet.getRange(i + 1, 1, 1, HEADERS.length).setValues([row]);
+      updated++;
+    }
+
+    if (updated > 0) {
+      return json_({ ok: true, status: "approved", mode: "updated", updated: updated });
+    }
 
     const row = approvedRow_({
-      id: String(values[i][idColumn] || Utilities.getUuid()),
+      id: Utilities.getUuid(),
       date: date,
       startSlot: startSlot,
       slots: slots,
       weeks: weeks,
-      memo: String(body.memo || ""),
-      author: String(body.author || body["投稿者"] || "管理者"),
-      createdAt: String(values[i][HEADERS.indexOf("createdAt")] || now),
+      memo: memo,
+      author: author,
+      createdAt: now,
       approvedAt: now
     });
-    sheet.getRange(i + 1, 1, 1, HEADERS.length).setValues([row]);
-    updated++;
-  }
-
-  if (updated > 0) {
-    return json_({ ok: true, status: "approved", mode: "updated", updated: updated });
-  }
-
-  const row = approvedRow_({
-    id: Utilities.getUuid(),
-    date: date,
-    startSlot: startSlot,
-    slots: slots,
-    weeks: weeks,
-    memo: String(body.memo || ""),
-    author: String(body.author || body["投稿者"] || "管理者"),
-    createdAt: now,
-    approvedAt: now
+    sheet.appendRow(row);
+    return json_({ ok: true, id: row[0], status: "approved", mode: "created" });
   });
-  sheet.appendRow(row);
-  return json_({ ok: true, id: row[0], status: "approved", mode: "created" });
 }
 
 function approvedRow_(item) {
@@ -180,20 +229,23 @@ function approvedRow_(item) {
 function changeStatus_(body, status) {
   requireKey_(body.adminKey, adminKey_(), "管理キー");
   if (!body.id) throw new Error("idがありません");
+  const targetId = limitText_(body.id, TEXT_LIMITS.id, "id");
 
-  const sheet = getSheet_();
-  const values = sheet.getDataRange().getValues();
-  const idColumn = HEADERS.indexOf("id");
-  const statusColumn = HEADERS.indexOf("status") + 1;
-  const approvedAtColumn = HEADERS.indexOf("approvedAt") + 1;
+  return withScriptLock_(function() {
+    const sheet = getSheet_();
+    const values = sheet.getDataRange().getValues();
+    const idColumn = HEADERS.indexOf("id");
+    const statusColumn = HEADERS.indexOf("status") + 1;
+    const approvedAtColumn = HEADERS.indexOf("approvedAt") + 1;
 
-  for (let i = 1; i < values.length; i++) {
-    if (String(values[i][idColumn]) !== String(body.id)) continue;
-    sheet.getRange(i + 1, statusColumn).setValue(status);
-    sheet.getRange(i + 1, approvedAtColumn).setValue(status === "approved" ? new Date().toISOString() : "");
-    return json_({ ok: true, id: body.id, status: status });
-  }
-  throw new Error("対象の報告が見つかりません");
+    for (let i = 1; i < values.length; i++) {
+      if (String(values[i][idColumn]) !== targetId) continue;
+      sheet.getRange(i + 1, statusColumn).setValue(status);
+      sheet.getRange(i + 1, approvedAtColumn).setValue(status === "approved" ? new Date().toISOString() : "");
+      return json_({ ok: true, id: targetId, status: status });
+    }
+    throw new Error("対象の報告が見つかりません");
+  });
 }
 
 function listByStatus_(status) {
@@ -208,6 +260,7 @@ function listByStatus_(status) {
     headers.forEach(function(header, index) {
       item[header] = row[index] == null ? "" : row[index];
     });
+    item.memo = plainSheetText_(item.memo);
     item.date = formatDateValue(item.date);
     item.startSlot = normalizeStartSlot_(item.startSlot);
     item.slots = {
@@ -227,45 +280,52 @@ function listByStatus_(status) {
 
 function saveGiftCode_(body) {
   requireKey_(body.adminKey, adminKey_(), "管理キー");
-  const code = String(body.code || "").trim();
+  const code = validateGiftCodeForWrite_(body.code);
   if (!code) throw new Error("コードがありません");
 
-  const sheet = getGiftSheet_();
-  const values = sheet.getDataRange().getValues();
   const now = new Date().toISOString();
-  const idColumn = GIFT_HEADERS.indexOf("id");
-  const codeColumn = GIFT_HEADERS.indexOf("code");
-  const targetId = String(body.id || "").trim();
+  const targetId = limitText_(body.id, TEXT_LIMITS.id, "id").trim();
   const item = {
     id: targetId || Utilities.getUuid(),
     code: code,
-    reward: String(body.reward || "").trim(),
-    expiresAt: String(body.expiresAt || "").trim(),
-    sourceUrl: String(body.sourceUrl || "").trim(),
-    memo: String(body.memo || "").trim(),
+    reward: safeSheetText_(limitText_(body.reward, TEXT_LIMITS.reward, "報酬").trim()),
+    expiresAt: validateGiftExpiresForWrite_(body.expiresAt),
+    sourceUrl: safeSheetText_(validateHttpUrl_(body.sourceUrl, "sourceUrl", TEXT_LIMITS.sourceUrl)),
+    memo: safeSheetText_(limitText_(body.memo, TEXT_LIMITS.memo, "メモ").trim()),
     status: normalizeGiftStatus_(body.status),
     createdAt: now,
     updatedAt: now
   };
 
-  for (let i = 1; i < values.length; i++) {
-    const rowId = String(values[i][idColumn] || "");
-    const rowCode = String(values[i][codeColumn] || "");
-    if ((targetId && rowId === targetId) || rowCode === code) {
-      item.id = rowId || item.id;
-      item.createdAt = String(values[i][GIFT_HEADERS.indexOf("createdAt")] || now);
-      sheet.getRange(i + 1, 1, 1, GIFT_HEADERS.length).setValues([giftRow_(item)]);
-      saveAutoGiftNotice_("updated");
-      return json_({ ok: true, mode: "updated", code: item });
-    }
-  }
+  const saveResult = withScriptLock_(function() {
+    const sheet = getGiftSheet_();
+    const values = sheet.getDataRange().getValues();
+    const idColumn = GIFT_HEADERS.indexOf("id");
+    const codeColumn = GIFT_HEADERS.indexOf("code");
 
-  sheet.appendRow(giftRow_(item));
-  saveAutoGiftNotice_("created");
+    for (let i = 1; i < values.length; i++) {
+      const rowId = String(values[i][idColumn] || "");
+      const rowCode = String(values[i][codeColumn] || "");
+      if ((targetId && rowId === targetId) || rowCode === code) {
+        item.id = rowId || item.id;
+        item.createdAt = String(values[i][GIFT_HEADERS.indexOf("createdAt")] || now);
+        sheet.getRange(i + 1, 1, 1, GIFT_HEADERS.length).setValues([giftRow_(item)]);
+        saveAutoGiftNotice_("updated", true);
+        return { mode: "updated", item: item };
+      }
+    }
+
+    sheet.appendRow(giftRow_(item));
+    saveAutoGiftNotice_("created", true);
+    return { mode: "created", item: item };
+  });
+  if (saveResult.mode === "updated") {
+    return json_({ ok: true, mode: "updated", code: saveResult.item });
+  }
   const notifyResult = item.status === "active"
     ? notifyDiscordGiftCode_(item)
     : { notified: false };
-  const response = { ok: true, mode: "created", code: item, discordNotified: Boolean(notifyResult.notified) };
+  const response = { ok: true, mode: "created", code: saveResult.item, discordNotified: Boolean(notifyResult.notified) };
   if (notifyResult.warning) {
     response.discordWarning = notifyResult.warning;
   }
@@ -339,7 +399,7 @@ function formatDiscordGiftExpiry_(value) {
 
 function xPostOembed_(body) {
   requireKey_(body.adminKey, adminKey_(), "管理キー");
-  const sourceUrl = normalizeXPostUrl_(body.url);
+  const sourceUrl = normalizeXPostUrl_(limitText_(body.url, TEXT_LIMITS.xPostUrl, "投稿URL"));
   if (!sourceUrl) throw new Error("対応しているX/Twitter投稿URLではありません");
 
   const endpoint = "https://publish.x.com/oembed"
@@ -425,6 +485,9 @@ function listGiftCodes_(includeHidden) {
       item[header] = row[index] == null ? "" : row[index];
     });
     item.status = normalizeGiftStatus_(item.status);
+    item.reward = plainSheetText_(item.reward);
+    item.sourceUrl = plainSheetText_(item.sourceUrl);
+    item.memo = plainSheetText_(item.memo);
     item.expiresAt = formatDateTimeValue_(item.expiresAt);
     item.createdAt = item.createdAt instanceof Date ? item.createdAt.toISOString() : String(item.createdAt || "");
     item.updatedAt = item.updatedAt instanceof Date ? item.updatedAt.toISOString() : String(item.updatedAt || "");
@@ -481,19 +544,21 @@ function saveSiteNotice_(body) {
   requireKey_(body.adminKey, adminKey_(), "管理キー");
   const now = new Date().toISOString();
   const item = {
-    noticeDate: formatDateValue(body.noticeDate),
-    noticeText: String(body.noticeText || "").trim(),
+    noticeDate: body.noticeDate ? validateDateForWrite_(body.noticeDate) : "",
+    noticeText: safeSheetText_(limitText_(body.noticeText, TEXT_LIMITS.noticeText, "お知らせ").trim()),
     updatedAt: now
   };
 
-  const sheet = getNoticeSheet_();
-  const row = noticeRow_(item);
-  if (sheet.getLastRow() >= 2) {
-    sheet.getRange(2, 1, 1, NOTICE_HEADERS.length).setValues([row]);
-  } else {
-    sheet.appendRow(row);
-  }
-  return json_({ ok: true, notice: item });
+  return withScriptLock_(function() {
+    const sheet = getNoticeSheet_();
+    const row = noticeRow_(item);
+    if (sheet.getLastRow() >= 2) {
+      sheet.getRange(2, 1, 1, NOTICE_HEADERS.length).setValues([row]);
+    } else {
+      sheet.appendRow(row);
+    }
+    return json_({ ok: true, notice: item });
+  });
 }
 
 function noticeRow_(item) {
@@ -503,14 +568,23 @@ function noticeRow_(item) {
 function noticeItemFromRow_(row) {
   return {
     noticeDate: formatDateValue(row[NOTICE_HEADERS.indexOf("noticeDate")]),
-    noticeText: String(row[NOTICE_HEADERS.indexOf("noticeText")] || ""),
+    noticeText: plainSheetText_(row[NOTICE_HEADERS.indexOf("noticeText")]),
     updatedAt: row[NOTICE_HEADERS.indexOf("updatedAt")] instanceof Date
       ? row[NOTICE_HEADERS.indexOf("updatedAt")].toISOString()
       : String(row[NOTICE_HEADERS.indexOf("updatedAt")] || "")
   };
 }
 
-function saveAutoGiftNotice_(mode) {
+function saveAutoGiftNotice_(mode, alreadyLocked) {
+  if (!alreadyLocked) {
+    return withScriptLock_(function() {
+      return saveAutoGiftNoticeBody_(mode);
+    });
+  }
+  return saveAutoGiftNoticeBody_(mode);
+}
+
+function saveAutoGiftNoticeBody_(mode) {
   const sheet = getNoticeSheet_();
   const values = sheet.getDataRange().getValues();
   const manual = noticeItemFromRow_(values[1] || []);
@@ -621,6 +695,130 @@ function normalizeWeeks_(body) {
   return weeks;
 }
 
+function normalizeSlotsForWrite_(body) {
+  const source = body.slots || {};
+  if (["slot0", "slot1", "slot2", "slot3", "slot4"].some(function(key) { return source[key] != null; })) {
+    return {
+      slot0: validateSlotListForWrite_(source.slot0, "slot0"),
+      slot1: validateSlotListForWrite_(source.slot1, "slot1"),
+      slot2: validateSlotListForWrite_(source.slot2, "slot2"),
+      slot3: validateSlotListForWrite_(source.slot3, "slot3"),
+      slot4: validateSlotListForWrite_(source.slot4, "slot4")
+    };
+  }
+  const old = body.weatherSlots || {};
+  if (["t18a", "t00", "t06", "t12", "t18b"].some(function(key) { return old[key] != null; })) {
+    return {
+      slot0: validateSlotListForWrite_(old.t18a, "slot0"),
+      slot1: validateSlotListForWrite_(old.t00, "slot1"),
+      slot2: validateSlotListForWrite_(old.t06, "slot2"),
+      slot3: validateSlotListForWrite_(old.t12, "slot3"),
+      slot4: validateSlotListForWrite_(old.t18b, "slot4")
+    };
+  }
+  return {
+    slot0: validateSlotListForWrite_(body.slot0, "slot0"),
+    slot1: validateSlotListForWrite_(body.slot1, "slot1"),
+    slot2: validateSlotListForWrite_(body.slot2, "slot2"),
+    slot3: validateSlotListForWrite_(body.slot3, "slot3"),
+    slot4: validateSlotListForWrite_(body.slot4, "slot4")
+  };
+}
+
+function normalizeWeeksForWrite_(body) {
+  const source = body.weeks || {};
+  const weeks = {};
+  WEEK_HEADERS.forEach(function(key) {
+    weeks[key] = validateSlotListForWrite_(source[key] != null ? source[key] : body[key], key);
+  });
+  return weeks;
+}
+
+function validateSlotListForWrite_(value, label) {
+  const list = slotListFromValue_(value);
+  if (list.length > 4) throw new Error(label + "の天気が多すぎます");
+  const result = [];
+  list.forEach(function(item) {
+    const text = String(item || "").trim();
+    if (!text || text === "—" || text === "-") return;
+    if (VALID_WEATHER_VALUES.indexOf(text) < 0) {
+      throw new Error(label + "に未対応の天気があります");
+    }
+    if (result.indexOf(text) < 0) result.push(text);
+  });
+  return result;
+}
+
+function slotListFromValue_(value) {
+  if (Array.isArray(value)) return value;
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(String(value));
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch (error) {
+    return String(value).split(/[・,、/]/);
+  }
+}
+
+function validateStartSlotForWrite_(value) {
+  const text = String(value == null || value === "" ? "18" : value).replace("時", "").trim();
+  const normalized = text.length === 1 ? "0" + text : text;
+  if (VALID_START_SLOTS.indexOf(normalized) < 0) throw new Error("最初の時間が正しくありません");
+  return normalized;
+}
+
+function validateDateForWrite_(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) throw new Error("日付の形式が正しくありません");
+  const parsed = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  if (
+    parsed.getFullYear() !== Number(match[1]) ||
+    parsed.getMonth() + 1 !== Number(match[2]) ||
+    parsed.getDate() !== Number(match[3])
+  ) {
+    throw new Error("日付の形式が正しくありません");
+  }
+  return match[1] + "-" + match[2] + "-" + match[3];
+}
+
+function validateGiftCodeForWrite_(value) {
+  const text = limitText_(value, TEXT_LIMITS.code, "コード").trim();
+  if (!text) return "";
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/.test(text)) throw new Error("コードの形式が正しくありません");
+  return safeSheetText_(text);
+}
+
+function validateGiftExpiresForWrite_(value) {
+  const text = limitText_(value, TEXT_LIMITS.expiresAt, "期限").trim();
+  if (!text) return "";
+  const normalized = formatDateTimeValue_(text);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(normalized)) throw new Error("期限の形式が正しくありません");
+  return normalized;
+}
+
+function validateHttpUrl_(value, label, maxLength) {
+  const text = limitText_(value, maxLength, label).trim();
+  if (!text) return "";
+  if (!/^https?:\/\/[^\s"'<>]+$/i.test(text)) throw new Error(label + "の形式が正しくありません");
+  return text;
+}
+
+function limitText_(value, maxLength, label) {
+  const text = String(value || "");
+  if (text.length > maxLength) throw new Error(label + "が長すぎます");
+  return text;
+}
+
+function safeSheetText_(value) {
+  const text = String(value || "");
+  return /^[=+\-@]/.test(text) ? "'" + text : text;
+}
+
+function plainSheetText_(value) {
+  return String(value || "").replace(/^'(?=[=+\-@])/, "");
+}
+
 function normalizeSlotList_(value) {
   if (Array.isArray(value)) return value.map(String).filter(Boolean);
   return parseSlotParameter_(value);
@@ -718,6 +916,10 @@ function getNoticeSheet_() {
 }
 
 function parseBody_(e) {
+  const text = e && e.postData && e.postData.contents;
+  if (text && Utilities.newBlob(text).getBytes().length > MAX_POST_BODY_BYTES) {
+    throw new Error("リクエストが大きすぎます");
+  }
   const parameters = (e && e.parameter) || {};
   if (parameters.action) {
     const hasNewSlots = ["slot0", "slot1", "slot2", "slot3", "slot4"].some(function(key) {
@@ -732,7 +934,7 @@ function parseBody_(e) {
     const weeks = {};
     if (hasWeeks) {
       WEEK_HEADERS.forEach(function(key) {
-        weeks[key] = parseSlotParameter_(parameters[key]);
+        weeks[key] = String(parameters[key] || "");
       });
     }
     return {
@@ -754,25 +956,30 @@ function parseBody_(e) {
       noticeDate: String(parameters.noticeDate || ""),
       noticeText: String(parameters.noticeText || ""),
       slots: hasNewSlots ? {
-        slot0: parseSlotParameter_(parameters.slot0),
-        slot1: parseSlotParameter_(parameters.slot1),
-        slot2: parseSlotParameter_(parameters.slot2),
-        slot3: parseSlotParameter_(parameters.slot3),
-        slot4: parseSlotParameter_(parameters.slot4)
+        slot0: String(parameters.slot0 || ""),
+        slot1: String(parameters.slot1 || ""),
+        slot2: String(parameters.slot2 || ""),
+        slot3: String(parameters.slot3 || ""),
+        slot4: String(parameters.slot4 || "")
       } : {},
       weatherSlots: hasOldSlots ? {
-        t18a: parseSlotParameter_(parameters.t18a),
-        t00: parseSlotParameter_(parameters.t00),
-        t06: parseSlotParameter_(parameters.t06),
-        t12: parseSlotParameter_(parameters.t12),
-        t18b: parseSlotParameter_(parameters.t18b)
+        t18a: String(parameters.t18a || ""),
+        t00: String(parameters.t00 || ""),
+        t06: String(parameters.t06 || ""),
+        t12: String(parameters.t12 || ""),
+        t18b: String(parameters.t18b || "")
       } : {},
       weeks: hasWeeks ? weeks : {}
     };
   }
 
-  const text = e && e.postData && e.postData.contents;
-  if (text) return JSON.parse(text);
+  if (text) {
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      throw new Error("リクエスト形式が正しくありません");
+    }
+  }
   return parameters;
 }
 
@@ -809,9 +1016,21 @@ function decodeSlot_(value) {
   }
 }
 
+function withScriptLock_(callback) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOCK_TIMEOUT_MS)) {
+    throw new Error("処理が混み合っています。少し待って再試行してください");
+  }
+  try {
+    return callback();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function requireKey_(actual, expected, label) {
   if (!actual || String(actual) !== String(expected)) {
-    throw new Error(label + "が違います");
+    throw new Error("認証に失敗しました");
   }
 }
 
@@ -827,6 +1046,12 @@ function scriptProperty_(name, label) {
   const value = PropertiesService.getScriptProperties().getProperty(name);
   if (!value) throw new Error(label + "が未設定です");
   return value;
+}
+
+function safeErrorMessage_(error) {
+  const message = String(error && error.message || "エラーが発生しました");
+  if (/Webhook|https:\/\/discord\.com\/api\/webhooks/i.test(message)) return "外部通知処理に失敗しました";
+  return message;
 }
 
 function json_(data) {
