@@ -5,3 +5,4 @@ assets/weather-templates/source/
 .env
 .env.*
 !.env.example
+assets/puzzles/source/
