@@ -1,0 +1,2595 @@
+﻿{
+    "model":  {
+                  "channels":  [
+                                   {
+                                       "alpha":  0.4234776977092934,
+                                       "offset":  -0.03590758507328895
+                                   },
+                                   {
+                                       "alpha":  0.43937675526723596,
+                                       "offset":  -1.9058574121889031
+                                   },
+                                   {
+                                       "alpha":  0.5114154860512439,
+                                       "offset":  -0.1941012782827698
+                                   }
+                               ],
+                  "gamma":  1
+              },
+    "rows":  [
+                 {
+                     "id":  "puzzle-001",
+                     "order":  1,
+                     "source":  "main",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  0,
+                     "mainFrameP90":  240.1032,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "01.png",
+                                               "row":  1,
+                                               "col":  1,
+                                               "frameP90":  107.2154,
+                                               "frameP75":  105.785,
+                                               "lumaMedian":  89.1478,
+                                               "uiPenalty":  217,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-002",
+                     "order":  2,
+                     "source":  "sub",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  45,
+                     "mainFrameP90":  236.7622,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "01.png",
+                                               "row":  1,
+                                               "col":  2,
+                                               "frameP90":  238.31339999999997,
+                                               "frameP75":  194.6258,
+                                               "lumaMedian":  70.51539999999999,
+                                               "uiPenalty":  60,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-003",
+                     "order":  3,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  84,
+                     "mainFrameP90":  106.50019999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "01.png",
+                                               "row":  1,
+                                               "col":  3,
+                                               "frameP90":  107.2154,
+                                               "frameP75":  99.92939999999999,
+                                               "lumaMedian":  80.6968,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-004",
+                     "order":  4,
+                     "source":  "main",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  1289,
+                     "mainFrameP90":  226.341,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "01.png",
+                                               "row":  1,
+                                               "col":  4,
+                                               "frameP90":  107.2154,
+                                               "frameP75":  105.0698,
+                                               "lumaMedian":  62.0782,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-005",
+                     "order":  5,
+                     "source":  "sub",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  161,
+                     "mainFrameP90":  238.31339999999997,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "01.png",
+                                               "row":  2,
+                                               "col":  1,
+                                               "frameP90":  240.69,
+                                               "frameP75":  228.5758,
+                                               "lumaMedian":  205.6016,
+                                               "uiPenalty":  48,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-006",
+                     "order":  6,
+                     "source":  "sub",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  187,
+                     "mainFrameP90":  107.2154,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "01.png",
+                                               "row":  2,
+                                               "col":  2,
+                                               "frameP90":  236.2464,
+                                               "frameP75":  225.3672,
+                                               "lumaMedian":  197.8268,
+                                               "uiPenalty":  78,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-007",
+                     "order":  7,
+                     "source":  "main",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  119,
+                     "mainFrameP90":  241.17419999999998,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "01.png",
+                                               "row":  2,
+                                               "col":  3,
+                                               "frameP90":  241.17419999999998,
+                                               "frameP75":  238.02459999999996,
+                                               "lumaMedian":  167.99659999999997,
+                                               "uiPenalty":  82,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-008",
+                     "order":  8,
+                     "source":  "sub",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  4022,
+                     "mainFrameP90":  106.50019999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "01.png",
+                                               "row":  2,
+                                               "col":  4,
+                                               "frameP90":  241.17419999999998,
+                                               "frameP75":  238.31339999999997,
+                                               "lumaMedian":  192.7818,
+                                               "uiPenalty":  1867,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-009",
+                     "order":  9,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1440,
+                     "mainFrameP90":  107.3598,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "02.png",
+                                               "row":  1,
+                                               "col":  1,
+                                               "frameP90":  107.9306,
+                                               "frameP75":  105.0698,
+                                               "lumaMedian":  92.73299999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-010",
+                     "order":  10,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  852,
+                     "mainFrameP90":  107.2154,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "02.png",
+                                               "row":  1,
+                                               "col":  2,
+                                               "frameP90":  107.3598,
+                                               "frameP75":  104.35459999999999,
+                                               "lumaMedian":  77.02900000000001,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-011",
+                     "order":  11,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  38,
+                     "mainFrameP90":  107.2154,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "02.png",
+                                               "row":  1,
+                                               "col":  3,
+                                               "frameP90":  107.2876,
+                                               "frameP75":  104.7782,
+                                               "lumaMedian":  64.47619999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-012",
+                     "order":  12,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  4928,
+                     "mainFrameP90":  107.9306,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "02.png",
+                                               "row":  1,
+                                               "col":  4,
+                                               "frameP90":  107.3598,
+                                               "frameP75":  105.785,
+                                               "lumaMedian":  89.74139999999998,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-013",
+                     "order":  13,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1499,
+                     "mainFrameP90":  107.2876,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "02.png",
+                                               "row":  2,
+                                               "col":  1,
+                                               "frameP90":  107.5042,
+                                               "frameP75":  104.432,
+                                               "lumaMedian":  83.0928,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-014",
+                     "order":  14,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  347,
+                     "mainFrameP90":  107.2154,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "02.png",
+                                               "row":  2,
+                                               "col":  2,
+                                               "frameP90":  107.5764,
+                                               "frameP75":  104.8572,
+                                               "lumaMedian":  70.35379999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-015",
+                     "order":  15,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  33,
+                     "mainFrameP90":  107.9306,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "02.png",
+                                               "row":  2,
+                                               "col":  3,
+                                               "frameP90":  108.369,
+                                               "frameP75":  105.785,
+                                               "lumaMedian":  73.25499999999998,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-016",
+                     "order":  16,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1159,
+                     "mainFrameP90":  107.1472,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "02.png",
+                                               "row":  2,
+                                               "col":  4,
+                                               "frameP90":  107.2154,
+                                               "frameP75":  100.7742,
+                                               "lumaMedian":  74.993,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-017",
+                     "order":  17,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  24,
+                     "mainFrameP90":  107.2154,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "02.png",
+                                               "row":  3,
+                                               "col":  1,
+                                               "frameP90":  107.3598,
+                                               "frameP75":  104.3598,
+                                               "lumaMedian":  62.1814,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-018",
+                     "order":  18,
+                     "source":  "main",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  296,
+                     "mainFrameP90":  228.5084,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "02.png",
+                                               "row":  3,
+                                               "col":  2,
+                                               "frameP90":  107.3598,
+                                               "frameP75":  104.42679999999999,
+                                               "lumaMedian":  80.6796,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-019",
+                     "order":  19,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1374,
+                     "mainFrameP90":  100.1512,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "02.png",
+                                               "row":  3,
+                                               "col":  3,
+                                               "frameP90":  104.9254,
+                                               "frameP75":  86.9924,
+                                               "lumaMedian":  75.13,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-020",
+                     "order":  20,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1403,
+                     "mainFrameP90":  105.07619999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "02.png",
+                                               "row":  3,
+                                               "col":  4,
+                                               "frameP90":  105.20739999999999,
+                                               "frameP75":  99.1272,
+                                               "lumaMedian":  90.5696,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-021",
+                     "order":  21,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  107,
+                     "mainFrameP90":  104.9306,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "03.png",
+                                               "row":  1,
+                                               "col":  1,
+                                               "frameP90":  105.42519999999999,
+                                               "frameP75":  94.067,
+                                               "lumaMedian":  74.79299999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-022",
+                     "order":  22,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1032,
+                     "mainFrameP90":  105.785,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "03.png",
+                                               "row":  1,
+                                               "col":  2,
+                                               "frameP90":  106.50019999999999,
+                                               "frameP75":  100.55519999999999,
+                                               "lumaMedian":  84.00559999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-023",
+                     "order":  23,
+                     "source":  "sub",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  1,
+                     "mainFrameP90":  107.2154,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "03.png",
+                                               "row":  1,
+                                               "col":  3,
+                                               "frameP90":  216.98799999999997,
+                                               "frameP75":  133.8648,
+                                               "lumaMedian":  81.30659999999999,
+                                               "uiPenalty":  3,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-024",
+                     "order":  24,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  838,
+                     "mainFrameP90":  107.2154,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "03.png",
+                                               "row":  1,
+                                               "col":  4,
+                                               "frameP90":  107.2154,
+                                               "frameP75":  103.05499999999999,
+                                               "lumaMedian":  76.6784,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-025",
+                     "order":  25,
+                     "source":  "sub",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  14,
+                     "mainFrameP90":  108.0068,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "03.png",
+                                               "row":  2,
+                                               "col":  1,
+                                               "frameP90":  193.6326,
+                                               "frameP75":  72.46719999999999,
+                                               "lumaMedian":  60.8788,
+                                               "uiPenalty":  5,
+                                               "bright":  true,
+                                               "ambiguous":  true
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-026",
+                     "order":  26,
+                     "source":  "main",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  1545,
+                     "mainFrameP90":  240.65779999999998,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "03.png",
+                                               "row":  2,
+                                               "col":  2,
+                                               "frameP90":  106.50019999999999,
+                                               "frameP75":  95.21419999999999,
+                                               "lumaMedian":  76.35119999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-027",
+                     "order":  27,
+                     "source":  "sub",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  1287,
+                     "mainFrameP90":  105.5042,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "03.png",
+                                               "row":  2,
+                                               "col":  3,
+                                               "frameP90":  217.349,
+                                               "frameP75":  120.4356,
+                                               "lumaMedian":  117.3404,
+                                               "uiPenalty":  648,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-028",
+                     "order":  28,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  5224,
+                     "mainFrameP90":  107.2154,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "03.png",
+                                               "row":  2,
+                                               "col":  4,
+                                               "frameP90":  107.3638,
+                                               "frameP75":  100.4694,
+                                               "lumaMedian":  84.01979999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-029",
+                     "order":  29,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  142,
+                     "mainFrameP90":  105.785,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "03.png",
+                                               "row":  3,
+                                               "col":  1,
+                                               "frameP90":  105.29159999999999,
+                                               "frameP75":  72.7084,
+                                               "lumaMedian":  55.20139999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-030",
+                     "order":  30,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  3242,
+                     "mainFrameP90":  99.64859999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "03.png",
+                                               "row":  3,
+                                               "col":  2,
+                                               "frameP90":  99.68879999999999,
+                                               "frameP75":  94.1862,
+                                               "lumaMedian":  76.7358,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-031",
+                     "order":  31,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  2217,
+                     "mainFrameP90":  100.5576,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "03.png",
+                                               "row":  3,
+                                               "col":  3,
+                                               "frameP90":  102.56559999999998,
+                                               "frameP75":  95.90539999999999,
+                                               "lumaMedian":  83.9022,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-032",
+                     "order":  32,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  206,
+                     "mainFrameP90":  95.34379999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "03.png",
+                                               "row":  3,
+                                               "col":  4,
+                                               "frameP90":  99.70479999999999,
+                                               "frameP75":  85.80739999999999,
+                                               "lumaMedian":  74.9576,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-033",
+                     "order":  33,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  482,
+                     "mainFrameP90":  105.79419999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "04.png",
+                                               "row":  1,
+                                               "col":  1,
+                                               "frameP90":  105.785,
+                                               "frameP75":  79.1236,
+                                               "lumaMedian":  68.7554,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-034",
+                     "order":  34,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  202,
+                     "mainFrameP90":  106.50019999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "04.png",
+                                               "row":  1,
+                                               "col":  2,
+                                               "frameP90":  106.4412,
+                                               "frameP75":  80.39599999999999,
+                                               "lumaMedian":  53.5528,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-035",
+                     "order":  35,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  190,
+                     "mainFrameP90":  104.35459999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "04.png",
+                                               "row":  1,
+                                               "col":  3,
+                                               "frameP90":  105.785,
+                                               "frameP75":  75.2922,
+                                               "lumaMedian":  53.0726,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-036",
+                     "order":  36,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  2880,
+                     "mainFrameP90":  104.84639999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "04.png",
+                                               "row":  1,
+                                               "col":  4,
+                                               "frameP90":  105.20739999999999,
+                                               "frameP75":  96.1578,
+                                               "lumaMedian":  88.90839999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-037",
+                     "order":  37,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  517,
+                     "mainFrameP90":  107.9346,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "04.png",
+                                               "row":  2,
+                                               "col":  1,
+                                               "frameP90":  108.4412,
+                                               "frameP75":  95.47619999999999,
+                                               "lumaMedian":  72.4268,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           },
+                                           {
+                                               "page":  "05.png",
+                                               "row":  1,
+                                               "col":  1,
+                                               "frameP90":  107.5764,
+                                               "frameP75":  93.9908,
+                                               "lumaMedian":  73.5042,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-038",
+                     "order":  38,
+                     "source":  "sub",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  2007,
+                     "mainFrameP90":  92.97359999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "04.png",
+                                               "row":  2,
+                                               "col":  2,
+                                               "frameP90":  224.54959999999997,
+                                               "frameP75":  181.7426,
+                                               "lumaMedian":  157.531,
+                                               "uiPenalty":  1439,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           },
+                                           {
+                                               "page":  "05.png",
+                                               "row":  1,
+                                               "col":  2,
+                                               "frameP90":  223.8344,
+                                               "frameP75":  179.7294,
+                                               "lumaMedian":  156.87279999999998,
+                                               "uiPenalty":  1292,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-039",
+                     "order":  39,
+                     "source":  "main",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  1109,
+                     "mainFrameP90":  228.3018,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "04.png",
+                                               "row":  2,
+                                               "col":  3,
+                                               "frameP90":  97.70759999999999,
+                                               "frameP75":  84.3194,
+                                               "lumaMedian":  67.5598,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           },
+                                           {
+                                               "page":  "05.png",
+                                               "row":  1,
+                                               "col":  3,
+                                               "frameP90":  95.903,
+                                               "frameP75":  79.1288,
+                                               "lumaMedian":  65.5898,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-040",
+                     "order":  40,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  560,
+                     "mainFrameP90":  103.50419999999998,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "04.png",
+                                               "row":  2,
+                                               "col":  4,
+                                               "frameP90":  105.192,
+                                               "frameP75":  90.96679999999999,
+                                               "lumaMedian":  59.940999999999995,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           },
+                                           {
+                                               "page":  "05.png",
+                                               "row":  1,
+                                               "col":  4,
+                                               "frameP90":  103.6986,
+                                               "frameP75":  90.96679999999999,
+                                               "lumaMedian":  63.23659999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-041",
+                     "order":  41,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  2439,
+                     "mainFrameP90":  99.3318,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "05.png",
+                                               "row":  2,
+                                               "col":  1,
+                                               "frameP90":  99.3318,
+                                               "frameP75":  88.9594,
+                                               "lumaMedian":  74.5112,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-042",
+                     "order":  42,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  389,
+                     "mainFrameP90":  105.66300000000001,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "05.png",
+                                               "row":  2,
+                                               "col":  2,
+                                               "frameP90":  105.7404,
+                                               "frameP75":  92.35879999999999,
+                                               "lumaMedian":  73.3002,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-043",
+                     "order":  43,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  399,
+                     "mainFrameP90":  107.5764,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "05.png",
+                                               "row":  2,
+                                               "col":  3,
+                                               "frameP90":  107.5764,
+                                               "frameP75":  86.93759999999999,
+                                               "lumaMedian":  31.824,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-044",
+                     "order":  44,
+                     "source":  "sub",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  3464,
+                     "mainFrameP90":  102.4228,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "05.png",
+                                               "row":  2,
+                                               "col":  4,
+                                               "frameP90":  242.37439999999998,
+                                               "frameP75":  232.9158,
+                                               "lumaMedian":  167.3138,
+                                               "uiPenalty":  2112,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-045",
+                     "order":  45,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1879,
+                     "mainFrameP90":  107.5764,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "06.png",
+                                               "row":  1,
+                                               "col":  1,
+                                               "frameP90":  107.5764,
+                                               "frameP75":  96.60459999999999,
+                                               "lumaMedian":  35.0576,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-046",
+                     "order":  46,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  3245,
+                     "mainFrameP90":  95.47219999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "06.png",
+                                               "row":  1,
+                                               "col":  2,
+                                               "frameP90":  95.99119999999999,
+                                               "frameP75":  86.2456,
+                                               "lumaMedian":  67.8682,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-047",
+                     "order":  47,
+                     "source":  "main",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  0,
+                     "mainFrameP90":  236.69,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "06.png",
+                                               "row":  1,
+                                               "col":  3,
+                                               "frameP90":  213.84,
+                                               "frameP75":  180.2672,
+                                               "lumaMedian":  109.699,
+                                               "uiPenalty":  25,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-048",
+                     "order":  48,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  0,
+                     "mainFrameP90":  92.2086,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "06.png",
+                                               "row":  1,
+                                               "col":  4,
+                                               "frameP90":  92.85159999999999,
+                                               "frameP75":  77.52319999999999,
+                                               "lumaMedian":  64.91739999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-049",
+                     "order":  49,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  72,
+                     "mainFrameP90":  94.2262,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "06.png",
+                                               "row":  2,
+                                               "col":  1,
+                                               "frameP90":  83.95939999999999,
+                                               "frameP75":  64.7478,
+                                               "lumaMedian":  41.8682,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-050",
+                     "order":  50,
+                     "source":  "main",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  0,
+                     "mainFrameP90":  241.68999999999997,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "06.png",
+                                               "row":  2,
+                                               "col":  2,
+                                               "frameP90":  99.8196,
+                                               "frameP75":  84.58579999999999,
+                                               "lumaMedian":  28.104999999999997,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-051",
+                     "order":  51,
+                     "source":  "sub",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  1105,
+                     "mainFrameP90":  75.3456,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "06.png",
+                                               "row":  2,
+                                               "col":  3,
+                                               "frameP90":  213.84,
+                                               "frameP75":  131.8398,
+                                               "lumaMedian":  121.7898,
+                                               "uiPenalty":  528,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-052",
+                     "order":  52,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1042,
+                     "mainFrameP90":  95.4068,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "06.png",
+                                               "row":  2,
+                                               "col":  4,
+                                               "frameP90":  93.08579999999999,
+                                               "frameP75":  82.97879999999999,
+                                               "lumaMedian":  58.4278,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-053",
+                     "order":  53,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  56,
+                     "mainFrameP90":  93.957,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "06.png",
+                                               "row":  3,
+                                               "col":  1,
+                                               "frameP90":  88.8338,
+                                               "frameP75":  74.16460000000001,
+                                               "lumaMedian":  56.812599999999996,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-054",
+                     "order":  54,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  24,
+                     "mainFrameP90":  107.2154,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "06.png",
+                                               "row":  3,
+                                               "col":  2,
+                                               "frameP90":  94.2262,
+                                               "frameP75":  82.21039999999999,
+                                               "lumaMedian":  49.4884,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-055",
+                     "order":  55,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  299,
+                     "mainFrameP90":  107.2154,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "06.png",
+                                               "row":  3,
+                                               "col":  3,
+                                               "frameP90":  99.761,
+                                               "frameP75":  93.2984,
+                                               "lumaMedian":  82.8328,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-056",
+                     "order":  56,
+                     "source":  "main",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  738,
+                     "mainFrameP90":  250.98399999999998,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "06.png",
+                                               "row":  3,
+                                               "col":  4,
+                                               "frameP90":  107.2154,
+                                               "frameP75":  99.5484,
+                                               "lumaMedian":  80.82079999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-057",
+                     "order":  57,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  241,
+                     "mainFrameP90":  107.2154,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "07.png",
+                                               "row":  1,
+                                               "col":  1,
+                                               "frameP90":  107.3598,
+                                               "frameP75":  104.9346,
+                                               "lumaMedian":  60.583400000000005,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-058",
+                     "order":  58,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1,
+                     "mainFrameP90":  109.5776,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "07.png",
+                                               "row":  1,
+                                               "col":  2,
+                                               "frameP90":  129.5014,
+                                               "frameP75":  106.6446,
+                                               "lumaMedian":  33.2688,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-059",
+                     "order":  59,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1,
+                     "mainFrameP90":  100.50139999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "07.png",
+                                               "row":  1,
+                                               "col":  3,
+                                               "frameP90":  100.6458,
+                                               "frameP75":  83.48419999999999,
+                                               "lumaMedian":  54.624599999999994,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-060",
+                     "order":  60,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  860,
+                     "mainFrameP90":  101.0016,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "07.png",
+                                               "row":  1,
+                                               "col":  4,
+                                               "frameP90":  101.71679999999999,
+                                               "frameP75":  80.3226,
+                                               "lumaMedian":  55.846,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-061",
+                     "order":  61,
+                     "source":  "main",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  0,
+                     "mainFrameP90":  241.68999999999997,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "07.png",
+                                               "row":  2,
+                                               "col":  1,
+                                               "frameP90":  241.68999999999997,
+                                               "frameP75":  92.65259999999999,
+                                               "lumaMedian":  57.52459999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-062",
+                     "order":  62,
+                     "source":  "sub",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  0,
+                     "mainFrameP90":  89.03779999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "07.png",
+                                               "row":  2,
+                                               "col":  2,
+                                               "frameP90":  241.68999999999997,
+                                               "frameP75":  87.7518,
+                                               "lumaMedian":  57.36599999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-063",
+                     "order":  63,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1834,
+                     "mainFrameP90":  89.518,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "07.png",
+                                               "row":  2,
+                                               "col":  3,
+                                               "frameP90":  89.518,
+                                               "frameP75":  79.21759999999999,
+                                               "lumaMedian":  67.1972,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-064",
+                     "order":  64,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  922,
+                     "mainFrameP90":  104.21659999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "07.png",
+                                               "row":  2,
+                                               "col":  4,
+                                               "frameP90":  104.21659999999999,
+                                               "frameP75":  98.62859999999999,
+                                               "lumaMedian":  76.8658,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-065",
+                     "order":  65,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  4,
+                     "mainFrameP90":  106.50019999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "07.png",
+                                               "row":  3,
+                                               "col":  1,
+                                               "frameP90":  135.3518,
+                                               "frameP75":  100.44,
+                                               "lumaMedian":  76.65140000000001,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-066",
+                     "order":  66,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1,
+                     "mainFrameP90":  96.07099999999998,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "07.png",
+                                               "row":  3,
+                                               "col":  2,
+                                               "frameP90":  105.3638,
+                                               "frameP75":  83.4028,
+                                               "lumaMedian":  62.5564,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-067",
+                     "order":  67,
+                     "source":  "sub",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  0,
+                     "mainFrameP90":  101.5078,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "07.png",
+                                               "row":  3,
+                                               "col":  3,
+                                               "frameP90":  241.68999999999997,
+                                               "frameP75":  102.43959999999998,
+                                               "lumaMedian":  75.28479999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-068",
+                     "order":  68,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  47,
+                     "mainFrameP90":  96.70879999999998,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "07.png",
+                                               "row":  3,
+                                               "col":  4,
+                                               "frameP90":  105.7168,
+                                               "frameP75":  91.8624,
+                                               "lumaMedian":  62.8452,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-069",
+                     "order":  69,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  2205,
+                     "mainFrameP90":  98.6848,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "08.png",
+                                               "row":  1,
+                                               "col":  1,
+                                               "frameP90":  105.785,
+                                               "frameP75":  93.6784,
+                                               "lumaMedian":  73.66819999999998,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-070",
+                     "order":  70,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  16,
+                     "mainFrameP90":  93.4292,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "08.png",
+                                               "row":  1,
+                                               "col":  2,
+                                               "frameP90":  105.785,
+                                               "frameP75":  78.7438,
+                                               "lumaMedian":  55.8026,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-071",
+                     "order":  71,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  822,
+                     "mainFrameP90":  106.08299999999998,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "08.png",
+                                               "row":  1,
+                                               "col":  3,
+                                               "frameP90":  108.29159999999999,
+                                               "frameP75":  98.94259999999998,
+                                               "lumaMedian":  59.818799999999996,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-072",
+                     "order":  72,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1201,
+                     "mainFrameP90":  90.154,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "08.png",
+                                               "row":  1,
+                                               "col":  4,
+                                               "frameP90":  102.4706,
+                                               "frameP75":  79.149,
+                                               "lumaMedian":  54.96719999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-073",
+                     "order":  73,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  407,
+                     "mainFrameP90":  102.7168,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "08.png",
+                                               "row":  2,
+                                               "col":  1,
+                                               "frameP90":  106.50019999999999,
+                                               "frameP75":  74.39599999999999,
+                                               "lumaMedian":  61.015,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-074",
+                     "order":  74,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  672,
+                     "mainFrameP90":  101.71679999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "08.png",
+                                               "row":  2,
+                                               "col":  2,
+                                               "frameP90":  106.50019999999999,
+                                               "frameP75":  71.9272,
+                                               "lumaMedian":  65.21719999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-075",
+                     "order":  75,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  80,
+                     "mainFrameP90":  102.92659999999998,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "08.png",
+                                               "row":  2,
+                                               "col":  3,
+                                               "frameP90":  102.92659999999998,
+                                               "frameP75":  102.07379999999999,
+                                               "lumaMedian":  59.2288,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-076",
+                     "order":  76,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  3,
+                     "mainFrameP90":  100.93459999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "08.png",
+                                               "row":  2,
+                                               "col":  4,
+                                               "frameP90":  105.785,
+                                               "frameP75":  83.2556,
+                                               "lumaMedian":  61.2816,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-077",
+                     "order":  77,
+                     "source":  "main",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  0,
+                     "mainFrameP90":  233.7622,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "08.png",
+                                               "row":  3,
+                                               "col":  1,
+                                               "frameP90":  102.69399999999999,
+                                               "frameP75":  93.5312,
+                                               "lumaMedian":  52.111,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-078",
+                     "order":  78,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  83,
+                     "mainFrameP90":  105.2864,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "08.png",
+                                               "row":  3,
+                                               "col":  2,
+                                               "frameP90":  109.0068,
+                                               "frameP75":  101.9134,
+                                               "lumaMedian":  58.914199999999994,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-079",
+                     "order":  79,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  0,
+                     "mainFrameP90":  105.785,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "08.png",
+                                               "row":  3,
+                                               "col":  3,
+                                               "frameP90":  107.2154,
+                                               "frameP75":  83.0458,
+                                               "lumaMedian":  45.3254,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-080",
+                     "order":  80,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  41,
+                     "mainFrameP90":  105.785,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "08.png",
+                                               "row":  3,
+                                               "col":  4,
+                                               "frameP90":  106.726,
+                                               "frameP75":  100.4934,
+                                               "lumaMedian":  78.82,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-081",
+                     "order":  81,
+                     "source":  "sub",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  0,
+                     "mainFrameP90":  102.07379999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "09.png",
+                                               "row":  1,
+                                               "col":  1,
+                                               "frameP90":  241.68999999999997,
+                                               "frameP75":  93.98839999999998,
+                                               "lumaMedian":  60.2062,
+                                               "uiPenalty":  0,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-082",
+                     "order":  82,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  226,
+                     "mainFrameP90":  90.1874,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "09.png",
+                                               "row":  1,
+                                               "col":  2,
+                                               "frameP90":  102.789,
+                                               "frameP75":  86.0338,
+                                               "lumaMedian":  61.242399999999996,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-083",
+                     "order":  83,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  509,
+                     "mainFrameP90":  91.03659999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "09.png",
+                                               "row":  1,
+                                               "col":  3,
+                                               "frameP90":  93.3706,
+                                               "frameP75":  76.0406,
+                                               "lumaMedian":  55.1534,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-084",
+                     "order":  84,
+                     "source":  "sub",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  0,
+                     "mainFrameP90":  103.73400000000001,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "09.png",
+                                               "row":  1,
+                                               "col":  4,
+                                               "frameP90":  241.68999999999997,
+                                               "frameP75":  102.24059999999999,
+                                               "lumaMedian":  47.2136,
+                                               "uiPenalty":  0,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-085",
+                     "order":  85,
+                     "source":  "sub",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  0,
+                     "mainFrameP90":  102.71399999999998,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "09.png",
+                                               "row":  2,
+                                               "col":  1,
+                                               "frameP90":  241.68999999999997,
+                                               "frameP75":  102.07379999999999,
+                                               "lumaMedian":  87.541,
+                                               "uiPenalty":  0,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-086",
+                     "order":  86,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  231,
+                     "mainFrameP90":  97.06459999999998,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "09.png",
+                                               "row":  2,
+                                               "col":  2,
+                                               "frameP90":  97.1288,
+                                               "frameP75":  92.54879999999999,
+                                               "lumaMedian":  80.3522,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-087",
+                     "order":  87,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  0,
+                     "mainFrameP90":  101.1396,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "09.png",
+                                               "row":  2,
+                                               "col":  3,
+                                               "frameP90":  101.85479999999998,
+                                               "frameP75":  95.8616,
+                                               "lumaMedian":  71.8856,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-088",
+                     "order":  88,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  461,
+                     "mainFrameP90":  104.9386,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "09.png",
+                                               "row":  2,
+                                               "col":  4,
+                                               "frameP90":  103.0016,
+                                               "frameP75":  100.93860000000001,
+                                               "lumaMedian":  94.1352,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-089",
+                     "order":  89,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  108,
+                     "mainFrameP90":  105.49619999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "09.png",
+                                               "row":  3,
+                                               "col":  1,
+                                               "frameP90":  106.50019999999999,
+                                               "frameP75":  104.0658,
+                                               "lumaMedian":  92.48299999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-090",
+                     "order":  90,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  2,
+                     "mainFrameP90":  106.726,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "09.png",
+                                               "row":  3,
+                                               "col":  2,
+                                               "frameP90":  106.8142,
+                                               "frameP75":  103.01479999999998,
+                                               "lumaMedian":  95.5792,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-091",
+                     "order":  91,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  3735,
+                     "mainFrameP90":  104.6366,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "09.png",
+                                               "row":  3,
+                                               "col":  3,
+                                               "frameP90":  104.6366,
+                                               "frameP75":  96.7076,
+                                               "lumaMedian":  91.7918,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-092",
+                     "order":  92,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  352,
+                     "mainFrameP90":  105.29560000000001,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "09.png",
+                                               "row":  3,
+                                               "col":  4,
+                                               "frameP90":  104.29039999999998,
+                                               "frameP75":  95.1168,
+                                               "lumaMedian":  83.5584,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-093",
+                     "order":  93,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1653,
+                     "mainFrameP90":  100.5764,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "10.png",
+                                               "row":  1,
+                                               "col":  1,
+                                               "frameP90":  105.785,
+                                               "frameP75":  94.03659999999999,
+                                               "lumaMedian":  67.187,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-094",
+                     "order":  94,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1496,
+                     "mainFrameP90":  97.0028,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "10.png",
+                                               "row":  1,
+                                               "col":  2,
+                                               "frameP90":  98.15119999999999,
+                                               "frameP75":  90.7478,
+                                               "lumaMedian":  70.789,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-095",
+                     "order":  95,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1020,
+                     "mainFrameP90":  99.43599999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "10.png",
+                                               "row":  1,
+                                               "col":  3,
+                                               "frameP90":  99.43599999999999,
+                                               "frameP75":  83.99260000000001,
+                                               "lumaMedian":  67.14299999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-096",
+                     "order":  96,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1643,
+                     "mainFrameP90":  103.2406,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "10.png",
+                                               "row":  1,
+                                               "col":  4,
+                                               "frameP90":  104.8572,
+                                               "frameP75":  94.2946,
+                                               "lumaMedian":  79.91,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-097",
+                     "order":  97,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  727,
+                     "mainFrameP90":  88.8096,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "10.png",
+                                               "row":  2,
+                                               "col":  1,
+                                               "frameP90":  97.54319999999998,
+                                               "frameP75":  82.7856,
+                                               "lumaMedian":  69.6296,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-098",
+                     "order":  98,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  615,
+                     "mainFrameP90":  100.01719999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "10.png",
+                                               "row":  2,
+                                               "col":  2,
+                                               "frameP90":  104.13119999999999,
+                                               "frameP75":  90.8144,
+                                               "lumaMedian":  75.31099999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-099",
+                     "order":  99,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  0,
+                     "mainFrameP90":  106.57239999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "10.png",
+                                               "row":  2,
+                                               "col":  3,
+                                               "frameP90":  113.44120000000001,
+                                               "frameP75":  101.4952,
+                                               "lumaMedian":  85.10679999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-100",
+                     "order":  100,
+                     "source":  "sub",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  0,
+                     "mainFrameP90":  105.9794,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "10.png",
+                                               "row":  2,
+                                               "col":  4,
+                                               "frameP90":  217.62179999999998,
+                                               "frameP75":  100.9992,
+                                               "lumaMedian":  83.24199999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-101",
+                     "order":  101,
+                     "source":  "sub",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  0,
+                     "mainFrameP90":  109.94539999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "11.png",
+                                               "row":  1,
+                                               "col":  1,
+                                               "frameP90":  194.6258,
+                                               "frameP75":  103.574,
+                                               "lumaMedian":  92.20739999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  true,
+                                               "ambiguous":  true
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-102",
+                     "order":  102,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  true,
+                     "yellowAfter":  167,
+                     "mainFrameP90":  98.10019999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "11.png",
+                                               "row":  1,
+                                               "col":  2,
+                                               "frameP90":  171.4894,
+                                               "frameP75":  94.62859999999999,
+                                               "lumaMedian":  81.792,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  true
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-103",
+                     "order":  103,
+                     "source":  "sub",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  56,
+                     "mainFrameP90":  243.8386,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "11.png",
+                                               "row":  1,
+                                               "col":  3,
+                                               "frameP90":  243.8386,
+                                               "frameP75":  241.17419999999998,
+                                               "lumaMedian":  184.54359999999997,
+                                               "uiPenalty":  290,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-104",
+                     "order":  104,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  0,
+                     "mainFrameP90":  95.7974,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "11.png",
+                                               "row":  1,
+                                               "col":  4,
+                                               "frameP90":  103.50419999999998,
+                                               "frameP75":  76.533,
+                                               "lumaMedian":  43.4572,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-105",
+                     "order":  105,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  173,
+                     "mainFrameP90":  96.84299999999999,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "11.png",
+                                               "row":  2,
+                                               "col":  1,
+                                               "frameP90":  101.48599999999999,
+                                               "frameP75":  91.1422,
+                                               "lumaMedian":  73.4242,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-106",
+                     "order":  106,
+                     "source":  "main",
+                     "corrected":  false,
+                     "coeff":  "none",
+                     "ambiguous":  false,
+                     "yellowAfter":  11,
+                     "mainFrameP90":  225.9106,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "11.png",
+                                               "row":  2,
+                                               "col":  2,
+                                               "frameP90":  240.69,
+                                               "frameP75":  214.984,
+                                               "lumaMedian":  170.76819999999998,
+                                               "uiPenalty":  1,
+                                               "bright":  true,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-107",
+                     "order":  107,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  281,
+                     "mainFrameP90":  102.8258,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "11.png",
+                                               "row":  2,
+                                               "col":  3,
+                                               "frameP90":  105.785,
+                                               "frameP75":  96.9044,
+                                               "lumaMedian":  84.00439999999999,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-108",
+                     "order":  108,
+                     "source":  "restored-sub",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1805,
+                     "mainFrameP90":  108.36499999999998,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "11.png",
+                                               "row":  2,
+                                               "col":  4,
+                                               "frameP90":  110.37580000000001,
+                                               "frameP75":  102.5042,
+                                               "lumaMedian":  90.876,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-109",
+                     "order":  109,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  12,
+                     "mainFrameP90":  108.8624,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "13.png",
+                                               "row":  1,
+                                               "col":  1,
+                                               "frameP90":  108.07499999999999,
+                                               "frameP75":  92.1936,
+                                               "lumaMedian":  68.2226,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 },
+                 {
+                     "id":  "puzzle-110",
+                     "order":  110,
+                     "source":  "restored-main",
+                     "corrected":  true,
+                     "coeff":  "alpha=[0.4235, 0.4394, 0.5114], offset=[-0.04, -1.91, -0.19], gamma=1.00",
+                     "ambiguous":  false,
+                     "yellowAfter":  1,
+                     "mainFrameP90":  109.738,
+                     "subCandidates":  [
+                                           {
+                                               "page":  "13.png",
+                                               "row":  1,
+                                               "col":  2,
+                                               "frameP90":  109.2274,
+                                               "frameP75":  90.99539999999999,
+                                               "lumaMedian":  81.2304,
+                                               "uiPenalty":  0,
+                                               "bright":  false,
+                                               "ambiguous":  false
+                                           }
+                                       ]
+                 }
+             ]
+}

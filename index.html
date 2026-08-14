@@ -792,7 +792,7 @@ th{font-size:12px;color:var(--muted);background:#fbf8f4}
   h1{font-size:28px;letter-spacing:-.05em}
   header p{font-size:12px;line-height:1.45;max-width:95%}
   main{padding:8px;gap:8px}
-  .tabs{gap:6px;position:sticky;top:0;z-index:5;background:transparent;backdrop-filter:none;padding:0}
+  .tabs{gap:6px;padding:0}
   .tab{padding:7px 10px;font-size:13px}
   .card{padding:11px;border-radius:16px}
   h2{font-size:15px;margin-bottom:7px}
@@ -878,10 +878,55 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
   .weeklyWeatherRow{padding:0 2px;font-size:11px;gap:2px}
 }
 
+.puzzleShell{display:grid;gap:12px}
+.puzzleHero{display:grid;gap:12px;align-items:start}
+.puzzleHero h2{margin-bottom:0}
+.puzzleTopBar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.puzzleProgress{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-weight:900;color:var(--heading)}
+.puzzleProgress strong{background:var(--soft);color:var(--accent2);border:1px solid #d7e2dc;border-radius:999px;padding:6px 10px}
+.puzzleCharacterTabs{display:flex;gap:8px;overflow-x:auto;padding:2px 0 7px;-webkit-overflow-scrolling:touch}
+.puzzleCharacterTab{flex:0 0 auto;min-width:78px;max-width:150px;border-radius:999px;padding:9px 12px;background:#fff;color:var(--body);border:1px solid var(--line);box-shadow:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.puzzleCharacterTab.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.puzzleCharacterTools{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:end}
+.puzzleCharacterTools label{display:grid;gap:6px;font-weight:800}
+.puzzleSearchGrid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
+.puzzleSearchGrid label{display:grid;gap:6px;font-weight:800}
+.puzzleFilters{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.puzzleToggle{display:inline-flex;align-items:center;gap:7px;font-weight:800;color:var(--body);user-select:none}
+.puzzleToggle input{width:auto}
+.puzzleGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(142px,1fr));gap:10px}
+.puzzleCard{position:relative;min-width:0;border:1px solid var(--line);border-radius:8px;background:#fff;padding:9px;display:grid;gap:8px;text-align:left;color:var(--body);box-shadow:var(--shadow);cursor:pointer}
+.puzzleCard:hover{transform:translateY(-1px)}
+.puzzleCard.owned{border-color:#85ad95;background:#f6fbf7}
+.puzzleImageWrap{position:relative;aspect-ratio:1;border-radius:7px;background:#f3ece2;overflow:hidden}
+.puzzleImageWrap img{width:100%;height:100%;object-fit:cover;display:block}
+.puzzleCheck{position:absolute;top:7px;right:7px;width:28px;height:28px;border-radius:999px;display:grid;place-items:center;background:#fff;color:#8b8177;border:1px solid rgba(0,0,0,.12);font-weight:950}
+.puzzleCard.owned .puzzleCheck{background:#3f8a61;border-color:#3f8a61;color:#fff}
+.puzzleName{min-height:38px;font-size:13px;line-height:1.35;font-weight:900;color:var(--heading)}
+.puzzleState{width:max-content;max-width:100%;border-radius:999px;padding:4px 8px;font-size:12px;font-weight:900;background:#f0ebe3;color:#71685e}
+.puzzleCard.owned .puzzleState{background:#dfeee4;color:#2f6d4a}
+.puzzleEmpty{border:1px dashed var(--line);border-radius:8px;background:#fffdf8;padding:18px;color:var(--muted);font-weight:800}
+.puzzleHistoryList{display:grid;gap:7px;margin-top:10px}
+.puzzleHistoryItem{display:grid;gap:2px;border-bottom:1px solid var(--line);padding-bottom:7px}
+.puzzleHistoryItem:last-child{border-bottom:0;padding-bottom:0}
+.puzzleHistoryTime{font-size:12px;color:var(--muted);font-weight:800}
+.puzzleDangerZone{margin-top:8px;border-top:1px solid var(--line);padding-top:12px}
+.puzzleStatus{min-height:18px}
+@media(max-width:760px){
+  .puzzleCharacterTools{grid-template-columns:1fr;align-items:stretch}
+  .puzzleGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .puzzleCard{padding:7px}
+  .puzzleName{font-size:12px;min-height:34px}
+  .puzzleState{font-size:11px}
+}
+
 @media(max-width:360px){
   .weeklyWeatherRow{padding:0 1px;font-size:10px}
   .weeklyWeatherIcons{font-size:15px}
   .compactWeatherWeek .weeklyWeatherIcons{font-size:16px}
+  .puzzleGrid{gap:7px}
+  .puzzleCard{padding:6px}
+  .puzzleCharacterTab{min-width:72px;padding:8px 10px}
 }
 
 </style>
@@ -897,6 +942,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
     <button class="tab active" data-tab="today">今日の場所</button>
     <button class="tab" data-tab="weather">天気メモ</button>
     <button class="tab" data-anchor="gift-codes">ギフコ</button>
+    <button class="tab" data-tab="puzzles">パズル</button>
     <button class="tab" data-tab="about">このサイトについて</button>
   </section>
   <div id="siteNotice" class="siteNotice" hidden></div>
@@ -999,6 +1045,72 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
         <div class="buttons"><button id="submitWeatherReportBtn">送信</button></div>
         <div id="weatherReportStatus" class="status"></div>
       </div>
+    </div>
+  </section>
+
+  <section id="puzzles" class="panel">
+    <div class="grid puzzleShell">
+      <div class="card s12 puzzleHero">
+        <div class="puzzleTopBar">
+          <div>
+            <h2>パズル所持チェッカー</h2>
+            <p class="small">キャラクターごとに、もう買わなくていいパズルを端末内に保存します。</p>
+          </div>
+          <div class="puzzleProgress">
+            <strong id="puzzleOwnedCount">0 / 110</strong>
+            <span id="puzzleResultCount" class="small"></span>
+          </div>
+        </div>
+        <div id="puzzleCharacterTabs" class="puzzleCharacterTabs" role="tablist" aria-label="パズル管理キャラクター"></div>
+        <div class="puzzleCharacterTools">
+          <label for="puzzleCharacterNameInput">キャラクター名
+            <input id="puzzleCharacterNameInput" maxlength="40" autocomplete="off" spellcheck="false">
+          </label>
+          <button id="puzzleAddCharacterBtn" type="button" class="secondary">キャラ追加</button>
+          <button id="puzzleDeleteCharacterBtn" type="button" class="danger">キャラ削除</button>
+        </div>
+        <div id="puzzleCharacterStatus" class="status puzzleStatus"></div>
+      </div>
+
+      <div class="card s12">
+        <div class="puzzleSearchGrid">
+          <label for="puzzleSearchInput">パズル名で検索
+            <input id="puzzleSearchInput" type="search" placeholder="例：カピバラ、服屋、噴水" autocomplete="off" spellcheck="false">
+          </label>
+          <button id="puzzleClearSearchBtn" type="button" class="secondary">クリア</button>
+        </div>
+        <div class="puzzleFilters">
+          <label class="puzzleToggle"><input id="puzzleMissingOnlyInput" type="checkbox">未所持のみ表示</label>
+          <span id="puzzleFilterStatus" class="small"></span>
+        </div>
+      </div>
+
+      <div class="card s12">
+        <div id="puzzleList" class="puzzleGrid"></div>
+        <div id="puzzleEmptyMessage" class="puzzleEmpty" hidden></div>
+      </div>
+
+      <details class="card s12">
+        <summary>最近の変更履歴</summary>
+        <div id="puzzleHistoryList" class="puzzleHistoryList"></div>
+      </details>
+
+      <details class="card s12">
+        <summary>データの書き出しと復元</summary>
+        <p class="small">パズル所持チェッカーの全キャラクターデータだけを書き出し・復元します。</p>
+        <div class="buttons">
+          <button id="puzzleExportBtn" type="button">JSONを書き出し</button>
+          <button id="puzzleImportPickBtn" type="button" class="secondary">JSONを選ぶ</button>
+        </div>
+        <input id="puzzleImportFileInput" type="file" accept="application/json,.json" hidden>
+        <div id="puzzleBackupStatus" class="status puzzleStatus"></div>
+        <div class="puzzleDangerZone">
+          <div class="buttons">
+            <button id="puzzleResetAllBtn" type="button" class="danger">パズル全データ削除</button>
+          </div>
+          <div id="puzzleResetStatus" class="status puzzleStatus"></div>
+        </div>
+      </details>
     </div>
   </section>
 
@@ -1389,6 +1501,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
 
 <div id="toast" class="toast"></div>
 
+<script src="assets/puzzles/puzzles-data.js"></script>
 <script>
 const WEATHER_API_URL = "https://script.google.com/macros/s/AKfycbwoPLuj0rSsennsx01-B-6UxqBjqnPieocgVLQnJMKEgRw6fZziV5ZGVA3SusjVLF3o/exec";
 const WEATHER_OPTIONS = [
@@ -2591,6 +2704,9 @@ const ids = [
   "shareImagePreview","saveShareImageBtn","shareImageBtn","shareImageStatus",
   "giftCodeList","expiredGiftCodes","expiredGiftCodeList",
   "weeklyWeather",
+  "puzzleOwnedCount","puzzleResultCount","puzzleCharacterTabs","puzzleCharacterNameInput","puzzleAddCharacterBtn","puzzleDeleteCharacterBtn","puzzleCharacterStatus",
+  "puzzleSearchInput","puzzleClearSearchBtn","puzzleMissingOnlyInput","puzzleFilterStatus","puzzleList","puzzleEmptyMessage","puzzleHistoryList",
+  "puzzleExportBtn","puzzleImportPickBtn","puzzleImportFileInput","puzzleBackupStatus","puzzleResetAllBtn","puzzleResetStatus",
   "adminGateKey","openAdminBtn","adminGateStatus","logoutAdminBtn",
   "obsDate","obsMemo","obsOak","obsFluorite","addObsBtn","obsStatus",
   "reportWeatherDate","reportStartSlot","reportWeatherMemo","reportPostKey","reportWeatherChips","reportWeekChips","submitWeatherReportBtn","weatherReportStatus",
@@ -2620,6 +2736,13 @@ let weatherScreenshotCandidates = null;
 let quickGiftManualTouched = {code:false, reward:false, expiresAt:false, sourceUrl:false, memo:false, status:false};
 const ADMIN_SESSION_KEY = "heartopiaAdminKey";
 let adminSessionKey = sessionStorage.getItem(ADMIN_SESSION_KEY) || "";
+const PUZZLE_STORAGE_KEY = "heartopiaPuzzleChecker.v1";
+const PUZZLE_SCHEMA_VERSION = 1;
+const PUZZLE_MAX_CHARACTERS = 5;
+const PUZZLE_HISTORY_LIMIT = 100;
+const PUZZLE_HISTORY_VISIBLE = 10;
+const PUZZLES = normalizePuzzleMaster(window.HEARTOPIA_PUZZLES || []);
+let puzzleState = loadPuzzleState();
 
 function clone(v){ return JSON.parse(JSON.stringify(v)); }
 function pad(n){ return String(n).padStart(2,"0"); }
@@ -5102,6 +5225,326 @@ function setAdminPanelActive(){
   document.getElementById("adminTab")?.classList.add("active");
   document.getElementById("admin")?.classList.add("active");
 }
+
+function normalizePuzzleMaster(items){
+  if(!Array.isArray(items)) return [];
+  return items.map(item => ({
+    id:String(item.id || ""),
+    name:String(item.name || ""),
+    image:String(item.image || ""),
+    order:Number(item.order || 0)
+  })).filter(item => item.id && item.name && item.image && item.order > 0)
+    .sort((a,b) => a.order - b.order);
+}
+function puzzleNow(){ return new Date().toISOString(); }
+function puzzleCharacterId(){ return `pchar-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`; }
+function defaultPuzzleState(){
+  const id = puzzleCharacterId();
+  return {
+    schemaVersion:PUZZLE_SCHEMA_VERSION,
+    activeCharacterId:id,
+    characters:[{id, name:"キャラ1", ownedPuzzleIds:[], history:[]}],
+    updatedAt:puzzleNow()
+  };
+}
+function puzzleIdSet(){ return new Set(PUZZLES.map(item => item.id)); }
+function normalizePuzzleCharacter(input, fallbackIndex, validIds){
+  const id = String(input?.id || puzzleCharacterId());
+  const name = String(input?.name || `キャラ${fallbackIndex + 1}`).trim() || `キャラ${fallbackIndex + 1}`;
+  const ownedPuzzleIds = [...new Set(Array.isArray(input?.ownedPuzzleIds) ? input.ownedPuzzleIds.map(String) : [])]
+    .filter(id => validIds.has(id));
+  const history = (Array.isArray(input?.history) ? input.history : []).map(item => ({
+    id:String(item.id || `hist-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`),
+    puzzleId:String(item.puzzleId || ""),
+    puzzleName:String(item.puzzleName || ""),
+    action:item.action === "missing" ? "missing" : "owned",
+    createdAt:String(item.createdAt || puzzleNow())
+  })).filter(item => validIds.has(item.puzzleId)).slice(0, PUZZLE_HISTORY_LIMIT);
+  return {id, name, ownedPuzzleIds, history};
+}
+function normalizePuzzleState(input){
+  const validIds = puzzleIdSet();
+  const source = input && typeof input === "object" ? input : {};
+  let characters = (Array.isArray(source.characters) ? source.characters : [])
+    .slice(0, PUZZLE_MAX_CHARACTERS)
+    .map((item, index) => normalizePuzzleCharacter(item, index, validIds));
+  if(!characters.length) characters = defaultPuzzleState().characters;
+  let activeCharacterId = String(source.activeCharacterId || "");
+  if(!characters.some(item => item.id === activeCharacterId)) activeCharacterId = characters[0].id;
+  return {
+    schemaVersion:PUZZLE_SCHEMA_VERSION,
+    activeCharacterId,
+    characters,
+    updatedAt:String(source.updatedAt || puzzleNow())
+  };
+}
+function loadPuzzleState(){
+  try{
+    const raw = localStorage.getItem(PUZZLE_STORAGE_KEY);
+    return normalizePuzzleState(raw ? JSON.parse(raw) : defaultPuzzleState());
+  }catch(error){
+    return normalizePuzzleState(defaultPuzzleState());
+  }
+}
+function savePuzzleState(){
+  puzzleState.updatedAt = puzzleNow();
+  localStorage.setItem(PUZZLE_STORAGE_KEY, JSON.stringify(puzzleState, null, 2));
+}
+function activePuzzleCharacter(){
+  return puzzleState.characters.find(item => item.id === puzzleState.activeCharacterId) || puzzleState.characters[0];
+}
+function puzzleSearchKey(value){
+  return String(value || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/パズル箱|パズル/g, "")
+    .replace(/[\s"'「」『』【】（）()\[\]［］・、。，,.．]/g, "");
+}
+function puzzleMatches(item, query){
+  if(!query) return true;
+  return puzzleSearchKey(item.name).includes(query);
+}
+function puzzleOwnedSet(character=activePuzzleCharacter()){
+  return new Set(character?.ownedPuzzleIds || []);
+}
+function puzzleHistoryText(action){
+  return action === "owned" ? "所持済みに変更" : "未所持へ戻しました";
+}
+function puzzleDateTime(value){
+  const date = new Date(value);
+  if(Number.isNaN(date.getTime())) return String(value || "");
+  return `${date.getFullYear()}/${pad(date.getMonth()+1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+function renderPuzzleCharacters(){
+  if(!E.puzzleCharacterTabs) return;
+  const active = activePuzzleCharacter();
+  E.puzzleCharacterTabs.innerHTML = puzzleState.characters.map((character, index) => `
+    <button type="button" class="puzzleCharacterTab${character.id === puzzleState.activeCharacterId ? " active" : ""}" data-puzzle-character="${esc(character.id)}" role="tab" aria-selected="${character.id === puzzleState.activeCharacterId ? "true" : "false"}" title="${esc(character.name)}">
+      ${esc(character.name || `キャラ${index + 1}`)}
+    </button>
+  `).join("");
+  E.puzzleCharacterNameInput.value = active?.name || "";
+  E.puzzleAddCharacterBtn.disabled = puzzleState.characters.length >= PUZZLE_MAX_CHARACTERS;
+  E.puzzleDeleteCharacterBtn.disabled = puzzleState.characters.length <= 1;
+}
+function filteredPuzzles(){
+  const query = puzzleSearchKey(E.puzzleSearchInput?.value || "");
+  const owned = puzzleOwnedSet();
+  return PUZZLES.filter(item => {
+    if(!puzzleMatches(item, query)) return false;
+    if(E.puzzleMissingOnlyInput?.checked && owned.has(item.id)) return false;
+    return true;
+  });
+}
+function renderPuzzleList(){
+  if(!E.puzzleList) return;
+  const active = activePuzzleCharacter();
+  const owned = puzzleOwnedSet(active);
+  const items = filteredPuzzles();
+  E.puzzleList.innerHTML = items.map(item => {
+    const isOwned = owned.has(item.id);
+    return `
+      <button type="button" class="puzzleCard${isOwned ? " owned" : ""}" data-puzzle-id="${esc(item.id)}" aria-pressed="${isOwned ? "true" : "false"}">
+        <span class="puzzleImageWrap">
+          <img src="${esc(item.image)}" alt="${esc(item.name)}" loading="lazy">
+          ${isOwned ? '<span class="puzzleCheck" aria-hidden="true">✓</span>' : ""}
+        </span>
+        <span class="puzzleName">${esc(item.name)}</span>
+        <span class="puzzleState">${isOwned ? "所持済み" : "未所持"}</span>
+      </button>
+    `;
+  }).join("");
+  const queryText = (E.puzzleSearchInput?.value || "").trim();
+  E.puzzleEmptyMessage.hidden = items.length > 0;
+  E.puzzleEmptyMessage.textContent = queryText ? "検索結果がありません。" : "表示できるパズルがありません。";
+}
+function renderPuzzleProgress(){
+  const active = activePuzzleCharacter();
+  const ownedCount = puzzleOwnedSet(active).size;
+  const items = filteredPuzzles();
+  const searching = Boolean((E.puzzleSearchInput?.value || "").trim());
+  E.puzzleOwnedCount.textContent = `${ownedCount} / ${PUZZLES.length || 110}`;
+  E.puzzleResultCount.textContent = searching ? `検索結果 ${items.length}件` : "";
+  E.puzzleFilterStatus.textContent = E.puzzleMissingOnlyInput?.checked ? "未所持のみ表示中" : "";
+}
+function renderPuzzleHistory(){
+  if(!E.puzzleHistoryList) return;
+  const active = activePuzzleCharacter();
+  const items = (active?.history || []).slice(0, PUZZLE_HISTORY_VISIBLE);
+  E.puzzleHistoryList.innerHTML = items.length ? items.map(item => `
+    <div class="puzzleHistoryItem">
+      <strong>${esc(item.puzzleName)}</strong>
+      <span>${esc(puzzleHistoryText(item.action))}</span>
+      <span class="puzzleHistoryTime">${esc(puzzleDateTime(item.createdAt))}</span>
+    </div>
+  `).join("") : `<p class="small">変更履歴はありません。</p>`;
+}
+function renderPuzzleChecker(){
+  if(!E.puzzleList) return;
+  if(!PUZZLES.length){
+    E.puzzleList.innerHTML = "";
+    E.puzzleEmptyMessage.hidden = false;
+    E.puzzleEmptyMessage.textContent = "パズルデータを読み込めませんでした。";
+    return;
+  }
+  renderPuzzleCharacters();
+  renderPuzzleList();
+  renderPuzzleProgress();
+  renderPuzzleHistory();
+}
+function setPuzzleStatus(message, target=E.puzzleCharacterStatus){
+  if(target) target.textContent = message || "";
+}
+function setActivePuzzleCharacter(id){
+  if(!puzzleState.characters.some(item => item.id === id)) return;
+  puzzleState.activeCharacterId = id;
+  savePuzzleState();
+  setPuzzleStatus("");
+  renderPuzzleChecker();
+}
+function renameActivePuzzleCharacter(){
+  const active = activePuzzleCharacter();
+  const name = E.puzzleCharacterNameInput.value.trim();
+  if(!name){
+    E.puzzleCharacterNameInput.value = active.name;
+    setPuzzleStatus("キャラクター名は空欄にできません。");
+    return;
+  }
+  active.name = name;
+  savePuzzleState();
+  setPuzzleStatus("キャラクター名を保存しました。");
+  renderPuzzleChecker();
+}
+function addPuzzleCharacter(){
+  if(puzzleState.characters.length >= PUZZLE_MAX_CHARACTERS){
+    setPuzzleStatus("キャラクターは最大5件までです。");
+    return;
+  }
+  const id = puzzleCharacterId();
+  puzzleState.characters.push({id, name:`キャラ${puzzleState.characters.length + 1}`, ownedPuzzleIds:[], history:[]});
+  puzzleState.activeCharacterId = id;
+  savePuzzleState();
+  setPuzzleStatus("キャラクターを追加しました。");
+  renderPuzzleChecker();
+}
+function deleteActivePuzzleCharacter(){
+  if(puzzleState.characters.length <= 1){
+    setPuzzleStatus("最後の1キャラクターは削除できません。");
+    return;
+  }
+  const active = activePuzzleCharacter();
+  if(!confirm(`「${active.name}」を削除します。このキャラクターの所持データと履歴も削除されます。よろしいですか？`)) return;
+  puzzleState.characters = puzzleState.characters.filter(item => item.id !== active.id);
+  puzzleState.activeCharacterId = puzzleState.characters[0].id;
+  savePuzzleState();
+  setPuzzleStatus("キャラクターを削除しました。");
+  renderPuzzleChecker();
+}
+function togglePuzzleOwned(id){
+  const active = activePuzzleCharacter();
+  const puzzle = PUZZLES.find(item => item.id === id);
+  if(!active || !puzzle) return;
+  const owned = puzzleOwnedSet(active);
+  const nextOwned = !owned.has(id);
+  active.ownedPuzzleIds = nextOwned
+    ? [...owned, id].sort((a,b) => a.localeCompare(b))
+    : [...owned].filter(item => item !== id);
+  active.history = [{
+    id:`hist-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`,
+    puzzleId:id,
+    puzzleName:puzzle.name,
+    action:nextOwned ? "owned" : "missing",
+    createdAt:puzzleNow()
+  }, ...(active.history || [])].slice(0, PUZZLE_HISTORY_LIMIT);
+  savePuzzleState();
+  renderPuzzleChecker();
+}
+function validatePuzzleImport(value){
+  const validIds = puzzleIdSet();
+  if(!value || typeof value !== "object") throw new Error("JSONの形式が正しくありません。");
+  if(Number(value.schemaVersion) !== PUZZLE_SCHEMA_VERSION) throw new Error("対応していないschemaVersionです。");
+  if(!Array.isArray(value.characters) || !value.characters.length) throw new Error("キャラクターデータがありません。");
+  if(value.characters.length > PUZZLE_MAX_CHARACTERS) throw new Error("キャラクターは5件までです。");
+  value.characters.forEach((character, index) => {
+    if(!String(character?.name || "").trim()) throw new Error(`キャラ${index + 1}の名前が空欄です。`);
+    const ids = Array.isArray(character.ownedPuzzleIds) ? character.ownedPuzzleIds.map(String) : [];
+    const unknown = ids.find(id => !validIds.has(id));
+    if(unknown) throw new Error(`未知のパズルIDがあります：${unknown}`);
+    const history = Array.isArray(character.history) ? character.history : [];
+    const unknownHistory = history.find(item => item?.puzzleId && !validIds.has(String(item.puzzleId)));
+    if(unknownHistory) throw new Error(`履歴に未知のパズルIDがあります：${unknownHistory.puzzleId}`);
+  });
+  return normalizePuzzleState(value);
+}
+function exportPuzzleData(){
+  const blob = new Blob([JSON.stringify(puzzleState, null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `heartopia-puzzle-checker-${dateValue(new Date())}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+function importPuzzleFile(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const nextState = validatePuzzleImport(JSON.parse(String(reader.result || "")));
+      if(!confirm("現在のパズル所持データを上書きして復元します。よろしいですか？")) return;
+      puzzleState = nextState;
+      savePuzzleState();
+      renderPuzzleChecker();
+      setPuzzleStatus("復元しました。", E.puzzleBackupStatus);
+    }catch(error){
+      setPuzzleStatus(`復元できませんでした：${error.message}`, E.puzzleBackupStatus);
+    }finally{
+      E.puzzleImportFileInput.value = "";
+    }
+  };
+  reader.onerror = () => setPuzzleStatus("ファイルを読み込めませんでした。", E.puzzleBackupStatus);
+  reader.readAsText(file);
+}
+function resetPuzzleAll(){
+  if(!confirm("パズル所持チェッカーの全キャラクターデータを削除します。よろしいですか？")) return;
+  puzzleState = defaultPuzzleState();
+  savePuzzleState();
+  renderPuzzleChecker();
+  setPuzzleStatus("全データを削除しました。", E.puzzleResetStatus);
+}
+function setupPuzzleChecker(){
+  if(!E.puzzleList) return;
+  if(!localStorage.getItem(PUZZLE_STORAGE_KEY)) savePuzzleState();
+  renderPuzzleChecker();
+  E.puzzleCharacterTabs.onclick = event => {
+    const tab = event.target.closest("[data-puzzle-character]");
+    if(tab) setActivePuzzleCharacter(tab.dataset.puzzleCharacter);
+  };
+  E.puzzleCharacterNameInput.onchange = renameActivePuzzleCharacter;
+  E.puzzleCharacterNameInput.onkeydown = event => {
+    if(event.key === "Enter"){
+      event.preventDefault();
+      renameActivePuzzleCharacter();
+    }
+  };
+  E.puzzleAddCharacterBtn.onclick = addPuzzleCharacter;
+  E.puzzleDeleteCharacterBtn.onclick = deleteActivePuzzleCharacter;
+  E.puzzleSearchInput.oninput = renderPuzzleChecker;
+  E.puzzleClearSearchBtn.onclick = () => {
+    E.puzzleSearchInput.value = "";
+    renderPuzzleChecker();
+    E.puzzleSearchInput.focus();
+  };
+  E.puzzleMissingOnlyInput.onchange = renderPuzzleChecker;
+  E.puzzleList.onclick = event => {
+    const card = event.target.closest("[data-puzzle-id]");
+    if(card) togglePuzzleOwned(card.dataset.puzzleId);
+  };
+  E.puzzleExportBtn.onclick = exportPuzzleData;
+  E.puzzleImportPickBtn.onclick = () => E.puzzleImportFileInput.click();
+  E.puzzleImportFileInput.onchange = () => importPuzzleFile(E.puzzleImportFileInput.files?.[0]);
+  E.puzzleResetAllBtn.onclick = resetPuzzleAll;
+}
 function setAdminSubtab(name = "daily"){
   document.querySelectorAll("[data-admin-subtab]").forEach(btn => {
     const active = btn.dataset.adminSubtab === name;
@@ -5177,6 +5620,7 @@ function init(){
   E.cycleLength.value = state.settings.cycleLength;
   E.rolloverHour.value = 6;
   renderToday();
+  setupPuzzleChecker();
   adminKeyInputs().forEach(input => {
     if(input) input.addEventListener("input", () => syncAdminKeys(input));
   });

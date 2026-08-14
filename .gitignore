@@ -6,3 +6,5 @@ assets/weather-templates/source/
 .env.*
 !.env.example
 assets/puzzles/source/
+assets/puzzles/source-char2/
+assets/puzzles/review/bright-restoration-paired-test/
