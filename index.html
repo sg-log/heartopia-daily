@@ -540,6 +540,43 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
   line-height:1.3;
 }
 .adminDetails summary + *{margin-top:12px}
+.accessStats{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:10px;
+  margin:10px 0 14px;
+}
+.accessStat{
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:#fff;
+  padding:10px;
+}
+.accessStatLabel{font-size:12px;color:var(--muted);font-weight:800}
+.accessStatValue{font-size:20px;color:var(--heading);font-weight:900;line-height:1.25;margin-top:3px}
+.accessChartWrap{overflow-x:auto;padding:2px 0 4px}
+.accessChart{
+  display:grid;
+  grid-template-columns:repeat(14,minmax(24px,1fr));
+  gap:7px;
+  align-items:end;
+  min-width:420px;
+  min-height:168px;
+  margin-top:10px;
+}
+.accessBarItem{display:grid;grid-template-rows:120px auto;gap:6px;min-width:0;text-align:center}
+.accessBarTrack{display:flex;align-items:end;justify-content:center;border-bottom:1px solid var(--line)}
+.accessBar{
+  width:100%;
+  max-width:28px;
+  min-height:2px;
+  border-radius:7px 7px 3px 3px;
+  background:var(--soft);
+  border:1px solid #cfded6;
+}
+.accessBarLabel{font-size:10px;color:var(--muted);line-height:1.25;font-weight:800;white-space:nowrap}
+.accessExclude{display:flex;align-items:center;gap:8px;margin-top:12px;font-weight:800;color:var(--heading)}
+.accessExclude input{width:auto}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}
 th{font-size:12px;color:var(--muted);background:#fbf8f4}
@@ -738,6 +775,7 @@ th{font-size:12px;color:var(--muted);background:#fbf8f4}
   .adminShell{grid-column:span 1}
   .adminSettingsGrid{grid-template-columns:1fr}
   .adminSubtab{flex:1 1 calc(50% - 8px)}
+  .accessStats{grid-template-columns:repeat(2,minmax(0,1fr))}
   .weatherScreenshotGrid{grid-template-columns:1fr}
   .weatherCandidateRow{grid-template-columns:62px 48px minmax(0,1fr);gap:6px}
   .weatherCandidateConfidence{grid-column:3}
@@ -1421,6 +1459,20 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
         </div>
 
         <div class="adminTabPanel" data-admin-panel="data" role="tabpanel">
+          <div class="card s12">
+            <h2>アクセス</h2>
+            <div id="accessStats" class="accessStats"></div>
+            <div class="accessChartWrap">
+              <div id="accessChart" class="accessChart"></div>
+            </div>
+            <label class="accessExclude">
+              <input id="accessExcludedToggle" type="checkbox">
+              この端末を集計から除外
+            </label>
+            <div class="buttons"><button type="button" class="secondary" id="refreshAccessStatsBtn">アクセスを更新</button></div>
+            <div id="accessStatus" class="status"></div>
+          </div>
+
           <details class="card s12 adminDetails">
             <summary>訂正ログ</summary>
             <div class="row">
@@ -2718,6 +2770,7 @@ const ids = [
   "quickGiftCodeConfirm","quickGiftCodeCandidateSelect","quickGiftRewardConfirm","quickGiftExpiresConfirm","quickGiftSourceConfirm","quickGiftMemoConfirm","quickGiftStatusConfirm","saveQuickGiftBtn",
   "giftCodeInput","giftRewardInput","giftExpiresAtInput","giftSourceUrlInput","giftMemoInput","giftStatusInput","giftAdminKey","saveGiftCodeBtn","clearGiftCodeBtn","refreshGiftCodesBtn","giftCodeStatus","giftCodeAdminList",
   "noticeDateInput","noticeTextInput","noticeAdminKey","saveNoticeBtn","clearNoticeBtn","noticeStatus",
+  "accessStats","accessChart","accessExcludedToggle","refreshAccessStatsBtn","accessStatus",
   "correctionDate","correctionMemo","correctionExpected","actualFluorite","actualOak","saveCorrectionBtn","saveApplyCorrectionBtn","correctionStatus","correctionsTable",
   "bulkText","parseBtn","applyParsedBtn","parseStatus","parsedTable",
   "cycleTable","obsTable","weatherTable",
@@ -2736,6 +2789,8 @@ let weatherScreenshotCandidates = null;
 let quickGiftManualTouched = {code:false, reward:false, expiresAt:false, sourceUrl:false, memo:false, status:false};
 const ADMIN_SESSION_KEY = "heartopiaAdminKey";
 let adminSessionKey = sessionStorage.getItem(ADMIN_SESSION_KEY) || "";
+const ACCESS_SENT_DATE_KEY = "heartopiaAccessSentDate.v1";
+const ACCESS_EXCLUDED_KEY = "heartopiaAccessExcluded.v1";
 const PUZZLE_STORAGE_KEY = "heartopiaPuzzleChecker.v1";
 const PUZZLE_SCHEMA_VERSION = 1;
 const PUZZLE_MAX_CHARACTERS = 5;
@@ -4866,6 +4921,142 @@ async function apiPost(payload){
   return await response.json();
 }
 
+function jstDateValue(date = new Date()){
+  const parts = new Intl.DateTimeFormat("ja-JP", {
+    timeZone:"Asia/Tokyo",
+    year:"numeric",
+    month:"2-digit",
+    day:"2-digit"
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function accessExcluded(){
+  try{
+    return localStorage.getItem(ACCESS_EXCLUDED_KEY) === "1";
+  }catch(error){
+    return true;
+  }
+}
+
+function setAccessExcluded(value){
+  if(value) localStorage.setItem(ACCESS_EXCLUDED_KEY, "1");
+  else localStorage.removeItem(ACCESS_EXCLUDED_KEY);
+}
+
+function accessSentDate(){
+  try{
+    return localStorage.getItem(ACCESS_SENT_DATE_KEY) || "";
+  }catch(error){
+    return "";
+  }
+}
+
+function setAccessSentDate(value){
+  localStorage.setItem(ACCESS_SENT_DATE_KEY, value);
+}
+
+async function recordAccessIfNeeded(){
+  if(!WEATHER_API_URL || isAdminRoute() || !navigator.locks?.request) return;
+  try{
+    await navigator.locks.request("heartopiaAccessRecord.v1", async () => {
+      if(isAdminRoute() || accessExcluded()) return;
+      const today = jstDateValue();
+      const sentDate = accessSentDate();
+      if(sentDate >= today) return;
+      // Check storage before sending; keep the original date until success.
+      setAccessSentDate(sentDate);
+      const result = await apiPost({action:"recordAccess"});
+      if(result.ok !== true || !/^\d{4}-\d{2}-\d{2}$/.test(result.date || "")) return;
+      setAccessSentDate(result.date);
+    });
+  }catch(error){}
+}
+
+function accessStatHtml(label, value){
+  return `<div class="accessStat"><div class="accessStatLabel">${esc(label)}</div><div class="accessStatValue">${esc(value)}</div></div>`;
+}
+
+function shortAccessDate(date){
+  const parts = String(date || "").split("-");
+  return parts.length === 3 ? `${Number(parts[1])}/${Number(parts[2])}` : date;
+}
+
+function renderAccessStats(stats){
+  if(!E.accessStats || !E.accessChart) return;
+  if(!stats){
+    E.accessStats.innerHTML = "";
+    E.accessChart.innerHTML = "";
+    return;
+  }
+  const average = Number(stats.sevenDayAverage || 0).toFixed(1);
+  E.accessStats.innerHTML = [
+    accessStatHtml("今日", `${Number(stats.today || 0)}人`),
+    accessStatHtml("昨日", `${Number(stats.yesterday || 0)}人`),
+    accessStatHtml("7日平均", `${average}人/日`),
+    accessStatHtml("直近7日", `${Number(stats.recent7 || 0)}人`),
+    accessStatHtml("累計", `${Number(stats.total || 0)}人`)
+  ].join("");
+  const days = Array.isArray(stats.days) ? stats.days : [];
+  const maxCount = Math.max(1, ...days.map(day => Number(day.count || 0)));
+  E.accessChart.innerHTML = days.map(day => {
+    const count = Number(day.count || 0);
+    const height = count ? Math.max(8, Math.round((count / maxCount) * 120)) : 2;
+    const label = shortAccessDate(day.date);
+    return `
+      <div class="accessBarItem" title="${esc(day.date)} ${count}人" aria-label="${esc(day.date)} ${count}人">
+        <div class="accessBarTrack"><div class="accessBar" style="height:${height}px"></div></div>
+        <div class="accessBarLabel">${esc(label)}<br>${count}人</div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function fetchAccessStats(){
+  if(!E.accessStatus) return;
+  if(!WEATHER_API_URL){
+    E.accessStatus.textContent = "アクセスAPIは未設定です。";
+    renderAccessStats(null);
+    return;
+  }
+  if(!adminKeyValue()){
+    E.accessStatus.textContent = "管理キーを入力してください。";
+    renderAccessStats(null);
+    return;
+  }
+  E.accessStatus.textContent = "読み込み中です…";
+  try{
+    const result = await apiPost({action:"getAccessStats", adminKey:adminKeyValue()});
+    if(result.ok === false) throw new Error(result.error || "APIエラー");
+    renderAccessStats(result.stats || null);
+    E.accessStatus.textContent = "アクセス集計を読み込みました。";
+  }catch(error){
+    renderAccessStats(null);
+    E.accessStatus.textContent = `アクセス集計を読み込めませんでした：${error.message}`;
+  }
+}
+
+function setupAccessControls(){
+  if(!E.accessExcludedToggle) return;
+  E.accessExcludedToggle.checked = accessExcluded();
+  E.accessExcludedToggle.onchange = () => {
+    try{
+      setAccessExcluded(E.accessExcludedToggle.checked);
+    }catch(error){
+      E.accessExcludedToggle.checked = accessExcluded();
+      if(E.accessStatus) E.accessStatus.textContent = "除外設定を保存できませんでした。ブラウザの保存設定を確認してください。";
+      return;
+    }
+    if(E.accessStatus){
+      E.accessStatus.textContent = E.accessExcludedToggle.checked
+        ? "この端末からのアクセス記録を停止しました。"
+        : "この端末からのアクセス記録を再開しました。";
+    }
+  };
+  if(E.refreshAccessStatsBtn) E.refreshAccessStatsBtn.onclick = fetchAccessStats;
+}
+
 async function saveApprovedWeatherToApi(item){
   if(!WEATHER_API_URL) return {ok:false, skipped:true};
   const slots = item.slots || {};
@@ -5568,6 +5759,7 @@ function setAdminUnlocked(unlocked){
     setAdminKey(adminKeyValue());
     if(E.adminGateStatus) E.adminGateStatus.textContent = "";
     fetchGiftCodes(true);
+    fetchAccessStats();
   }
 }
 function setupAdminVisibility(){
@@ -5590,6 +5782,7 @@ function setupAdminVisibility(){
 function init(){
   setupAdminVisibility();
   setupAdminSubtabs();
+  setupAccessControls();
   setAdminSubtab("daily");
   E.targetDate.value = dateValue(gameToday());
   E.obsDate.value = E.targetDate.value;
@@ -5627,6 +5820,7 @@ function init(){
   fetchApprovedWeather();
   fetchGiftCodes().then(renderToday);
   fetchSiteNotice();
+  recordAccessIfNeeded();
 
   document.querySelectorAll(".tab").forEach(btn => {
     btn.onclick = () => {

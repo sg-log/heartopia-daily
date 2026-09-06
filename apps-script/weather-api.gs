@@ -17,6 +17,9 @@ const GIFT_HEADERS = [
 ];
 const NOTICE_SHEET_NAME = "site_notice";
 const NOTICE_HEADERS = ["noticeDate", "noticeText", "updatedAt"];
+const ACCESS_SHEET_NAME = "access";
+const ACCESS_HEADERS = ["date", "count"];
+const ACCESS_TIME_ZONE = "Asia/Tokyo";
 const MAX_POST_BODY_BYTES = 64 * 1024;
 const LOCK_TIMEOUT_MS = 10000;
 const VALID_WEATHER_VALUES = ["晴", "雨", "流星群", "虹", "猛暑", "雪", "桜"];
@@ -58,6 +61,8 @@ function doPost(e) {
   try {
     const body = parseBody_(e);
     const action = String(body.action || "");
+    if (action === "recordAccess") return recordAccess_();
+    if (action === "getAccessStats") return getAccessStats_(body);
     if (action === "submit") return submit_(body);
     if (action === "pending") {
       requireKey_(body.adminKey, adminKey_(), "管理キー");
@@ -109,6 +114,79 @@ function publicNoticeItem_(item) {
     noticeDate: item.noticeDate,
     noticeText: item.noticeText
   };
+}
+
+function recordAccess_() {
+  return withScriptLock_(function() {
+    const date = todayAccessDate_();
+    const sheet = getAccessSheet_();
+    const values = sheet.getDataRange().getValues();
+    const dateColumn = ACCESS_HEADERS.indexOf("date");
+    const countColumn = ACCESS_HEADERS.indexOf("count");
+
+    for (let i = 1; i < values.length; i++) {
+      if (formatAccessDateValue_(values[i][dateColumn]) !== date) continue;
+      const nextCount = accessCountValue_(values[i][countColumn]) + 1;
+      sheet.getRange(i + 1, countColumn + 1).setValue(nextCount);
+      SpreadsheetApp.flush();
+      return json_({ ok: true, date: date });
+    }
+
+    const row = sheet.getLastRow() + 1;
+    if (row > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), 1);
+    sheet.getRange(row, dateColumn + 1).setNumberFormat("@");
+    sheet.getRange(row, 1, 1, ACCESS_HEADERS.length).setValues([[date, 1]]);
+    SpreadsheetApp.flush();
+    return json_({ ok: true, date: date });
+  });
+}
+
+function getAccessStats_(body) {
+  requireKey_(body.adminKey, adminKey_(), "管理キー");
+  const today = todayAccessDate_();
+  const values = withScriptLock_(function() {
+    const sheet = getAccessSheet_();
+    SpreadsheetApp.flush();
+    return sheet.getDataRange().getValues();
+  });
+  const dateColumn = ACCESS_HEADERS.indexOf("date");
+  const countColumn = ACCESS_HEADERS.indexOf("count");
+  const counts = {};
+  let total = 0;
+
+  for (let i = 1; i < values.length; i++) {
+    const date = formatAccessDateValue_(values[i][dateColumn]);
+    if (!date) continue;
+    const count = accessCountValue_(values[i][countColumn]);
+    counts[date] = (counts[date] || 0) + count;
+    total += count;
+  }
+
+  const days = [];
+  for (let offset = -13; offset <= 0; offset++) {
+    const date = addAccessDays_(today, offset);
+    days.push({ date: date, count: counts[date] || 0 });
+  }
+
+  const recent7Days = [];
+  for (let offset = -6; offset <= 0; offset++) {
+    const date = addAccessDays_(today, offset);
+    recent7Days.push(counts[date] || 0);
+  }
+  const recent7 = recent7Days.reduce(function(sum, count) { return sum + count; }, 0);
+  const yesterday = addAccessDays_(today, -1);
+
+  return json_({
+    ok: true,
+    stats: {
+      today: counts[today] || 0,
+      yesterday: counts[yesterday] || 0,
+      sevenDayAverage: Math.round((recent7 / 7) * 10) / 10,
+      recent7: recent7,
+      total: total,
+      days: days
+    }
+  });
 }
 
 function submit_(body) {
@@ -913,6 +991,54 @@ function getNoticeSheet_() {
     throw new Error("site_notice 1行目の列名をREADME記載の順番に合わせてください");
   }
   return sheet;
+}
+
+function getAccessSheet_() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = spreadsheet.getSheetByName(ACCESS_SHEET_NAME);
+  if (!sheet) sheet = spreadsheet.insertSheet(ACCESS_SHEET_NAME);
+  if (sheet.getLastRow() === 0) sheet.appendRow(ACCESS_HEADERS);
+
+  const currentHeaders = sheet.getRange(1, 1, 1, ACCESS_HEADERS.length).getValues()[0];
+  if (ACCESS_HEADERS.some(function(header, index) { return String(currentHeaders[index] || "") !== header; })) {
+    throw new Error("access 1行目の列名を date, count の順番に合わせてください");
+  }
+  return sheet;
+}
+
+function todayAccessDate_() {
+  return Utilities.formatDate(new Date(), ACCESS_TIME_ZONE, "yyyy-MM-dd");
+}
+
+function formatAccessDateValue_(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, ACCESS_TIME_ZONE, "yyyy-MM-dd");
+  }
+
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  let match = text.match(/^(20\d{2})\s*[年\/.-]\s*(\d{1,2})\s*[月\/.-]\s*(\d{1,2})\s*日?/);
+  if (match) return match[1] + "-" + pad2_(match[2]) + "-" + pad2_(match[3]);
+
+  const parsed = new Date(text);
+  if (!isNaN(parsed.getTime())) {
+    return Utilities.formatDate(parsed, ACCESS_TIME_ZONE, "yyyy-MM-dd");
+  }
+  return text;
+}
+
+function accessCountValue_(value) {
+  const count = Number(value || 0);
+  if (!isFinite(count)) return 0;
+  return Math.max(0, Math.floor(count));
+}
+
+function addAccessDays_(date, offset) {
+  const match = String(date || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+  const value = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + Number(offset || 0)));
+  return Utilities.formatDate(value, ACCESS_TIME_ZONE, "yyyy-MM-dd");
 }
 
 function parseBody_(e) {
