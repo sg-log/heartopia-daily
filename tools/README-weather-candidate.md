@@ -107,4 +107,37 @@ $result | ConvertTo-Json -Depth 10
 powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-candidate.ps1
 ```
 
-将来のX/Web/Instagram/TikTok収集処理は、上記共通候補に変換してこの関数へ渡します。アカウント名は変換条件に使いません。収集条件・投稿ID等による重複排除・実送信時のキー注入は別工程で、今回未実装です。「登録可能候補」は送信・登録・公開済みを意味しません。
+収集側は `weather-discovery.ps1` から上記共通候補に接続します。アカウント名は変換条件に使いません。「登録可能候補」は送信・登録・公開済みを意味しません。
+
+## pending送信接続（明示指定のみ）
+
+`weather-submit.ps1` は既存の `apps-script/weather-api.gs` の `submit` を呼ぶ接続です。APIは投稿キーを検証し、行を `pending` で保存します。`action: pending` は管理用の一覧取得であり、登録には使いません。API・保存先・承認フローは変更しません。
+
+- `ConvertTo-WeatherPendingPayload -Candidate $candidate` は通信しません。confirmedな `discovery` から出典を再構成し、既存 `ConvertTo-SectionedWeatherReportDryRun` を再実行します。時間別が `ready`、dry-runが「登録可能候補」、`issues` が0件、payloadが存在する場合だけ返します。それ以外は例外で拒否します。外から渡したdry-run結果は信用しません。
+- payloadは `action/date/startSlot/slots/weeks/memo` だけです。`weeks` は空、現在・週間の値は送信しません。両セクションの `needsReview` / `missing` は時間別を妨げません。出典URL・投稿ID（`sourceId`）・投稿日時・時間別の根拠は既存memoを再利用し、本文の曖昧さ、時間別未解決0件、現在・週間が対象外である旨を追記します。時間別の未解決事項があれば送信自体を拒否し、現在・週間の未解決事項と全取得履歴はローカル候補に残します。memoは1000文字超過で拒否し、自動切り捨てしません。
+- `Invoke-WeatherPendingSubmission` は既定で `prepared` / `sent: false` とキーなしpayloadを返します。`-Send`、明示したHTTPSの `-ApiUrl`、SecureStringの `-PostKey` がそろった場合だけUTF-8 JSONをPOSTします。キーは生成・自動取得せず、候補内の `postKey` も使いません。キーは送信本文だけへ一時的に追加し、返却payloadやログへ出しません。URLの資格情報・クエリ・フラグメントは禁止です。候補のURLやmemoにも秘密を入れないでください。
+- `ok: true`・`status: pending`・空でない `id` の応答だけを成功とします。失敗時は例外で停止し、通信例外やサーバーの生エラーは出力しません。タイムアウト等は登録済みの可能性があるため、再送前に既存管理画面で確認します。自動再送・重複送信防止・自動承認・公開は行いません。
+
+次回、実際に1件だけpending登録テストする場合：明示的な実送信の許可後、通常の探索・直接確認で作った1件の `$candidate` を使い、以下を順に実行します（例の候補を本番へ送らない）。PowerShellの実行制限がある環境では `powershell -NoProfile -ExecutionPolicy Bypass` のプロセス内で実行します。
+
+```powershell
+. ./tools/weather-submit.ps1
+$preview = Invoke-WeatherPendingSubmission -Candidate $candidate
+$preview.payload | ConvertTo-Json -Depth 10
+# 日付・5枠・出典・memoを確認してから、既存APIのURLと投稿キーを入力する。
+$weatherApiUrl = Read-Host '既存weather API URL'
+$weatherPostKey = Read-Host '既存の投稿キー' -AsSecureString
+try {
+    $receipt = Invoke-WeatherPendingSubmission -Candidate $candidate -Send -ApiUrl $weatherApiUrl -PostKey $weatherPostKey
+    $receipt  # pending / sent / idのみ
+} finally {
+    $weatherPostKey.Dispose()
+    $weatherPostKey = $null
+}
+```
+
+返却IDの1件が既存管理画面でpendingに存在することを確認し、承認しないで終了します。今回の実装検証ではこの実送信手順は実行せず、次のモックテストだけを実行します。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-submit.ps1
+```

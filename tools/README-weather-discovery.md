@@ -6,6 +6,8 @@
 
 原則として最初は `AGENTS.md` → 本README → `tools/README-weather-candidate.md` → 対応する `weather-discovery.ps1` / `weather-candidate.ps1` と `test-weather-discovery.ps1` / `test-weather-candidate.ps1` だけを読む。既読内容は再利用し、追加確認は必要箇所に絞る。天気アイコンの確認が必要な場合だけ `assets/weather-templates/` のREADMEと該当画像を参照する。他のtoolsや無関係な機能のファイルは、明確な依存関係が判明しない限り読まない。
 
+pending送信接続を扱う場合だけ `weather-submit.ps1` / `test-weather-submit.ps1` と、既存 `apps-script/weather-api.gs`・`README-weather-api.md` のsubmit／投稿キー関連箇所を追加で読む。送信条件と1件テスト手順は `README-weather-candidate.md` の「pending送信接続」を参照する。
+
 ## 公開探索の運用手順
 
 以下はCodex / browser取得層の手順であり、検索アダプターの実装ではない。
