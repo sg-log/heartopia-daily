@@ -58,6 +58,14 @@ pending送信接続を扱う場合だけ `weather-submit.ps1` / `test-weather-su
 
 ## 直接取得と後段への接続
 
+### 判定画像URLの自動引き継ぎ
+
+直接確認したページの最新snapshot本文を `Add-WeatherDiscoveryRetrieval -BrowserSnapshot $snapshotText -HourlyImageUids @('取得した画像のUID')` に渡す。UIDは同じsnapshot内でhourlyForecastの判定に実際に使った画像要素だけをAIが指定する。関数は該当する `image ... url="..."` 行から公開HTTP(S) URLを抽出し、最新取得記録の `hourlySourceImageUrls` → `hourlyForecast.evidence.sourceImageUrls` → pending payloadへ自動接続する。複数画像を一括採用せず、対応不明ならUIDを指定しない。
+
+画像がない・URLが出ない・取得失敗の場合も `-BrowserSnapshot ''` を渡すと空配列になり、以前の画像情報を流用しない。スクリーンショットファイル、data/file/javascript URL、資格情報・明示的な署名/トークン入りURL、ローカルURL、投稿へのリンクは除外する。snapshot原文やCookieを取得履歴へ保存しない。抽出関数は公開アクセスの疎通確認までは行わないため、取得層で認証なしに表示できた画像だけを選ぶ。既存の手動指定候補は後方互換のため引き続き利用できる。
+
+現在のChrome DevTools MCPはsnapshot/screenshot取得に対応するが、DOM評価やネットワーク応答の取得は提供されていない。Xでsnapshotに画像URLがなく `/photo/N` リンクしか得られない場合は安定抽出不能。取得できるのは元投稿URL・本文・画面上の画像であり、今回は空配列とする。PCなしのクラウド運用で画像自体を残すには、クラウドブラウザ等で使用画像を取得し、管理者のみ閲覧できるストレージへ保存する別設計（権限、保持期間、削除対応）が必要。今回その基盤は追加しない。
+
 ```powershell
 . ./tools/weather-candidate.ps1
 . ./tools/weather-discovery.ps1

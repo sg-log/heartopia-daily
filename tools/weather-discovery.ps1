@@ -90,6 +90,29 @@ function Merge-WeatherDiscoveryCandidates {
     }
 }
 
+function Get-WeatherHourlyImageUrls {
+    param([string] $BrowserSnapshot = '', [string[]] $HourlyImageUids = @())
+    # Only explicitly selected image elements from this direct page snapshot.
+    # A link to /photo/N is not an image, and an ambiguous UID yields no URL.
+    $urls = @()
+    foreach ($uid in @($HourlyImageUids | Select-Object -Unique)) {
+        if ([string]::IsNullOrWhiteSpace($uid)) { continue }
+        $lines = @($BrowserSnapshot -split '\r?\n' | Where-Object { $_ -match ('^\s*uid=' + [regex]::Escape($uid) + '\s+image\s') })
+        if ($lines.Count -ne 1 -or $lines[0] -notmatch '\burl="([^"\r\n]+)"\s*$') { continue }
+        $url = $Matches[1]
+        $uri = $null
+        if ($url.Length -gt 2000 -or $url -match '[\s<>"\x27\\]' -or
+            -not [uri]::TryCreate($url, [UriKind]::Absolute, [ref]$uri) -or
+            $uri.Scheme -notin @('http','https') -or $uri.UserInfo -or $uri.Fragment -or
+            $uri.IsLoopback -or $uri.HostNameType -ne [UriHostNameType]::Dns -or
+            $uri.Host -notmatch '\.' -or $uri.Host -match '\.(local|internal)$' -or
+            $uri.Query -match '(?i)(token|signature|credential|authorization|cookie|(?:^|[?&])key)=') { continue }
+        if ($uri.Host -match '(^|\.)(x\.com|twitter\.com)$') { continue }
+        $urls += $url
+    }
+    @($urls | Select-Object -Unique -First 8)
+}
+
 function Add-WeatherDiscoveryRetrieval {
     param(
         [Parameter(Mandatory)] [object] $Candidate,
@@ -97,7 +120,9 @@ function Add-WeatherDiscoveryRetrieval {
         [Parameter(Mandatory)] [string] $RetrievedAt,
         [Parameter(Mandatory)] [string] $RetrievedUrl,
         [Parameter(Mandatory)] [string] $Evidence,
-        [string] $PostedAt = ''
+        [string] $PostedAt = '',
+        [AllowEmptyString()] [string] $BrowserSnapshot,
+        [string[]] $HourlyImageUids = @()
     )
     $expected = ConvertTo-WeatherDiscoveryUrl $Candidate.sourceUrl
     $actual = ConvertTo-WeatherDiscoveryUrl $RetrievedUrl
@@ -108,6 +133,11 @@ function Add-WeatherDiscoveryRetrieval {
         status = $Status; retrievedAt = (ConvertTo-WeatherDiscoveryTime $RetrievedAt)
         retrievedUrl = $RetrievedUrl; evidence = $Evidence; postedAt = $PostedAt
     })
+    if ($PSBoundParameters.ContainsKey('BrowserSnapshot')) {
+        $images = @()
+        if ($Status -eq 'confirmed') { $images = @(Get-WeatherHourlyImageUrls -BrowserSnapshot $BrowserSnapshot -HourlyImageUids $HourlyImageUids) }
+        $copy.retrievalHistory[-1] | Add-Member -NotePropertyName hourlySourceImageUrls -NotePropertyValue $images
+    }
     Merge-WeatherDiscoveryCandidates -Candidates @($copy)
 }
 
@@ -127,12 +157,20 @@ function ConvertTo-WeatherCandidateFromDiscovery {
     $actual = ConvertTo-WeatherDiscoveryUrl $last.retrievedUrl
     if ($expected.key -cne $actual.key -or [string]::IsNullOrWhiteSpace($last.evidence)) { throw 'Invalid direct retrieval record.' }
     # AI supplies sections from direct evidence; discovery snippets never become weather.
+    $resolvedHourly = Resolve-WeatherCandidateSection $HourlyForecast
+    if ($last.PSObject.Properties.Name -contains 'hourlySourceImageUrls') {
+        # Resolve returns a copy: do not mutate the caller's evidence or trust stale URLs.
+        $hourlyCopy = $resolvedHourly | ConvertTo-Json -Depth 30 | ConvertFrom-Json
+        if ($null -eq $hourlyCopy.evidence) { $hourlyCopy.evidence = [pscustomobject]@{} }
+        $hourlyCopy.evidence | Add-Member -NotePropertyName sourceImageUrls -NotePropertyValue @($last.hourlySourceImageUrls) -Force
+        $resolvedHourly = $hourlyCopy
+    }
     [pscustomobject]@{
         sourceType = $item.sourceType; sourceUrl = $last.retrievedUrl
         sourceId = $item.sourceId; postedAt = $last.postedAt; memo = $item.memo
         discovery = $item
         currentWeather = (Resolve-WeatherCandidateSection $CurrentWeather)
-        hourlyForecast = (Resolve-WeatherCandidateSection $HourlyForecast)
+        hourlyForecast = $resolvedHourly
         weeklyForecast = (Resolve-WeatherCandidateSection $WeeklyForecast)
     }
 }

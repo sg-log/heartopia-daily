@@ -12,6 +12,7 @@ const HEADERS = [
   "id", "date", "startSlot", "slot0", "slot1", "slot2", "slot3", "slot4"
 ].concat(WEEK_HEADERS, ["memo", "status", "投稿者", "createdAt", "approvedAt"]);
 const GIFT_SHEET_NAME = "gift_codes";
+const WEATHER_EVIDENCE_HEADERS = ["sourceUrl", "sourceImageUrls"];
 const GIFT_HEADERS = [
   "id", "code", "reward", "expiresAt", "sourceUrl", "memo", "status", "createdAt", "updatedAt"
 ];
@@ -200,6 +201,8 @@ function submit_(body) {
   const now = new Date().toISOString();
   const memo = safeSheetText_(limitText_(body.memo, TEXT_LIMITS.memo, "メモ"));
   const author = safeSheetText_(limitText_(body.author || body["投稿者"], TEXT_LIMITS.author, "投稿者"));
+  const sourceUrl = weatherEvidenceUrl_(body.sourceUrl, false);
+  const sourceImageUrls = weatherImageUrls_(body.sourceImageUrls);
   const row = [
     Utilities.getUuid(),
     date,
@@ -219,7 +222,8 @@ function submit_(body) {
     ""
   ]);
   withScriptLock_(function() {
-    getSheet_().appendRow(row);
+    const sheet = getWeatherEvidenceSheet_();
+    sheet.appendRow(row.concat([sourceUrl, JSON.stringify(sourceImageUrls)]));
   });
   return json_({ ok: true, id: row[0], status: "pending" });
 }
@@ -339,6 +343,9 @@ function listByStatus_(status) {
       item[header] = row[index] == null ? "" : row[index];
     });
     item.memo = plainSheetText_(item.memo);
+    // Old rows have neither field; malformed optional evidence must not hide reports.
+    try { item.sourceUrl = weatherEvidenceUrl_(item.sourceUrl, false); } catch (_) { item.sourceUrl = ""; }
+    try { item.sourceImageUrls = weatherImageUrls_(item.sourceImageUrls); } catch (_) { item.sourceImageUrls = []; }
     item.date = formatDateValue(item.date);
     item.startSlot = normalizeStartSlot_(item.startSlot);
     item.slots = {
@@ -952,6 +959,36 @@ function headersMatch_(actual, expected) {
   });
 }
 
+function weatherEvidenceUrl_(value, image) {
+  if (value == null || value === "") return "";
+  if (typeof value !== "string" || value.length > 2000 ||
+      !(/^https?:\/\//i).test(value) ||
+      !/^https?:\/\/[^\s/@?#\\]+(?:[/?][^\s<>"'\\#]*)?$/i.test(value)) {
+    throw new Error("Invalid weather evidence URL");
+  }
+  return value;
+}
+
+function weatherImageUrls_(value) {
+  if (value == null || value === "") return [];
+  if (typeof value === "string") value = JSON.parse(value);
+  if (!Array.isArray(value) || value.length > 8) throw new Error("Invalid sourceImageUrls array");
+  return value.map(function(url) { return weatherEvidenceUrl_(url, true); })
+    .filter(function(url, i, all) { return url && all.indexOf(url) === i; });
+}
+
+// Append optional columns only on submit. Existing reads/status updates never migrate rows.
+function getWeatherEvidenceSheet_() {
+  const sheet = getSheet_();
+  const width = HEADERS.length + WEATHER_EVIDENCE_HEADERS.length;
+  if (sheet.getMaxColumns() < width) sheet.insertColumnsAfter(sheet.getMaxColumns(), width - sheet.getMaxColumns());
+  const range = sheet.getRange(1, HEADERS.length + 1, 1, WEATHER_EVIDENCE_HEADERS.length);
+  const actual = range.getValues()[0];
+  if (actual.every(function(v) { return !v; })) range.setValues([WEATHER_EVIDENCE_HEADERS]);
+  else if (!headersMatch_(actual, WEATHER_EVIDENCE_HEADERS)) throw new Error("Weather evidence columns conflict");
+  return sheet;
+}
+
 function getSheet_() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = spreadsheet.getSheetByName(SHEET_NAME);
@@ -1077,6 +1114,7 @@ function parseBody_(e) {
       reward: String(parameters.reward || ""),
       expiresAt: String(parameters.expiresAt || ""),
       sourceUrl: String(parameters.sourceUrl || ""),
+      sourceImageUrls: parameters.sourceImageUrls || "",
       url: String(parameters.url || ""),
       status: String(parameters.status || ""),
       noticeDate: String(parameters.noticeDate || ""),

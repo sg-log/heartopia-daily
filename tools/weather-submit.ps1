@@ -27,9 +27,20 @@ function ConvertTo-WeatherPendingPayload {
     # Allowlist: no candidate fields, current/weekly values, credentials or approval action.
     $slots = [ordered]@{}
     0..4 | ForEach-Object { $slots["slot$_"] = @($dry.payload.slots["slot$_"]) }
+    $images = @($checked.hourlyForecast.evidence.sourceImageUrls | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
+    if ($images.Count -gt 8) { throw 'At most eight source images are supported.' }
+    foreach ($image in $images) {
+        $imageUri = $null
+        if ($image -isnot [string] -or $image.Length -gt 2000 -or
+            -not [uri]::TryCreate($image, [UriKind]::Absolute, [ref]$imageUri) -or
+            $imageUri.Scheme -notin @('http', 'https') -or $imageUri.UserInfo -or $imageUri.Fragment -or $image -match '[\s<>"\x27\\]') {
+            throw 'Source images must be public HTTP(S) URLs without credentials or fragments.'
+        }
+    }
     [ordered]@{
         action = 'submit'; date = $dry.payload.date; startSlot = $dry.payload.startSlot
         slots = $slots; weeks = @{}; memo = $memo
+        sourceUrl = $checked.sourceUrl; sourceImageUrls = @($images)
     }
 }
 

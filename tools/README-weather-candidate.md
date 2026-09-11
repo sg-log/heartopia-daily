@@ -111,10 +111,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-candida
 
 ## pending送信接続（明示指定のみ）
 
+### 承認用の元画像
+
+#### 保存済み画像付きローカルpreview（Drive/API未接続）
+
+`weather-evidence.ps1` を読み込む。取得層で元画像を一時保存し、取得できなければMCP `take_screenshot` の `uid` と `filePath` で特定した画像要素を保存する。要素を特定できなければ停止する。新規ダウンローダー・自動cropは実装していない。
+
+1. `New-WeatherEvidenceImage -Path $tempImage -Kind original`（または `screenshot`）`-CapturedAt $capturedAt` でローカル記録を作る。PNG/JPEGをデコード検証し、サイズ・SHA-256を取得する。暫定512KiB超は実サイズ付きで停止、圧縮しない。
+2. 必ず `view_image` 等でその `localPath` のファイル自体をAIが確認し、同じ画像からhourlyForecastを作る。その後だけ `hourlyForecast.evidence.reviewedImageSha256` に記録のSHA-256を設定する。ハッシュは同一性検証であり、AIが見た事実を自動証明するものではない。
+3. `ConvertTo-WeatherEvidencePendingPreview -Candidate $candidate -EvidenceImage $artifact` を呼ぶ。既存の登録可能判定を再実行し、ファイルを再読込してハッシュ・サイズ・形式を照合。同じ読込バイトから `evidenceImages` 1件のmetadata＋`bodyBase64` を生成する。`date`は既存observedDateのAPI項目、`sourceType/retrievedAt`も追加。ローカル記録自体は送信しない。
+
+返却payloadにキー・Cookie・ローカルパスを入れない。自由記述の根拠やmemoにも書かない。元画像に不要な個人情報等があれば判定前に取得対象を見直す。署名等を含む元画像のメタデータにも注意する。previewに送信スイッチはなく、既存APIはこの画像形式をまだ受理しない。Drive IDは生成しない。
+
+テスト：`powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-evidence.ps1`。元画像ケースはローカル合成画像であり、ダウンロード実機テストではない。System.Drawingを使用するため現時点では既存Windows/PowerShell環境が対象。
+
+直接確認し、時間別判定に実際に使用した公開画像のURLを `$hourly.evidence.sourceImageUrls = @('https://example.org/panel.png')` の形で渡す。後段候補の `hourlyForecast.evidence.sourceImageUrls` から送信用 `sourceImageUrls` 配列へコピーする（重複除去、最大8件、各2000文字、HTTP(S)のみ）。元投稿はconfirmed取得履歴の `sourceUrl` を使用する。現在・週間の画像情報や値は混入させない。5枠は既存slotsを利用し、認識結果JSONを重複保存しない。
+
+取得層はsnapshot/screenshotの目視確認を行う。最新snapshotと判定に使った画像UIDからのURL自動抽出は `README-weather-discovery.md` の手順を使う。画像ファイル保存は行わない。利用可能なブラウザ操作で実画像のURLを直接確認できた場合だけ渡す。Xの `/photo/N` は投稿ページであり画像URLではない。URLや拡張子、原寸用パラメータを推測しない。取得できなければ配列を省略し、元投稿リンクとmemoだけ残す。署名・認証トークンなど秘密を含むURLは渡さない。
+
+外部URLの保存は画像自体の保存ではなく、後日の表示を保証しない。投稿削除・公開範囲変更・配信元のアクセス制限等で表示できない場合は元投稿を確認する。今回は通常のimg表示と別タブ拡大のみで、proxy/CORS回避や認証付与はしない。将来の別途保存は取得時点の画像を保全できる一方、保存先・権限・保持期間・削除対応の設計が必要になるため未実装。
+
+オフライン画面/APIテスト：`powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-pending.ps1` が出力する一時HTMLをブラウザで開きPASSを確認する。実装からrendererとApps Scriptを取り込み、シートと通信をモック化する。CSPで外部通信を遮断し、合成画像を使用する。
+
 `weather-submit.ps1` は既存の `apps-script/weather-api.gs` の `submit` を呼ぶ接続です。APIは投稿キーを検証し、行を `pending` で保存します。`action: pending` は管理用の一覧取得であり、登録には使いません。API・保存先・承認フローは変更しません。
 
 - `ConvertTo-WeatherPendingPayload -Candidate $candidate` は通信しません。confirmedな `discovery` から出典を再構成し、既存 `ConvertTo-SectionedWeatherReportDryRun` を再実行します。時間別が `ready`、dry-runが「登録可能候補」、`issues` が0件、payloadが存在する場合だけ返します。それ以外は例外で拒否します。外から渡したdry-run結果は信用しません。
-- payloadは `action/date/startSlot/slots/weeks/memo` だけです。`weeks` は空、現在・週間の値は送信しません。両セクションの `needsReview` / `missing` は時間別を妨げません。出典URL・投稿ID（`sourceId`）・投稿日時・時間別の根拠は既存memoを再利用し、本文の曖昧さ、時間別未解決0件、現在・週間が対象外である旨を追記します。時間別の未解決事項があれば送信自体を拒否し、現在・週間の未解決事項と全取得履歴はローカル候補に残します。memoは1000文字超過で拒否し、自動切り捨てしません。
+- payloadは `action/date/startSlot/slots/weeks/memo/sourceUrl/sourceImageUrls` だけです。`weeks` は空、現在・週間の値は送信しません。両セクションの `needsReview` / `missing` は時間別を妨げません。出典URL・投稿ID（`sourceId`）・投稿日時・時間別の根拠は既存memoを再利用し、本文の曖昧さ、時間別未解決0件、現在・週間が対象外である旨を追記します。時間別の未解決事項があれば送信自体を拒否し、現在・週間の未解決事項と全取得履歴はローカル候補に残します。memoは1000文字超過で拒否し、自動切り捨てしません。
 - `Invoke-WeatherPendingSubmission` は既定で `prepared` / `sent: false` とキーなしpayloadを返します。`-Send`、明示したHTTPSの `-ApiUrl`、SecureStringの `-PostKey` がそろった場合だけUTF-8 JSONをPOSTします。キーは生成・自動取得せず、候補内の `postKey` も使いません。キーは送信本文だけへ一時的に追加し、返却payloadやログへ出しません。URLの資格情報・クエリ・フラグメントは禁止です。候補のURLやmemoにも秘密を入れないでください。
 - `ok: true`・`status: pending`・空でない `id` の応答だけを成功とします。失敗時は例外で停止し、通信例外やサーバーの生エラーは出力しません。タイムアウト等は登録済みの可能性があるため、再送前に既存管理画面で確認します。自動再送・重複送信防止・自動承認・公開は行いません。
 

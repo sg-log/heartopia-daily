@@ -967,6 +967,13 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
   .puzzleCharacterTab{min-width:72px;padding:8px 10px}
 }
 
+.pendingWeatherCard{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,360px);gap:18px;border:1px solid #ddd;border-radius:12px;padding:16px;margin:12px 0}
+.pendingWeatherSlots{display:flex;flex-wrap:wrap;gap:14px;margin:14px 0}
+.pendingWeatherMemo{white-space:pre-wrap;overflow-wrap:anywhere}
+.pendingWeatherImages{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0}
+.pendingWeatherImages a{display:flex;flex-direction:column;max-width:100%}
+.pendingWeatherImages img{width:280px;max-width:100%;height:180px;object-fit:contain;background:#f4f4f4;border-radius:8px}
+@media(max-width:640px){.pendingWeatherCard{grid-template-columns:minmax(0,1fr);padding:12px}}
 </style>
 </head>
 <body>
@@ -5319,6 +5326,32 @@ async function fetchApprovedWeather(options={}){
   }
 }
 
+function pendingWeatherEvidenceUrl(value, image = false){
+  if(typeof value !== "string" || value.length > 2000 || /[\s<>"'\\]/.test(value)) return "";
+  try{
+    const url = new URL(value);
+    if(!(["http:", "https:"].includes(url.protocol)) || url.username || url.password || url.hash) return "";
+    return url.href;
+  }catch(_){ return ""; }
+}
+
+function pendingWeatherCard(r){
+  const startSlot = normalizeStartSlot(r.startSlot);
+  const slots = normalizeWeatherSlots(r);
+  const weeks = normalizeWeatherWeeks(r);
+  const reportDate = normalizeApiDate(r.date);
+  const source = pendingWeatherEvidenceUrl(r.sourceUrl);
+  const images = Array.isArray(r.sourceImageUrls) ? [...new Set(r.sourceImageUrls.map(url => pendingWeatherEvidenceUrl(url, true)).filter(Boolean))].slice(0, 8) : [];
+  return `<article class="pendingWeatherCard"><div><strong>${esc(reportDate)} ／ ${esc(startSlot)}時開始</strong>
+    <div class="pendingWeatherSlots">${WEATHER_SLOT_KEYS.map(key => `<div><strong>${esc(slotLabel(key, startSlot))}</strong><br>${esc(weatherText(slots[key], key, startSlot, "未入力"))}</div>`).join("")}</div>
+    ${WEATHER_WEEK_KEYS.some(key => weeks[key]?.length) ? `<details><summary>週間の報告</summary>${WEATHER_WEEK_KEYS.map((key, i) => `<div>${esc(weekDateLabel(reportDate, i))}：${esc(simpleWeatherText(weeks[key], "未入力"))}</div>`).join("")}</details>` : ""}
+    <p class="pendingWeatherMemo">${esc(r.memo || "")}</p>
+    <div class="buttons"><button type="button" data-approve-weather="${esc(r.id)}">承認</button><button type="button" class="danger" data-reject-weather="${esc(r.id)}">却下</button></div></div>
+    <div>${source ? `<a href="${esc(source)}" target="_blank" rel="noopener noreferrer">元投稿を開く</a>` : "<p>元投稿URLなし</p>"}
+    <div class="pendingWeatherImages">${images.length ? images.map((url, i) => `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer"><img src="${esc(url)}" alt="判定根拠画像 ${i + 1}" loading="lazy" referrerpolicy="no-referrer"><span>画像${i + 1}を拡大</span></a>`).join("") : "<p>元画像情報なし</p>"}</div>
+    ${images.length ? "<small>表示できない画像は、元投稿から確認してください。</small>" : ""}</div></article>`;
+}
+
 async function fetchPendingWeatherReports(){
   if(!WEATHER_API_URL){
     E.pendingWeatherStatus.textContent = "天気報告APIは未設定です。";
@@ -5331,13 +5364,7 @@ async function fetchPendingWeatherReports(){
     if(result.ok === false) throw new Error(result.error || "APIエラー");
     const reports = result.reports || result.data || [];
     E.pendingWeatherStatus.textContent = reports.length ? `${reports.length}件の未承認報告があります。` : "未承認の天気報告はありません。";
-    E.pendingWeatherReports.innerHTML = reports.length ? `<table><thead><tr><th>日付</th><th>開始</th>${WEATHER_SLOT_KEYS.map((key, i) => `<th>slot${i}</th>`).join("")}${WEATHER_WEEK_KEYS.map((key, i) => `<th>week${i + 1}</th>`).join("")}<th>メモ</th><th>操作</th></tr></thead><tbody>${reports.map(r => {
-      const startSlot = normalizeStartSlot(r.startSlot);
-      const slots = normalizeWeatherSlots(r);
-      const weeks = normalizeWeatherWeeks(r);
-      const reportDate = normalizeApiDate(r.date);
-      return `<tr><td>${esc(reportDate)}</td><td>${esc(startSlot)}時</td>${WEATHER_SLOT_KEYS.map(key => `<td><strong>${esc(slotLabel(key, startSlot))}</strong><br>${esc(weatherText(slots[key], key, startSlot, ""))}</td>`).join("")}${WEATHER_WEEK_KEYS.map((key, i) => `<td><strong>${esc(weekDateLabel(reportDate, i))}</strong><br>${esc(simpleWeatherText(weeks[key], ""))}</td>`).join("")}<td>${esc(r.memo || "")}</td><td><div class="buttons"><button type="button" data-approve-weather="${esc(r.id)}">承認</button><button type="button" class="danger" data-reject-weather="${esc(r.id)}">却下</button></div></td></tr>`;
-    }).join("")}</tbody></table>` : "";
+    E.pendingWeatherReports.innerHTML = reports.map(pendingWeatherCard).join("");
     return reports;
   }catch(error){
     E.pendingWeatherStatus.textContent = `読み込めませんでした：${error.message}`;
