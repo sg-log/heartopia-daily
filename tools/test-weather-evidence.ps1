@@ -21,6 +21,18 @@ try {
         $json = $preview.payload | ConvertTo-Json -Depth 20
         Assert ($json -notmatch 'localPath|postKey|adminKey|currentWeather|weeklyForecast') 'Payload whitelist'
         Assert ($preview.payload.evidenceImages.Count -eq 1 -and -not $preview.sent) 'One image and no send'
+        $priorCalls = $script:calls
+        $prepared = Invoke-WeatherPendingSubmission -Candidate $candidate -EvidenceImage $artifact
+        Assert (-not $prepared.sent -and $script:calls -eq $priorCalls) 'Evidence preview never sends by default'
+        $script:mode = 'pending'
+        $key = ConvertTo-SecureString 'synthetic-test-only' -AsPlainText -Force
+        try {
+            $receipt = Invoke-WeatherPendingSubmission -Candidate $candidate -EvidenceImage $artifact `
+                -Send -ApiUrl 'https://example.invalid/api' -PostKey $key
+        } finally { $key.Dispose() }
+        Assert ($receipt.sent -and $script:calls -eq $priorCalls + 1) 'Explicit evidence send calls transport exactly once'
+        Assert ($script:wire.evidenceImages[0].sha256 -eq $artifact.sha256) 'Evidence reaches existing transport'
+        $script:mode = 'forbid'
     }
     Assert-Throws { ConvertTo-WeatherEvidencePendingPreview $candidate $null } 'Missing image rejected'
     $candidate.hourlyForecast.evidence.reviewedImageSha256 = '0' * 64
@@ -34,7 +46,7 @@ try {
     Assert-Throws { New-WeatherEvidenceImage $bad original '2026-09-11T06:00:00+09:00' } 'Invalid format rejected'
     [IO.File]::WriteAllBytes($bad, [byte[]]::new(524289))
     Assert-Throws { New-WeatherEvidenceImage $bad screenshot '2026-09-11T06:00:00+09:00' } 'Oversize rejected'
-    'PASS: original/screenshot local files, exact bytes and review hash binding, no image, invalid format, size limit, source/slots, no network'
+    'PASS: original/screenshot, exact hash binding, explicit one-call image transport, no image, invalid format, size limit, source/slots'
 } finally {
     foreach ($path in $paths) { Remove-Item -LiteralPath $path -ErrorAction SilentlyContinue }
 }
