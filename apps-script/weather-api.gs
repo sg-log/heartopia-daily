@@ -87,7 +87,10 @@ function doPost(e) {
     if (action === "xPostOembed") return xPostOembed_(body);
     return json_({ ok: false, error: "unknown action" });
   } catch (error) {
-    return json_({ ok: false, error: safeErrorMessage_(error) });
+    const response = { ok: false, error: safeErrorMessage_(error) };
+    if (weatherSubmitFailureCode_(error)) response.failureCode = weatherSubmitFailureCode_(error);
+    if (weatherSubmitStage_(error)) response.stage = weatherSubmitStage_(error);
+    return json_(response);
   }
 }
 
@@ -193,23 +196,30 @@ function getAccessStats_(body) {
 }
 
 function submit_(body) {
-  requireKey_(body.postKey, postKey_(), "投稿キー");
+  try { requireKey_(body.postKey, postKey_(), "投稿キー"); }
+  catch (_) { throw weatherSubmitFailure_("postAuthFailed", "postAuth"); }
   if (!body.date) throw new Error("日付がありません");
 
-  const startSlot = validateStartSlotForWrite_(body.startSlot);
-  const slots = normalizeSlotsForWrite_(body);
-  const weeks = normalizeWeeksForWrite_(body);
-  const date = validateDateForWrite_(body.date);
+  let startSlot, slots, weeks, date, memo, author, sourceUrl, sourceImageUrls, evidence, sourceType, retrievedAt;
+  try {
+    startSlot = validateStartSlotForWrite_(body.startSlot);
+    slots = normalizeSlotsForWrite_(body);
+    weeks = normalizeWeeksForWrite_(body);
+    date = validateDateForWrite_(body.date);
+    memo = safeSheetText_(limitText_(body.memo, TEXT_LIMITS.memo, "メモ"));
+    author = safeSheetText_(limitText_(body.author || body["投稿者"], TEXT_LIMITS.author, "投稿者"));
+    sourceUrl = weatherEvidenceUrl_(body.sourceUrl, false);
+    sourceImageUrls = weatherImageUrls_(body.sourceImageUrls);
+    evidence = validateWeatherEvidence_(body.evidenceImages);
+    sourceType = safeSheetText_(limitText_(body.sourceType, 40, "sourceType"));
+    retrievedAt = body.retrievedAt ? weatherEvidenceTime_(body.retrievedAt) : "";
+    if (evidence && (!sourceUrl || !sourceType || !retrievedAt)) throw weatherSubmitFailure_("invalidEvidencePayload", "payloadValidation");
+    if (evidence && Object.keys(body).some(function(k) { return /cookie|credential|authorization|localpath|filepath|adminKey/i.test(k); })) throw weatherSubmitFailure_("invalidEvidencePayload", "payloadValidation");
+  } catch (error) {
+    if (weatherSubmitFailureCode_(error)) throw error;
+    throw weatherSubmitFailure_("invalidEvidencePayload", "payloadValidation");
+  }
   const now = new Date().toISOString();
-  const memo = safeSheetText_(limitText_(body.memo, TEXT_LIMITS.memo, "メモ"));
-  const author = safeSheetText_(limitText_(body.author || body["投稿者"], TEXT_LIMITS.author, "投稿者"));
-  const sourceUrl = weatherEvidenceUrl_(body.sourceUrl, false);
-  const sourceImageUrls = weatherImageUrls_(body.sourceImageUrls);
-  const evidence = validateWeatherEvidence_(body.evidenceImages);
-  const sourceType = safeSheetText_(limitText_(body.sourceType, 40, "sourceType"));
-  const retrievedAt = body.retrievedAt ? weatherEvidenceTime_(body.retrievedAt) : "";
-  if (evidence && (!sourceUrl || !sourceType || !retrievedAt)) throw new Error("Evidence provenance required");
-  if (evidence && Object.keys(body).some(function(k) { return /cookie|credential|authorization|localpath|filepath|adminKey/i.test(k); })) throw new Error("Forbidden evidence fields");
   const row = [
     Utilities.getUuid(),
     date,
@@ -228,19 +238,22 @@ function submit_(body) {
     now,
     ""
   ]);
-  withScriptLock_(function() {
-    const sheet = getWeatherEvidenceSheet_();
-    let file = null;
+  try { withScriptLock_(function() {
+    let sheet = null, file = null, storageStage = "sheetSchema";
     try {
+      sheet = getWeatherEvidenceSheet_();
       let references = [];
       if (evidence) {
+        storageStage = "driveFolder";
         const folder = weatherEvidenceFolder_();
+        storageStage = "driveSave";
         file = folder.createFile(Utilities.newBlob(evidence.bytes, evidence.meta.mimeType, row[0] + (evidence.meta.mimeType === "image/png" ? ".png" : ".jpg")));
         requirePrivateEvidence_(file);
         references = [Object.assign({fileId:file.getId()}, evidence.meta)];
       }
+      storageStage = "pendingSave";
       sheet.appendRow(row.concat([sourceUrl, JSON.stringify(sourceImageUrls), sourceType, retrievedAt, file ? "saved" : "missing", JSON.stringify(references)]));
-    } catch (_) {
+    } catch (error) {
       if (file) {
         // appendRow may have committed before reporting an error. Remove only this UUID.
         try {
@@ -248,13 +261,21 @@ function submit_(body) {
           for (let i = values.length - 1; i > 0; i--) {
             if (String(values[i][0]) === row[0]) sheet.deleteRow(i + 1);
           }
-        } catch (_) { throw new Error("Pending rollback uncertain; evidence retained. Administrator inspection required. Do not retry."); }
+        } catch (_) { throw weatherSubmitFailure_("appsScriptError", "cleanup"); }
         try { file.setTrashed(true); }
-        catch (_) { throw new Error("Evidence cleanup failed; administrator inspection required. Do not retry."); }
+        catch (_) { throw weatherSubmitFailure_("appsScriptError", "cleanup"); }
       }
-      throw new Error("Evidence/pending save failed; no automatic retry. Check pending before retrying.");
+      if (weatherSubmitFailureCode_(error)) throw error;
+      const code = storageStage === "sheetSchema" ? "sheetSchemaError"
+        : storageStage === "driveFolder" ? "drivePermissionError"
+        : storageStage === "driveSave" ? "driveSaveError"
+        : "pendingSaveError";
+      throw weatherSubmitFailure_(code, storageStage);
     }
-  });
+  }); } catch (error) {
+    if (weatherSubmitFailureCode_(error)) throw error;
+    throw weatherSubmitFailure_("appsScriptError", "submit");
+  }
   return json_({ ok: true, id: row[0], status: "pending" });
 }
 
@@ -1007,22 +1028,27 @@ function evidenceHash_(bytes) {
 
 function validateWeatherEvidence_(images) {
   if (images == null) return null;
-  if (!Array.isArray(images) || images.length > 1) throw new Error("At most one evidence image");
+  if (!Array.isArray(images) || images.length > 1) throw weatherSubmitFailure_("invalidEvidencePayload", "payloadValidation");
   if (!images.length) return null;
   const im = images[0];
   const keys = ["mimeType","byteSize","sha256","kind","capturedAt","bodyBase64"];
-  if (!im || Object.keys(im).some(function(k) { return keys.indexOf(k) < 0; }) || keys.some(function(k) { return im[k] == null; })) throw new Error("Invalid evidence fields");
-  if (["image/png","image/jpeg"].indexOf(im.mimeType) < 0 || ["original","screenshot"].indexOf(im.kind) < 0) throw new Error("Invalid evidence format");
-  weatherEvidenceTime_(im.capturedAt);
+  if (!im || Object.keys(im).some(function(k) { return keys.indexOf(k) < 0; }) || keys.some(function(k) { return im[k] == null; })) throw weatherSubmitFailure_("invalidEvidencePayload", "payloadValidation");
+  if (["image/png","image/jpeg"].indexOf(im.mimeType) < 0) throw weatherSubmitFailure_("mimeTypeRejected", "payloadValidation");
+  if (["original","screenshot"].indexOf(im.kind) < 0) throw weatherSubmitFailure_("invalidEvidencePayload", "payloadValidation");
+  try { weatherEvidenceTime_(im.capturedAt); }
+  catch (_) { throw weatherSubmitFailure_("invalidEvidencePayload", "payloadValidation"); }
   const b64 = im.bodyBase64;
-  if (typeof b64 !== "string" || !b64.length || b64.length > 699052 || b64.length % 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(b64)) throw new Error("Invalid evidence Base64");
-  const bytes = Utilities.base64Decode(b64);
-  if (!bytes.length || bytes.length > 524288 || im.byteSize !== bytes.length || Utilities.base64Encode(bytes) !== b64) throw new Error("Invalid evidence size/encoding");
+  if (typeof b64 !== "string" || !b64.length || b64.length > 699052 || b64.length % 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(b64)) throw weatherSubmitFailure_("invalidBase64", "base64Decode");
+  let bytes;
+  try { bytes = Utilities.base64Decode(b64); }
+  catch (_) { throw weatherSubmitFailure_("invalidBase64", "base64Decode"); }
+  if (!bytes.length || bytes.length > 524288) throw weatherSubmitFailure_("imageTooLarge", "base64Decode");
+  if (im.byteSize !== bytes.length || Utilities.base64Encode(bytes) !== b64) throw weatherSubmitFailure_("invalidEvidencePayload", "base64Decode");
   const b = bytes.map(function(v) { return v & 255; });
   const png = b.length >= 45 && b.slice(0,8).join() === '137,80,78,71,13,10,26,10' && b.slice(12,16).join() === '73,72,68,82' && b.slice(-8,-4).join() === '73,69,78,68';
   const jpeg = b.length >= 4 && b[0] === 255 && b[1] === 216 && b[2] === 255 && b[b.length-2] === 255 && b[b.length-1] === 217;
-  if (!(im.mimeType === "image/png" ? png : jpeg)) throw new Error("Evidence signature mismatch");
-  if (typeof im.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(im.sha256) || evidenceHash_(bytes) !== im.sha256) throw new Error("Evidence SHA-256 mismatch");
+  if (!(im.mimeType === "image/png" ? png : jpeg)) throw weatherSubmitFailure_("invalidEvidencePayload", "payloadValidation");
+  if (typeof im.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(im.sha256) || evidenceHash_(bytes) !== im.sha256) throw weatherSubmitFailure_("sha256Mismatch", "sha256Validation");
   return {bytes:bytes, meta:{kind:im.kind,capturedAt:im.capturedAt,mimeType:im.mimeType,sha256:im.sha256,byteSize:bytes.length}};
 }
 
@@ -1031,10 +1057,14 @@ function requirePrivateEvidence_(item) {
 }
 
 function weatherEvidenceFolder_() {
-  const id = scriptProperty_(WEATHER_EVIDENCE_FOLDER_PROPERTY, "Evidence folder");
-  const folder = DriveApp.getFolderById(id);
-  requirePrivateEvidence_(folder);
-  return folder;
+  let id;
+  try { id = scriptProperty_(WEATHER_EVIDENCE_FOLDER_PROPERTY, "Evidence folder"); }
+  catch (_) { throw weatherSubmitFailure_("evidenceFolderNotConfigured", "driveFolder"); }
+  try {
+    const folder = DriveApp.getFolderById(id);
+    requirePrivateEvidence_(folder);
+    return folder;
+  } catch (_) { throw weatherSubmitFailure_("drivePermissionError", "driveFolder"); }
 }
 
 function getWeatherEvidence_(body) {
@@ -1181,12 +1211,12 @@ function addAccessDays_(date, offset) {
 
 function parseBody_(e) {
   const text = e && e.postData && e.postData.contents;
-  if (text && text.length > 1024 * 1024) throw new Error("リクエストが大きすぎます");
+  if (text && text.length > 1024 * 1024) throw weatherSubmitFailure_("requestTooLarge", "requestParsing");
   if (text && Utilities.newBlob(text).getBytes().length > MAX_POST_BODY_BYTES) {
-    if (text.length > 1024 * 1024 || Utilities.newBlob(text).getBytes().length > 1024 * 1024) throw new Error("リクエストが大きすぎます");
+    if (text.length > 1024 * 1024 || Utilities.newBlob(text).getBytes().length > 1024 * 1024) throw weatherSubmitFailure_("requestTooLarge", "requestParsing");
     let large;
-    try { large = JSON.parse(text); } catch (_) { throw new Error("Large request must be JSON evidence submit"); }
-    if (large.action !== "submit" || !Array.isArray(large.evidenceImages) || large.evidenceImages.length !== 1) throw new Error("Large request must be evidence submit");
+    try { large = JSON.parse(text); } catch (_) { throw weatherSubmitFailure_("invalidEvidencePayload", "requestParsing"); }
+    if (large.action !== "submit" || !Array.isArray(large.evidenceImages) || large.evidenceImages.length !== 1) throw weatherSubmitFailure_("requestTooLarge", "requestParsing");
     return large;
   }
   const parameters = (e && e.parameter) || {};
@@ -1322,6 +1352,36 @@ function safeErrorMessage_(error) {
   const message = String(error && error.message || "エラーが発生しました");
   if (/Webhook|https:\/\/discord\.com\/api\/webhooks/i.test(message)) return "外部通知処理に失敗しました";
   return message;
+}
+
+const WEATHER_SUBMIT_FAILURE_CODES = [
+  "postAuthFailed", "requestTooLarge", "invalidEvidencePayload", "invalidBase64",
+  "mimeTypeRejected", "imageTooLarge", "sha256Mismatch", "sheetSchemaError",
+  "evidenceFolderNotConfigured", "drivePermissionError", "driveSaveError",
+  "pendingSaveError", "appsScriptError"
+];
+const WEATHER_SUBMIT_STAGES = [
+  "requestParsing", "postAuth", "payloadValidation", "base64Decode", "sha256Validation",
+  "sheetSchema", "driveFolder", "driveSave", "pendingSave", "cleanup", "submit"
+];
+
+function weatherSubmitFailure_(code, stage) {
+  const safeCode = WEATHER_SUBMIT_FAILURE_CODES.indexOf(code) >= 0 ? code : "appsScriptError";
+  const safeStage = WEATHER_SUBMIT_STAGES.indexOf(stage) >= 0 ? stage : "submit";
+  const error = new Error("Weather submit failed: " + safeCode);
+  error.weatherFailureCode = safeCode;
+  error.weatherStage = safeStage;
+  return error;
+}
+
+function weatherSubmitFailureCode_(error) {
+  return error && WEATHER_SUBMIT_FAILURE_CODES.indexOf(error.weatherFailureCode) >= 0
+    ? error.weatherFailureCode : "";
+}
+
+function weatherSubmitStage_(error) {
+  return error && WEATHER_SUBMIT_STAGES.indexOf(error.weatherStage) >= 0
+    ? error.weatherStage : "";
 }
 
 function json_(data) {

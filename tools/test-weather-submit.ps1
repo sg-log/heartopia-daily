@@ -4,16 +4,18 @@
 $script:calls = 0
 $script:mode = 'forbid'
 $script:wire = $null
-function Invoke-RestMethod {
-    param($Uri, $Method, $ContentType, $Body, $TimeoutSec, $ErrorAction)
+function Invoke-WebRequest {
+    param($Uri, $Method, [switch]$UseBasicParsing, $ContentType, $Body, $TimeoutSec)
     $script:calls++
     if ($script:mode -eq 'forbid') { throw 'Network forbidden in test' }
     $script:wire = [Text.Encoding]::UTF8.GetString($Body) | ConvertFrom-Json
     $script:transport = @{uri=$Uri; method=$Method; contentType=$ContentType}
     if ($script:mode -eq 'timeout') { throw 'Synthetic sensitive transport error' }
-    if ($script:mode -eq 'rejected') { return @{ok=$false; error='Synthetic sensitive server error'} }
-    if ($script:mode -eq 'wrongStatus') { return @{ok=$true; status='approved'; id='mock-id'} }
-    return @{ok=$true; status='pending'; id='mock-id'}
+    $content = if ($script:mode -eq 'rejected') { '{"ok":false,"error":"Synthetic sensitive server error"}' }
+        elseif ($script:mode -eq 'tagged') { '{"ok":false,"error":"safe","failureCode":"driveSaveError","stage":"driveSave"}' }
+        elseif ($script:mode -eq 'wrongStatus') { '{"ok":true,"status":"approved","id":"mock-id"}' }
+        else { '{"ok":true,"status":"pending","id":"mock-id"}' }
+    [pscustomobject]@{StatusCode=200;Headers=@{'Content-Type'='application/json; charset=utf-8'};Content=$content}
 }
 . "$PSScriptRoot/weather-submit.ps1"
 function Assert($Condition, $Message) { if (-not $Condition) { throw $Message } }
@@ -100,6 +102,11 @@ foreach ($mode in @('timeout','rejected','wrongStatus')) {
     Assert-Throws { Invoke-WeatherPendingSubmission -Candidate $a -Send -ApiUrl 'https://example.invalid/api' -PostKey $key } "Reject $mode"
     Assert ($script:calls -eq $prior + 1) 'No automatic retry'
 }
+$script:mode = 'tagged'
+$taggedError = $null
+try { Invoke-WeatherPendingSubmission -Candidate $a -Send -ApiUrl 'https://example.invalid/api' -PostKey $key | Out-Null }
+catch { $taggedError = $_.Exception }
+Assert ($taggedError.Message -eq 'WEATHER_SAFE:driveSaveError' -and $taggedError.Data['apiStage'] -eq 'driveSave') 'Safe server submit stage reaches caller'
 'PASS: timeout, API rejection, unexpected status fail closed without retry; all transport mocked'
 
 $script:mode = 'forbid'

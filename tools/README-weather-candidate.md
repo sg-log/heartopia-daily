@@ -115,11 +115,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-candida
 
 #### 保存済み画像付きローカルpreview（通信なし）
 
-画像付き実送信を明示許可された場合は、候補JSONと判定済み画像を用意し、`weather-evidence.ps1` を読み込んだローカルPowerShell画面で `Invoke-WeatherEvidenceSubmissionInteractive` を実行する。API URL・POST_KEY・ADMIN_KEYは `Read-Host -AsSecureString` の伏せ字入力だけで受け取り、引数・候補・README・結果ファイルへ保存しない。候補と画像のパス、`CapturedAt`、秘密を含まない結果ファイルのパスだけを引数にする。
+画像付き実送信を明示許可された場合は、候補JSONと判定済み画像を用意し、`weather-evidence.ps1` を読み込んだローカルPowerShell画面で `Invoke-WeatherEvidenceSubmissionInteractive` を実行する。公開API URLは `index.html` の既存 `WEATHER_API_URL` を実行時に読み取り、重複保存や手入力はしない。POST_KEYとADMIN_KEYだけを `Read-Host -AsSecureString` の伏せ字入力で受け取り、引数・候補・README・結果ファイルへ保存しない。候補と画像のパス、`CapturedAt`、秘密を含まない結果ファイルのパスだけを引数にする。
 
 関数は既存dry-runと画像SHA-256を再検証し、管理APIで同じ日付・開始時刻・sourceUrlのpendingがないことを確認する。送信直前に候補別の試行マーカーを一時領域へ排他的に作り、成功・失敗を問わず残す。マーカーを削除して再送しない。送信後は返却IDのpending、5枠、sourceUrlを確認し、管理認証付き画像取得のバイト数・SHA-256が判定画像と一致した場合だけ完了とする。管理一覧からDrive File IDが露出した場合は停止する。承認・却下・公開は行わない。
 
-安全停止結果には秘密やサーバーの生エラーを含めず、`failureCode` だけを残す。重複確認では `invalidEndpoint`、`emptyAdminKey`、`privateApiTransportFailed`、`adminAuthenticationRejected`、`pendingApiRejected`、`invalidPendingResponse` を区別する。過去の結果に `failureCode` がなければ、後から詳細原因は復元できない。
+安全停止結果には秘密・URL・Cookie・サーバーの生本文を含めない。最後の管理API応答について `httpStatus`、メディアタイプだけの `contentType`、`jsonParsed`、真偽値またはnullの `ok` と `failureCode` を残す。分類は `htmlResponse`、`invalidJson`、`adminAuthFailed`、`sheetSchemaError`、`apiError`、`networkError`。旧シートの読取は証拠列を要求しないが、基礎の週間7日ヘッダーが未移行なら `sheetSchemaError`、基礎ヘッダー直後に別の列があれば画像付きsubmit時に同分類で停止する。生エラーから分類できない詳細は記録しない。
 
 `weather-evidence.ps1` を読み込む。取得層で元画像を一時保存し、取得できなければMCP `take_screenshot` の `uid` と `filePath` で特定した画像要素を保存する。要素を特定できなければ停止する。新規ダウンローダー・自動cropは実装していない。
 
@@ -152,8 +152,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-candida
 . ./tools/weather-submit.ps1
 $preview = Invoke-WeatherPendingSubmission -Candidate $candidate
 $preview.payload | ConvertTo-Json -Depth 10
-# 日付・5枠・出典・memoを確認してから、既存APIのURLと投稿キーを入力する。
-$weatherApiUrl = Read-Host '既存weather API URL'
+# 日付・5枠・出典・memoを確認してから、公開画面と同じ既存API URLを読み、投稿キーだけを入力する。
+$weatherApiUrl = Get-WeatherApiUrlFromSiteConfig
 $weatherPostKey = Read-Host '既存の投稿キー' -AsSecureString
 try {
     $receipt = Invoke-WeatherPendingSubmission -Candidate $candidate -Send -ApiUrl $weatherApiUrl -PostKey $weatherPostKey

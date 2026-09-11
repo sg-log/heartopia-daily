@@ -74,26 +74,162 @@ function Invoke-WeatherPendingSubmission {
     foreach ($key in $payload.Keys) { $request[$key] = $payload[$key] }
     $keyPointer = [IntPtr]::Zero
     $body = $null
+    $apiCall = $null
     try {
         $keyPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($PostKey)
         $request['postKey'] = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($keyPointer)
         $body = [Text.Encoding]::UTF8.GetBytes(($request | ConvertTo-Json -Depth 10 -Compress))
         # No retry: a timeout can occur after the server already appended a pending row.
-        $response = Invoke-RestMethod -Uri $uri.AbsoluteUri -Method Post `
-            -ContentType 'application/json; charset=utf-8' -Body $body -TimeoutSec 30 -ErrorAction Stop
-    } catch {
-        # Never echo raw transport errors, request bodies or server error text containing secrets.
-        throw 'Submission outcome unknown. Check pending manually before retrying; no automatic retry was made.'
+        $apiCall = Invoke-WeatherJsonHttpRequest -Uri $uri -Body $body
     } finally {
         if ($keyPointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($keyPointer) }
         $request.Remove('postKey')
         if ($null -ne $body) { [Array]::Clear($body, 0, $body.Length) }
     }
+    if ($apiCall.diagnostic.failureCode) { Throw-WeatherApiDiagnostic $apiCall.diagnostic }
+    $response = $apiCall.data
     if ($response.ok -isnot [bool] -or $response.ok -ne $true -or
         $response.status -cne 'pending' -or [string]::IsNullOrWhiteSpace([string]$response.id)) {
-        throw 'API did not confirm pending registration. Check pending manually before retrying.'
+        $apiCall.diagnostic.failureCode = 'invalidApiResponse'
+        $apiCall.diagnostic.apiStage = 'responseValidation'
+        Throw-WeatherApiDiagnostic $apiCall.diagnostic
     }
-    [pscustomobject]@{ status = 'pending'; sent = $true; id = [string]$response.id }
+    [pscustomobject]@{ status = 'pending'; sent = $true; id = [string]$response.id; diagnostic = $apiCall.diagnostic }
+}
+
+function Test-WeatherObjectProperty {
+    param([AllowNull()] [object] $InputObject, [Parameter(Mandatory)] [string] $Name)
+    if ($null -eq $InputObject) { return $false }
+    if ($InputObject -is [System.Collections.IDictionary]) { return $InputObject.Contains($Name) }
+    return $null -ne $InputObject.PSObject.Properties[$Name]
+}
+
+function Get-WeatherApiErrorClassification {
+    param([AllowNull()] [string] $ErrorText)
+    if ($ErrorText -match '(?i)認証|authentication|admin\s*key|管理キー') { return 'adminAuthFailed' }
+    if ($ErrorText -match '(?i)列名|ヘッダー|header|schema|Weather evidence columns conflict|weather_reports\s*シート') {
+        return 'sheetSchemaError'
+    }
+    'apiError'
+}
+
+function ConvertFrom-WeatherApiHttpResponse {
+    param(
+        [int] $HttpStatus,
+        [AllowEmptyString()] [string] $ContentType,
+        [AllowEmptyString()] [string] $BodyText
+    )
+    $mediaType = ([string]$ContentType -split ';', 2)[0].Trim().ToLowerInvariant()
+    if ($mediaType -notmatch '^[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*$') { $mediaType = '' }
+    $diagnostic = [ordered]@{
+        httpStatus = $HttpStatus
+        contentType = $mediaType
+        jsonParsed = $false
+        ok = $null
+        failureCode = ''
+        apiStage = ''
+    }
+    if ($HttpStatus -eq 0 -and [string]::IsNullOrWhiteSpace($BodyText)) {
+        $diagnostic.failureCode = 'networkError'
+        return [pscustomobject]@{ data = $null; diagnostic = [pscustomobject]$diagnostic }
+    }
+    $trimmed = ([string]$BodyText).TrimStart()
+    if ($mediaType -match '(?:^|/)html$' -or $trimmed.StartsWith('<')) {
+        $diagnostic.failureCode = 'htmlResponse'
+        return [pscustomobject]@{ data = $null; diagnostic = [pscustomobject]$diagnostic }
+    }
+    try {
+        $data = $BodyText | ConvertFrom-Json -ErrorAction Stop
+        $diagnostic.jsonParsed = $true
+    } catch {
+        $diagnostic.failureCode = 'invalidJson'
+        return [pscustomobject]@{ data = $null; diagnostic = [pscustomobject]$diagnostic }
+    }
+    if ((Test-WeatherObjectProperty $data 'ok') -and $data.ok -is [bool]) {
+        $diagnostic.ok = $data.ok
+    } else {
+        $diagnostic.failureCode = 'apiError'
+    }
+    if (-not $diagnostic.failureCode -and $data.ok -eq $false) {
+        $allowedCodes = @(
+            'postAuthFailed','requestTooLarge','invalidEvidencePayload','invalidBase64',
+            'mimeTypeRejected','imageTooLarge','sha256Mismatch','sheetSchemaError',
+            'evidenceFolderNotConfigured','drivePermissionError','driveSaveError',
+            'pendingSaveError','appsScriptError'
+        )
+        $allowedStages = @(
+            'requestParsing','postAuth','payloadValidation','base64Decode','sha256Validation',
+            'sheetSchema','driveFolder','driveSave','pendingSave','cleanup','submit'
+        )
+        if ((Test-WeatherObjectProperty $data 'failureCode') -and [string]$data.failureCode -cin $allowedCodes) {
+            $diagnostic.failureCode = [string]$data.failureCode
+        } else {
+            $diagnostic.failureCode = Get-WeatherApiErrorClassification ([string]$data.error)
+        }
+        if ((Test-WeatherObjectProperty $data 'stage') -and [string]$data.stage -cin $allowedStages) {
+            $diagnostic.apiStage = [string]$data.stage
+        }
+    }
+    if (-not $diagnostic.failureCode -and ($HttpStatus -lt 200 -or $HttpStatus -ge 300)) {
+        $diagnostic.failureCode = 'apiError'
+    }
+    [pscustomobject]@{ data = $data; diagnostic = [pscustomobject]$diagnostic }
+}
+
+function Get-WeatherApiUrlFromSiteConfig {
+    param([string] $SitePath = (Join-Path $PSScriptRoot '..\index.html'))
+    $html = Get-Content -LiteralPath $SitePath -Raw -Encoding UTF8
+    $match = [regex]::Match($html, '(?m)\bconst\s+WEATHER_API_URL\s*=\s*"([^"]+)"\s*;')
+    if (-not $match.Success) { throw 'WEATHER_SAFE:invalidEndpoint' }
+    $uri = $null
+    $value = $match.Groups[1].Value
+    if (-not [uri]::TryCreate($value, [UriKind]::Absolute, [ref]$uri) -or
+        $uri.Scheme -ne 'https' -or $uri.UserInfo -or $uri.Query -or $uri.Fragment) {
+        throw 'WEATHER_SAFE:invalidEndpoint'
+    }
+    $uri.AbsoluteUri
+}
+
+function Invoke-WeatherJsonHttpRequest {
+    param([Parameter(Mandatory)] [uri] $Uri, [Parameter(Mandatory)] [byte[]] $Body)
+    $httpStatus = 0
+    $contentType = ''
+    $responseText = ''
+    try {
+        $webResponse = Invoke-WebRequest -Uri $Uri.AbsoluteUri -Method Post -UseBasicParsing `
+            -ContentType 'application/json; charset=utf-8' -Body $Body -TimeoutSec 30 -ErrorAction Stop
+        $httpStatus = [int]$webResponse.StatusCode
+        $contentType = [string]$webResponse.Headers['Content-Type']
+        $responseText = [string]$webResponse.Content
+    } catch {
+        $errorResponse = $_.Exception.Response
+        if ($null -eq $errorResponse) {
+            return ConvertFrom-WeatherApiHttpResponse -HttpStatus 0 -ContentType '' -BodyText ''
+        }
+        try { $httpStatus = [int]$errorResponse.StatusCode } catch { $httpStatus = 0 }
+        try { $contentType = [string]$errorResponse.Headers['Content-Type'] } catch { $contentType = '' }
+        try {
+            if ($null -ne $errorResponse.Content) {
+                $responseText = [string]$errorResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            } else {
+                $reader = [IO.StreamReader]::new($errorResponse.GetResponseStream())
+                try { $responseText = $reader.ReadToEnd() } finally { $reader.Dispose() }
+            }
+        } catch { $responseText = '' }
+    }
+    try {
+        ConvertFrom-WeatherApiHttpResponse -HttpStatus $httpStatus -ContentType $contentType -BodyText $responseText
+    } finally { $responseText = $null }
+}
+
+function Throw-WeatherApiDiagnostic {
+    param([Parameter(Mandatory)] [object] $Diagnostic, [string] $FallbackCode = 'invalidApiResponse')
+    $code = if ($Diagnostic.failureCode) { [string]$Diagnostic.failureCode } else { $FallbackCode }
+    $exception = [InvalidOperationException]::new('WEATHER_SAFE:' + $code)
+    foreach ($name in @('httpStatus','contentType','jsonParsed','ok','apiStage')) {
+        if (Test-WeatherObjectProperty $Diagnostic $name) { $exception.Data[$name] = $Diagnostic.$name }
+    }
+    throw $exception
 }
 
 function Invoke-WeatherPrivateApiRequest {
@@ -114,10 +250,7 @@ function Invoke-WeatherPrivateApiRequest {
         $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($AdminKey)
         $Payload['adminKey'] = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
         $body = [Text.Encoding]::UTF8.GetBytes(($Payload | ConvertTo-Json -Depth 8 -Compress))
-        Invoke-RestMethod -Uri $uri.AbsoluteUri -Method Post `
-            -ContentType 'application/json; charset=utf-8' -Body $body -TimeoutSec 30 -ErrorAction Stop
-    } catch {
-        throw 'WEATHER_SAFE:privateApiTransportFailed'
+        Invoke-WeatherJsonHttpRequest -Uri $uri -Body $body
     } finally {
         $Payload.Remove('adminKey')
         if ($pointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
@@ -127,11 +260,10 @@ function Invoke-WeatherPrivateApiRequest {
 
 function Get-WeatherPendingResponseFailureCode {
     param([AllowNull()] [object] $Response)
-    if ($null -eq $Response) { return 'invalidPendingResponse' }
-    if ($Response.ok -eq $true -and $null -ne $Response.reports) { return '' }
-    if ($Response.ok -eq $false -and [string]$Response.error -match '認証') { return 'adminAuthenticationRejected' }
-    if ($Response.ok -eq $false) { return 'pendingApiRejected' }
-    'invalidPendingResponse'
+    if ($null -eq $Response) { return 'apiError' }
+    if ($Response.ok -eq $true -and (Test-WeatherObjectProperty $Response 'reports')) { return '' }
+    if ($Response.ok -eq $false) { return Get-WeatherApiErrorClassification ([string]$Response.error) }
+    'apiError'
 }
 
 function Invoke-WeatherEvidenceSubmissionInteractive {
@@ -146,8 +278,8 @@ function Invoke-WeatherEvidenceSubmissionInteractive {
         attempted = $false; apiSuccess = $false; driveSaved = $false
         pendingRegistered = $false; sha256Match = $false; imageRetrieved = $false
         duplicate = $false; stage = 'localValidation'; failureCode = ''
+        httpStatus = 0; contentType = ''; jsonParsed = $false; ok = $null; apiStage = ''
     }
-    $apiInput = $null
     $postKey = $null
     $adminKey = $null
     $apiUrl = $null
@@ -161,20 +293,17 @@ function Invoke-WeatherEvidenceSubmissionInteractive {
         Write-Host ('Ready: ' + $preview.payload.date + ' / ' + $preview.payload.startSlot +
             ' / evidence ' + $artifact.byteSize + ' bytes / SHA-256 verified.')
 
-        $apiInput = Read-Host 'Existing weather API HTTPS URL (hidden)' -AsSecureString
-        $pointer = [IntPtr]::Zero
-        try {
-            $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($apiInput)
-            $apiUrl = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer).Trim()
-        } finally {
-            if ($pointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
-        }
+        $apiUrl = Get-WeatherApiUrlFromSiteConfig
+        Write-Host 'Using the existing public weather API URL from index.html.'
         $postKey = Read-Host 'POST_KEY (hidden)' -AsSecureString
         $adminKey = Read-Host 'ADMIN_KEY (hidden; verification only)' -AsSecureString
         if ($postKey.Length -eq 0 -or $adminKey.Length -eq 0) { throw 'Keys are required.' }
 
         $result.stage = 'duplicateCheck'
-        $pending = Invoke-WeatherPrivateApiRequest -ApiUrl $apiUrl -AdminKey $adminKey -Payload ([ordered]@{ action = 'pending' })
+        $pendingCall = Invoke-WeatherPrivateApiRequest -ApiUrl $apiUrl -AdminKey $adminKey -Payload ([ordered]@{ action = 'pending' })
+        foreach ($name in @('httpStatus','contentType','jsonParsed','ok')) { $result[$name] = $pendingCall.diagnostic.$name }
+        if ($pendingCall.diagnostic.failureCode) { throw ('WEATHER_SAFE:' + $pendingCall.diagnostic.failureCode) }
+        $pending = $pendingCall.data
         $pendingFailure = Get-WeatherPendingResponseFailureCode $pending
         if ($pendingFailure) { throw ('WEATHER_SAFE:' + $pendingFailure) }
         $duplicate = @($pending.reports | Where-Object {
@@ -201,10 +330,14 @@ function Invoke-WeatherEvidenceSubmissionInteractive {
         $result.stage = 'submission'
         $receipt = Invoke-WeatherPendingSubmission -Candidate $candidate -EvidenceImage $artifact `
             -Send -ApiUrl $apiUrl -PostKey $postKey
+        foreach ($name in @('httpStatus','contentType','jsonParsed','ok','apiStage')) { $result[$name] = $receipt.diagnostic.$name }
         $result.apiSuccess = $true
 
         $result.stage = 'pendingVerification'
-        $pending = Invoke-WeatherPrivateApiRequest -ApiUrl $apiUrl -AdminKey $adminKey -Payload ([ordered]@{ action = 'pending' })
+        $pendingCall = Invoke-WeatherPrivateApiRequest -ApiUrl $apiUrl -AdminKey $adminKey -Payload ([ordered]@{ action = 'pending' })
+        foreach ($name in @('httpStatus','contentType','jsonParsed','ok')) { $result[$name] = $pendingCall.diagnostic.$name }
+        if ($pendingCall.diagnostic.failureCode) { throw ('WEATHER_SAFE:' + $pendingCall.diagnostic.failureCode) }
+        $pending = $pendingCall.data
         $report = @($pending.reports | Where-Object { $_.id -ceq $receipt.id })
         if ($pending.ok -ne $true -or $report.Count -ne 1 -or
             $report[0].date -ne $preview.payload.date -or $report[0].startSlot -ne $preview.payload.startSlot -or
@@ -218,8 +351,11 @@ function Invoke-WeatherEvidenceSubmissionInteractive {
         $result.pendingRegistered = $true
 
         $result.stage = 'imageVerification'
-        $image = Invoke-WeatherPrivateApiRequest -ApiUrl $apiUrl -AdminKey $adminKey -Payload `
+        $imageCall = Invoke-WeatherPrivateApiRequest -ApiUrl $apiUrl -AdminKey $adminKey -Payload `
             ([ordered]@{ action = 'weatherEvidence'; reportId = $receipt.id; imageIndex = 0 })
+        foreach ($name in @('httpStatus','contentType','jsonParsed','ok')) { $result[$name] = $imageCall.diagnostic.$name }
+        if ($imageCall.diagnostic.failureCode) { throw ('WEATHER_SAFE:' + $imageCall.diagnostic.failureCode) }
+        $image = $imageCall.data
         if ($image.ok -ne $true -or $image.mimeType -ne $artifact.mimeType) { throw 'Evidence retrieval failed.' }
         $decoded = [Convert]::FromBase64String($image.bodyBase64)
         $sha = [Security.Cryptography.SHA256]::Create()
@@ -234,6 +370,9 @@ function Invoke-WeatherEvidenceSubmissionInteractive {
         $result.imageRetrieved = $true
         $result.stage = 'complete'
     } catch {
+        foreach ($name in @('httpStatus','contentType','jsonParsed','ok','apiStage')) {
+            if ($_.Exception.Data.Contains($name)) { $result[$name] = $_.Exception.Data[$name] }
+        }
         if ($_.Exception.Message -match '^WEATHER_SAFE:([A-Za-z0-9]+)$') {
             $result.failureCode = $Matches[1]
         } else {
@@ -242,7 +381,7 @@ function Invoke-WeatherEvidenceSubmissionInteractive {
         $result['stopped'] = $true
         Write-Host 'Stopped safely. Do not resend. See the credential-free result.'
     } finally {
-        foreach ($secret in @($postKey, $adminKey, $apiInput)) {
+        foreach ($secret in @($postKey, $adminKey)) {
             if ($null -ne $secret) { $secret.Dispose() }
         }
         $apiUrl = $null

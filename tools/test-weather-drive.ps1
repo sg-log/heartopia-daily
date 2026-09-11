@@ -44,20 +44,26 @@ sheet.deleteRow=n=>rows.splice(n-1,1);
 rows.splice(0,rows.length,HEADERS.concat(['sourceUrl','sourceImageUrls']));columns=HEADERS.length+2;
 const body={action:'submit',postKey:'synthetic',date:'2026-09-11',startSlot:'06',slots:{slot0:['晴']},weeks:{},sourceUrl:'https://example.org/post',sourceImageUrls:[],sourceType:'web',retrievedAt:'2026-09-11T06:00:00+09:00',evidenceImages:[fixture]};
 function rejects(fn,label){let failed=false;try{fn();}catch(_){failed=true;}assert(failed,label);}
+function rejectsCode(fn,code,stage,label){let error=null;try{fn();}catch(e){error=e;}assert(error&&error.weatherFailureCode===code&&error.weatherStage===stage,label);}
 const large=JSON.stringify(body);
 assert(new TextEncoder().encode(large).length>300000 && parseBody_({postData:{contents:large}}).evidenceImages.length===1,'307KiB class submit accepted');
 rejects(()=>parseBody_({postData:{contents:JSON.stringify({action:'pending',padding:'x'.repeat(70000)})}}),'old action 64KiB');
-rejects(()=>parseBody_({postData:{contents:large+' '.repeat(1048576)}}),'1MiB max');
+rejectsCode(()=>parseBody_({postData:{contents:large+' '.repeat(1048576)}}),'requestTooLarge','requestParsing','1MiB max');
+rejectsCode(()=>submit_({...body,postKey:'wrong'}),'postAuthFailed','postAuth','post auth stage');
+rejectsCode(()=>submit_({...body,evidenceImages:[{...fixture,bodyBase64:'!!!!'}]}),'invalidBase64','base64Decode','base64 stage');
+rejectsCode(()=>submit_({...body,evidenceImages:[{...fixture,mimeType:'image/svg+xml'}]}),'mimeTypeRejected','payloadValidation','mime stage');
+rejectsCode(()=>submit_({...body,evidenceImages:[{...fixture,sha256:'0'.repeat(64)}]}),'sha256Mismatch','sha256Validation','hash stage');
+rejectsCode(()=>submit_({...body,evidenceImages:[{...fixture,bodyBase64:btoa('x'.repeat(524289)),byteSize:524289}]}),'imageTooLarge','base64Decode','size stage');
 for(const change of [{bodyBase64:'!!!!'},{mimeType:'image/svg+xml'},{sha256:'0'.repeat(64)},{byteSize:524289},{localPath:'file:///secret'},{bodyBase64:btoa('x'.repeat(524289)),byteSize:524289}]){
  rejects(()=>submit_({...body,evidenceImages:[{...fixture,...change}]}),'invalid image');
 }
 rejects(()=>submit_({...body,evidenceImages:[fixture,fixture]}),'two images');
 assert(creates===0&&rows.length===1,'validation no writes');
-folderConfigured=false;rejects(()=>submit_(body),'folder unset');folderConfigured=true;
-shared=true;rejects(()=>submit_(body),'shared folder refused');shared=false;
-driveFailure=true;rejects(()=>submit_(body),'Drive failure');driveFailure=false;
+folderConfigured=false;rejectsCode(()=>submit_(body),'evidenceFolderNotConfigured','driveFolder','folder unset');folderConfigured=true;
+shared=true;rejectsCode(()=>submit_(body),'drivePermissionError','driveFolder','shared folder refused');shared=false;
+driveFailure=true;rejectsCode(()=>submit_(body),'driveSaveError','driveSave','Drive failure');driveFailure=false;
 assert(rows.length===1,'no pending on Drive failure');
-appendFailure=true;rejects(()=>submit_(body),'append failure');appendFailure=false;
+appendFailure=true;rejectsCode(()=>submit_(body),'pendingSaveError','pendingSave','append failure');appendFailure=false;
 assert(trashed===1&&rows.length===1,'orphan trashed');
 appendAfterWrite=true;rejects(()=>submit_(body),'append committed then failed');appendAfterWrite=false;
 assert(trashed===2&&rows.length===1,'ambiguous append rolled back');
