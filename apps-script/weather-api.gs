@@ -1067,6 +1067,11 @@ function weatherEvidenceFolder_() {
   } catch (_) { throw weatherSubmitFailure_("drivePermissionError", "driveFolder"); }
 }
 
+function authorizeWeatherEvidenceDrive() {
+  weatherEvidenceFolder_();
+  Logger.log("Drive access OK");
+}
+
 function getWeatherEvidence_(body) {
   requireKey_(body.adminKey, adminKey_(), "管理キー");
   if (Object.keys(body).some(function(k) { return ["action","adminKey","reportId","imageIndex"].indexOf(k) < 0; }) || typeof body.reportId !== "string" || !body.reportId || body.reportId.length > 100 || body.imageIndex !== 0) throw new Error("Invalid evidence request");

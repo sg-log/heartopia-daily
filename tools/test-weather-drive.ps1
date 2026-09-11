@@ -19,7 +19,7 @@ $tests=@'
 try{
 assert(output.textContent.startsWith('PASS:'),'baseline pending harness must pass');
 const fixture=__FIXTURE__;
-let folderConfigured=true, driveFailure=false, appendFailure=false, appendAfterWrite=false, shared=false, trashed=0, creates=0, reads=0;
+let folderConfigured=true, driveFailure=false, appendFailure=false, appendAfterWrite=false, shared=false, trashed=0, creates=0, reads=0, logs=[];
 const files=new Map();
 Utilities.base64Decode=s=>Array.from(atob(s),c=>c.charCodeAt(0));
 Utilities.base64Encode=b=>{let s='';for(const n of b)s+=String.fromCharCode(n&255);return btoa(s);};
@@ -37,12 +37,15 @@ const folder={...privateMethods,getId:()=> 'mock-folder',createFile:blob=>{
  files.set(id,file);return file;
 }};
 window.DriveApp={Access:{PRIVATE:'PRIVATE'},getFolderById:()=>folder,getFileById:id=>{reads++;if(!files.has(id))throw Error();return files.get(id);}};
+window.Logger={log:value=>logs.push(String(value))};
 scriptProperty_=()=>{if(!folderConfigured)throw Error('unset');return 'mock-folder';};
 const originalAppend=sheet.appendRow;
 sheet.appendRow=row=>{if(appendFailure)throw Error('sheet failure');originalAppend(row);if(appendAfterWrite)throw Error('after append');};
 sheet.deleteRow=n=>rows.splice(n-1,1);
 rows.splice(0,rows.length,HEADERS.concat(['sourceUrl','sourceImageUrls']));columns=HEADERS.length+2;
 const body={action:'submit',postKey:'synthetic',date:'2026-09-11',startSlot:'06',slots:{slot0:['晴']},weeks:{},sourceUrl:'https://example.org/post',sourceImageUrls:[],sourceType:'web',retrievedAt:'2026-09-11T06:00:00+09:00',evidenceImages:[fixture]};
+authorizeWeatherEvidenceDrive();
+assert(creates===0&&logs.length===1&&logs[0]==='Drive access OK'&&!logs[0].includes('mock-folder'),'authorization wrapper reads only and logs no ID');
 function rejects(fn,label){let failed=false;try{fn();}catch(_){failed=true;}assert(failed,label);}
 function rejectsCode(fn,code,stage,label){let error=null;try{fn();}catch(e){error=e;}assert(error&&error.weatherFailureCode===code&&error.weatherStage===stage,label);}
 const large=JSON.stringify(body);
