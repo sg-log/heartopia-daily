@@ -119,6 +119,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-candida
 
 関数は既存dry-runと画像SHA-256を再検証し、管理APIで同じ日付・開始時刻・sourceUrlのpendingがないことを確認する。送信直前に候補別の試行マーカーを一時領域へ排他的に作り、成功・失敗を問わず残す。マーカーを削除して再送しない。送信後は返却IDのpending、5枠、sourceUrlを確認し、管理認証付き画像取得のバイト数・SHA-256が判定画像と一致した場合だけ完了とする。管理一覧からDrive File IDが露出した場合は停止する。承認・却下・公開は行わない。
 
+安全停止結果には秘密やサーバーの生エラーを含めず、`failureCode` だけを残す。重複確認では `invalidEndpoint`、`emptyAdminKey`、`privateApiTransportFailed`、`adminAuthenticationRejected`、`pendingApiRejected`、`invalidPendingResponse` を区別する。過去の結果に `failureCode` がなければ、後から詳細原因は復元できない。
+
 `weather-evidence.ps1` を読み込む。取得層で元画像を一時保存し、取得できなければMCP `take_screenshot` の `uid` と `filePath` で特定した画像要素を保存する。要素を特定できなければ停止する。新規ダウンローダー・自動cropは実装していない。
 
 1. `New-WeatherEvidenceImage -Path $tempImage -Kind original`（または `screenshot`）`-CapturedAt $capturedAt` でローカル記録を作る。PNG/JPEGをデコード検証し、サイズ・SHA-256を取得する。暫定512KiB超は実サイズ付きで停止、圧縮しない。

@@ -46,7 +46,11 @@ try {
     Assert-Throws { New-WeatherEvidenceImage $bad original '2026-09-11T06:00:00+09:00' } 'Invalid format rejected'
     [IO.File]::WriteAllBytes($bad, [byte[]]::new(524289))
     Assert-Throws { New-WeatherEvidenceImage $bad screenshot '2026-09-11T06:00:00+09:00' } 'Oversize rejected'
-    'PASS: original/screenshot, exact hash binding, explicit one-call image transport, no image, invalid format, size limit, source/slots'
+    Assert ((Get-WeatherPendingResponseFailureCode @{ok=$true;reports=@()}) -eq '') 'Valid pending response'
+    Assert ((Get-WeatherPendingResponseFailureCode @{ok=$false;error='認証に失敗しました'}) -eq 'adminAuthenticationRejected') 'Safe auth classification'
+    Assert ((Get-WeatherPendingResponseFailureCode @{ok=$false;error='internal detail'}) -eq 'pendingApiRejected') 'Safe API rejection classification'
+    Assert ((Get-WeatherPendingResponseFailureCode $null) -eq 'invalidPendingResponse') 'Safe invalid response classification'
+    'PASS: original/screenshot, exact hash binding, explicit one-call image transport, safe duplicate-check diagnostics, image validation'
 } finally {
     foreach ($path in $paths) { Remove-Item -LiteralPath $path -ErrorAction SilentlyContinue }
 }

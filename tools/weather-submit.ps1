@@ -105,9 +105,9 @@ function Invoke-WeatherPrivateApiRequest {
     $uri = $null
     if (-not [uri]::TryCreate($ApiUrl, [UriKind]::Absolute, [ref]$uri) -or
         $uri.Scheme -ne 'https' -or $uri.UserInfo -or $uri.Query -or $uri.Fragment) {
-        throw 'Invalid API endpoint.'
+        throw 'WEATHER_SAFE:invalidEndpoint'
     }
-    if ($AdminKey.Length -eq 0) { throw 'ADMIN_KEY is required.' }
+    if ($AdminKey.Length -eq 0) { throw 'WEATHER_SAFE:emptyAdminKey' }
     $pointer = [IntPtr]::Zero
     $body = $null
     try {
@@ -117,12 +117,21 @@ function Invoke-WeatherPrivateApiRequest {
         Invoke-RestMethod -Uri $uri.AbsoluteUri -Method Post `
             -ContentType 'application/json; charset=utf-8' -Body $body -TimeoutSec 30 -ErrorAction Stop
     } catch {
-        throw 'Private API verification failed. Do not retry a submission attempt.'
+        throw 'WEATHER_SAFE:privateApiTransportFailed'
     } finally {
         $Payload.Remove('adminKey')
         if ($pointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
         if ($null -ne $body) { [Array]::Clear($body, 0, $body.Length) }
     }
+}
+
+function Get-WeatherPendingResponseFailureCode {
+    param([AllowNull()] [object] $Response)
+    if ($null -eq $Response) { return 'invalidPendingResponse' }
+    if ($Response.ok -eq $true -and $null -ne $Response.reports) { return '' }
+    if ($Response.ok -eq $false -and [string]$Response.error -match '認証') { return 'adminAuthenticationRejected' }
+    if ($Response.ok -eq $false) { return 'pendingApiRejected' }
+    'invalidPendingResponse'
 }
 
 function Invoke-WeatherEvidenceSubmissionInteractive {
@@ -136,7 +145,7 @@ function Invoke-WeatherEvidenceSubmissionInteractive {
     $result = [ordered]@{
         attempted = $false; apiSuccess = $false; driveSaved = $false
         pendingRegistered = $false; sha256Match = $false; imageRetrieved = $false
-        duplicate = $false; stage = 'localValidation'
+        duplicate = $false; stage = 'localValidation'; failureCode = ''
     }
     $apiInput = $null
     $postKey = $null
@@ -156,7 +165,7 @@ function Invoke-WeatherEvidenceSubmissionInteractive {
         $pointer = [IntPtr]::Zero
         try {
             $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($apiInput)
-            $apiUrl = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
+            $apiUrl = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer).Trim()
         } finally {
             if ($pointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
         }
@@ -166,7 +175,8 @@ function Invoke-WeatherEvidenceSubmissionInteractive {
 
         $result.stage = 'duplicateCheck'
         $pending = Invoke-WeatherPrivateApiRequest -ApiUrl $apiUrl -AdminKey $adminKey -Payload ([ordered]@{ action = 'pending' })
-        if ($pending.ok -ne $true -or $null -eq $pending.reports) { throw 'Pending check failed.' }
+        $pendingFailure = Get-WeatherPendingResponseFailureCode $pending
+        if ($pendingFailure) { throw ('WEATHER_SAFE:' + $pendingFailure) }
         $duplicate = @($pending.reports | Where-Object {
             $_.date -eq $preview.payload.date -and $_.startSlot -eq $preview.payload.startSlot -and
             $_.sourceUrl -ceq $preview.payload.sourceUrl
@@ -224,6 +234,11 @@ function Invoke-WeatherEvidenceSubmissionInteractive {
         $result.imageRetrieved = $true
         $result.stage = 'complete'
     } catch {
+        if ($_.Exception.Message -match '^WEATHER_SAFE:([A-Za-z0-9]+)$') {
+            $result.failureCode = $Matches[1]
+        } else {
+            $result.failureCode = 'localOrVerificationFailure'
+        }
         $result['stopped'] = $true
         Write-Host 'Stopped safely. Do not resend. See the credential-free result.'
     } finally {
