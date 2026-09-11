@@ -48,6 +48,13 @@ function checkWeatherAuthorizationStatus() {
   Logger.log("Drive authorized: " + (scopes.indexOf(driveScope) >= 0));
 }
 
+function requestWeatherDriveAuthorization() {
+  ScriptApp.requireScopes(
+    ScriptApp.AuthMode.FULL,
+    ["https://www.googleapis.com/auth/drive"]
+  );
+}
+
 function doGet(e) {
   try {
     const action = String((e && e.parameter && e.parameter.action) || "");
