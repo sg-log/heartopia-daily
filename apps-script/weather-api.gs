@@ -38,6 +38,16 @@ const TEXT_LIMITS = {
   xPostUrl: 1000
 };
 
+function checkWeatherAuthorizationStatus() {
+  const driveScope = "https://www.googleapis.com/auth/drive";
+  const authInfo = ScriptApp.getAuthorizationInfo(ScriptApp.AuthMode.FULL);
+  const status = authInfo.getAuthorizationStatus();
+  const scopes = authInfo.getAuthorizedScopes() || [];
+  const statusText = status === ScriptApp.AuthorizationStatus.REQUIRED ? "REQUIRED" : "NOT_REQUIRED";
+  Logger.log("Authorization status: " + statusText);
+  Logger.log("Drive authorized: " + (scopes.indexOf(driveScope) >= 0));
+}
+
 function doGet(e) {
   try {
     const action = String((e && e.parameter && e.parameter.action) || "");
