@@ -113,7 +113,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-candida
 
 ### 承認用の元画像
 
-#### 保存済み画像付きローカルpreview（Drive/API未接続）
+#### 保存済み画像付きローカルpreview（通信なし）
 
 `weather-evidence.ps1` を読み込む。取得層で元画像を一時保存し、取得できなければMCP `take_screenshot` の `uid` と `filePath` で特定した画像要素を保存する。要素を特定できなければ停止する。新規ダウンローダー・自動cropは実装していない。
 
@@ -121,7 +121,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-candida
 2. 必ず `view_image` 等でその `localPath` のファイル自体をAIが確認し、同じ画像からhourlyForecastを作る。その後だけ `hourlyForecast.evidence.reviewedImageSha256` に記録のSHA-256を設定する。ハッシュは同一性検証であり、AIが見た事実を自動証明するものではない。
 3. `ConvertTo-WeatherEvidencePendingPreview -Candidate $candidate -EvidenceImage $artifact` を呼ぶ。既存の登録可能判定を再実行し、ファイルを再読込してハッシュ・サイズ・形式を照合。同じ読込バイトから `evidenceImages` 1件のmetadata＋`bodyBase64` を生成する。`date`は既存observedDateのAPI項目、`sourceType/retrievedAt`も追加。ローカル記録自体は送信しない。
 
-返却payloadにキー・Cookie・ローカルパスを入れない。自由記述の根拠やmemoにも書かない。元画像に不要な個人情報等があれば判定前に取得対象を見直す。署名等を含む元画像のメタデータにも注意する。previewに送信スイッチはなく、既存APIはこの画像形式をまだ受理しない。Drive IDは生成しない。
+返却payloadにキー・Cookie・ローカルパスを入れない。自由記述の根拠やmemoにも書かない。元画像に不要な個人情報等があれば判定前に取得対象を見直す。署名等を含む元画像のメタデータにも注意する。previewに送信スイッチはなく、Drive IDも生成しない。Apps Script側の受信・非公開保存コードと設定は `README-weather-api.md` を参照。実環境への反映・接続確認は別途必要。
 
 テスト：`powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-evidence.ps1`。元画像ケースはローカル合成画像であり、ダウンロード実機テストではない。System.Drawingを使用するため現時点では既存Windows/PowerShell環境が対象。
 

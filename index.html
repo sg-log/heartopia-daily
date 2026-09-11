@@ -5090,6 +5090,11 @@ function adminKeyInputs(){
   return [E.adminGateKey, E.adminSaveWeatherAdminKey, E.approvedWeatherAdminKey, E.quickWeatherAdminKey, E.weatherAdminKey, E.quickGiftAdminKey, E.giftAdminKey, E.noticeAdminKey];
 }
 function setAdminKey(value, persist=true){
+  if(adminSessionKey !== String(value || "").trim()){
+    clearPendingEvidenceImages();
+    E.pendingWeatherReports?.querySelectorAll('[data-evidence-display]').forEach(el => el.replaceChildren());
+    E.pendingWeatherReports?.querySelectorAll('[data-load-weather-evidence]').forEach(el => {el.disabled=false;el.textContent='保存済み証拠画像を表示';});
+  }
   adminSessionKey = String(value || "").trim();
   if(persist){
     if(adminSessionKey) sessionStorage.setItem(ADMIN_SESSION_KEY, adminSessionKey);
@@ -5335,6 +5340,37 @@ function pendingWeatherEvidenceUrl(value, image = false){
   }catch(_){ return ""; }
 }
 
+const pendingEvidenceObjectUrls = new Set();
+function clearPendingEvidenceImages(){
+  pendingEvidenceObjectUrls.forEach(url => URL.revokeObjectURL(url));
+  pendingEvidenceObjectUrls.clear();
+}
+async function loadPendingEvidence(button){
+  const target = button.parentElement.querySelector('[data-evidence-display]');
+  button.disabled = true;
+  target.textContent = '証拠画像を読み込み中…';
+  const requestKey = adminKeyValue();
+  try{
+    const result = await apiPost({action:'weatherEvidence', reportId:button.dataset.loadWeatherEvidence, imageIndex:0, adminKey:requestKey});
+    if(result.ok !== true || !['image/png','image/jpeg'].includes(result.mimeType) || typeof result.bodyBase64 !== 'string' || result.bodyBase64.length > 699052) throw new Error('unavailable');
+    const bytes = Uint8Array.from(atob(result.bodyBase64), c => c.charCodeAt(0));
+    if(!bytes.length || bytes.length > 524288) throw new Error('size');
+    if(!button.isConnected || adminKeyValue() !== requestKey) return;
+    const url = URL.createObjectURL(new Blob([bytes], {type:result.mimeType}));
+    pendingEvidenceObjectUrls.add(url);
+    const link = document.createElement('a');
+    link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+    const img = document.createElement('img');
+    img.src = url; img.alt = 'AI判定に使用した保存済み証拠画像'; img.referrerPolicy = 'no-referrer';
+    link.append(img, document.createTextNode('証拠画像を拡大'));
+    target.replaceChildren(link);
+    button.textContent = '証拠画像を表示済み';
+  }catch(_){
+    target.textContent = '証拠画像を取得できませんでした。管理キーと保存状態を確認してください。';
+    button.disabled = false;
+  }
+}
+
 function pendingWeatherCard(r){
   const startSlot = normalizeStartSlot(r.startSlot);
   const slots = normalizeWeatherSlots(r);
@@ -5347,7 +5383,9 @@ function pendingWeatherCard(r){
     ${WEATHER_WEEK_KEYS.some(key => weeks[key]?.length) ? `<details><summary>週間の報告</summary>${WEATHER_WEEK_KEYS.map((key, i) => `<div>${esc(weekDateLabel(reportDate, i))}：${esc(simpleWeatherText(weeks[key], "未入力"))}</div>`).join("")}</details>` : ""}
     <p class="pendingWeatherMemo">${esc(r.memo || "")}</p>
     <div class="buttons"><button type="button" data-approve-weather="${esc(r.id)}">承認</button><button type="button" class="danger" data-reject-weather="${esc(r.id)}">却下</button></div></div>
-    <div>${source ? `<a href="${esc(source)}" target="_blank" rel="noopener noreferrer">元投稿を開く</a>` : "<p>元投稿URLなし</p>"}
+    <div><p>取得元：${esc(r.sourceType || '未記録')}<br>取得日時：${esc(r.retrievedAt || '未記録')}</p>
+    ${r.evidenceStatus === 'saved' && r.evidenceImages?.length ? `<div><button type="button" data-load-weather-evidence="${esc(r.id)}">保存済み証拠画像を表示</button><div class="pendingWeatherImages" data-evidence-display></div></div>` : '<p>保存済み証拠画像なし</p>'}
+    ${source ? `<a href="${esc(source)}" target="_blank" rel="noopener noreferrer">元投稿を開く</a>` : "<p>元投稿URLなし</p>"}
     <div class="pendingWeatherImages">${images.length ? images.map((url, i) => `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer"><img src="${esc(url)}" alt="判定根拠画像 ${i + 1}" loading="lazy" referrerpolicy="no-referrer"><span>画像${i + 1}を拡大</span></a>`).join("") : "<p>元画像情報なし</p>"}</div>
     ${images.length ? "<small>表示できない画像は、元投稿から確認してください。</small>" : ""}</div></article>`;
 }
@@ -5364,6 +5402,7 @@ async function fetchPendingWeatherReports(){
     if(result.ok === false) throw new Error(result.error || "APIエラー");
     const reports = result.reports || result.data || [];
     E.pendingWeatherStatus.textContent = reports.length ? `${reports.length}件の未承認報告があります。` : "未承認の天気報告はありません。";
+    clearPendingEvidenceImages();
     E.pendingWeatherReports.innerHTML = reports.map(pendingWeatherCard).join("");
     return reports;
   }catch(error){
@@ -6148,6 +6187,8 @@ function init(){
 
   E.refreshPendingWeatherBtn.onclick = fetchPendingWeatherReports;
   E.pendingWeatherReports.onclick = event => {
+    const evidence = event.target.closest('[data-load-weather-evidence]');
+    if(evidence){ loadPendingEvidence(evidence); return; }
     const approve = event.target.closest("[data-approve-weather]");
     const reject = event.target.closest("[data-reject-weather]");
     if(approve) approveWeatherReport(approve.dataset.approveWeather);

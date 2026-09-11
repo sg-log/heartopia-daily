@@ -44,7 +44,7 @@ try {
  const body={postKey:'synthetic',date:'2026-09-11',startSlot:'06',slots:{slot0:['晴'],slot1:['雨'],slot2:['晴'],slot3:['晴'],slot4:['晴']},weeks:{},sourceUrl:'https://example.org/post',sourceImageUrls:['https://example.org/one.png','https://example.org/two.png']};
  const receipt=submit_(body);
  assert(receipt.ok && receipt.status==='pending','submit pending');
- assert(rows[0].slice(-2).join(',')==='sourceUrl,sourceImageUrls','append headers');
+ assert(rows[0].slice(HEADERS.length).join(',')===WEATHER_EVIDENCE_HEADERS.join(','),'append headers');
  assert(rows[1][HEADERS.indexOf('status')]==='pending','old row preserved');
  let report=listByStatus_('pending')[1];
  assert(report.sourceImageUrls.length===2 && report.sourceUrl===body.sourceUrl,'evidence round trip');
@@ -83,6 +83,6 @@ try {
  output.textContent='PASS: legacy + one/multiple/invalid images, source links, schema append/round-trip, pending, approval/rejection/auth, corrupt data. All API/storage mocked; no network.';
 } catch(error){output.textContent='FAIL: '+error.message;}
 '@
-$html = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src ''none''; script-src ''unsafe-inline''; style-src ''unsafe-inline''; img-src data:; frame-src ''self''"><style>body{font-family:sans-serif;margin:16px}' + $css + '</style><h1>Offline pending test</h1><p id="result">Running</p><main id="cards"></main><script>window.onerror=(m,u,l,c)=>document.querySelector("#result").textContent="FAIL: "+m+" line "+l+":"+c;</script><script>' + $api + "`n" + $renderer + "`n" + $tests + '</script>'
+$html = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src ''none''; script-src ''unsafe-inline''; style-src ''unsafe-inline''; img-src data: blob:; frame-src ''self''"><style>body{font-family:sans-serif;margin:16px}' + $css + '</style><h1>Offline pending test</h1><p id="result">Running</p><main id="cards"></main><script>window.onerror=(m,u,l,c)=>document.querySelector("#result").textContent="FAIL: "+m+" line "+l+":"+c;</script><script>' + $api + "`n" + $renderer + "`n" + $tests + '</script>'
 [IO.File]::WriteAllText($OutputPath, $html, [Text.UTF8Encoding]::new($false))
 Write-Output "Open in browser: $OutputPath"

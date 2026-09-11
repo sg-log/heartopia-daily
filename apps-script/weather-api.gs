@@ -12,7 +12,8 @@ const HEADERS = [
   "id", "date", "startSlot", "slot0", "slot1", "slot2", "slot3", "slot4"
 ].concat(WEEK_HEADERS, ["memo", "status", "投稿者", "createdAt", "approvedAt"]);
 const GIFT_SHEET_NAME = "gift_codes";
-const WEATHER_EVIDENCE_HEADERS = ["sourceUrl", "sourceImageUrls"];
+const WEATHER_EVIDENCE_HEADERS = ["sourceUrl", "sourceImageUrls", "sourceType", "retrievedAt", "evidenceStatus", "evidenceImages"];
+const WEATHER_EVIDENCE_FOLDER_PROPERTY = "WEATHER_EVIDENCE_FOLDER_ID";
 const GIFT_HEADERS = [
   "id", "code", "reward", "expiresAt", "sourceUrl", "memo", "status", "createdAt", "updatedAt"
 ];
@@ -65,6 +66,7 @@ function doPost(e) {
     if (action === "recordAccess") return recordAccess_();
     if (action === "getAccessStats") return getAccessStats_(body);
     if (action === "submit") return submit_(body);
+    if (action === "weatherEvidence") return getWeatherEvidence_(body);
     if (action === "pending") {
       requireKey_(body.adminKey, adminKey_(), "管理キー");
       return json_({ ok: true, reports: listByStatus_("pending") });
@@ -203,6 +205,11 @@ function submit_(body) {
   const author = safeSheetText_(limitText_(body.author || body["投稿者"], TEXT_LIMITS.author, "投稿者"));
   const sourceUrl = weatherEvidenceUrl_(body.sourceUrl, false);
   const sourceImageUrls = weatherImageUrls_(body.sourceImageUrls);
+  const evidence = validateWeatherEvidence_(body.evidenceImages);
+  const sourceType = safeSheetText_(limitText_(body.sourceType, 40, "sourceType"));
+  const retrievedAt = body.retrievedAt ? weatherEvidenceTime_(body.retrievedAt) : "";
+  if (evidence && (!sourceUrl || !sourceType || !retrievedAt)) throw new Error("Evidence provenance required");
+  if (evidence && Object.keys(body).some(function(k) { return /cookie|credential|authorization|localpath|filepath|adminKey/i.test(k); })) throw new Error("Forbidden evidence fields");
   const row = [
     Utilities.getUuid(),
     date,
@@ -223,7 +230,30 @@ function submit_(body) {
   ]);
   withScriptLock_(function() {
     const sheet = getWeatherEvidenceSheet_();
-    sheet.appendRow(row.concat([sourceUrl, JSON.stringify(sourceImageUrls)]));
+    let file = null;
+    try {
+      let references = [];
+      if (evidence) {
+        const folder = weatherEvidenceFolder_();
+        file = folder.createFile(Utilities.newBlob(evidence.bytes, evidence.meta.mimeType, row[0] + (evidence.meta.mimeType === "image/png" ? ".png" : ".jpg")));
+        requirePrivateEvidence_(file);
+        references = [Object.assign({fileId:file.getId()}, evidence.meta)];
+      }
+      sheet.appendRow(row.concat([sourceUrl, JSON.stringify(sourceImageUrls), sourceType, retrievedAt, file ? "saved" : "missing", JSON.stringify(references)]));
+    } catch (_) {
+      if (file) {
+        // appendRow may have committed before reporting an error. Remove only this UUID.
+        try {
+          const values = sheet.getDataRange().getValues();
+          for (let i = values.length - 1; i > 0; i--) {
+            if (String(values[i][0]) === row[0]) sheet.deleteRow(i + 1);
+          }
+        } catch (_) { throw new Error("Pending rollback uncertain; evidence retained. Administrator inspection required. Do not retry."); }
+        try { file.setTrashed(true); }
+        catch (_) { throw new Error("Evidence cleanup failed; administrator inspection required. Do not retry."); }
+      }
+      throw new Error("Evidence/pending save failed; no automatic retry. Check pending before retrying.");
+    }
   });
   return json_({ ok: true, id: row[0], status: "pending" });
 }
@@ -346,6 +376,13 @@ function listByStatus_(status) {
     // Old rows have neither field; malformed optional evidence must not hide reports.
     try { item.sourceUrl = weatherEvidenceUrl_(item.sourceUrl, false); } catch (_) { item.sourceUrl = ""; }
     try { item.sourceImageUrls = weatherImageUrls_(item.sourceImageUrls); } catch (_) { item.sourceImageUrls = []; }
+    try {
+      const refs = JSON.parse(item.evidenceImages || "[]");
+      item.evidenceImages = Array.isArray(refs) ? refs.slice(0,1).map(function(ref) {
+        return {kind:ref.kind, capturedAt:ref.capturedAt, mimeType:ref.mimeType, sha256:ref.sha256, byteSize:ref.byteSize};
+      }) : [];
+    } catch (_) { item.evidenceImages = []; }
+    item.evidenceStatus = item.evidenceStatus || "missing";
     item.date = formatDateValue(item.date);
     item.startSlot = normalizeStartSlot_(item.startSlot);
     item.slots = {
@@ -959,6 +996,70 @@ function headersMatch_(actual, expected) {
   });
 }
 
+function weatherEvidenceTime_(value) {
+  if (typeof value !== "string" || value.length > 40 || !/T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !isFinite(Date.parse(value))) throw new Error("Invalid evidence timestamp");
+  return value;
+}
+
+function evidenceHash_(bytes) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes).map(function(b) { return (b & 255).toString(16).padStart(2,"0"); }).join("");
+}
+
+function validateWeatherEvidence_(images) {
+  if (images == null) return null;
+  if (!Array.isArray(images) || images.length > 1) throw new Error("At most one evidence image");
+  if (!images.length) return null;
+  const im = images[0];
+  const keys = ["mimeType","byteSize","sha256","kind","capturedAt","bodyBase64"];
+  if (!im || Object.keys(im).some(function(k) { return keys.indexOf(k) < 0; }) || keys.some(function(k) { return im[k] == null; })) throw new Error("Invalid evidence fields");
+  if (["image/png","image/jpeg"].indexOf(im.mimeType) < 0 || ["original","screenshot"].indexOf(im.kind) < 0) throw new Error("Invalid evidence format");
+  weatherEvidenceTime_(im.capturedAt);
+  const b64 = im.bodyBase64;
+  if (typeof b64 !== "string" || !b64.length || b64.length > 699052 || b64.length % 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(b64)) throw new Error("Invalid evidence Base64");
+  const bytes = Utilities.base64Decode(b64);
+  if (!bytes.length || bytes.length > 524288 || im.byteSize !== bytes.length || Utilities.base64Encode(bytes) !== b64) throw new Error("Invalid evidence size/encoding");
+  const b = bytes.map(function(v) { return v & 255; });
+  const png = b.length >= 45 && b.slice(0,8).join() === '137,80,78,71,13,10,26,10' && b.slice(12,16).join() === '73,72,68,82' && b.slice(-8,-4).join() === '73,69,78,68';
+  const jpeg = b.length >= 4 && b[0] === 255 && b[1] === 216 && b[2] === 255 && b[b.length-2] === 255 && b[b.length-1] === 217;
+  if (!(im.mimeType === "image/png" ? png : jpeg)) throw new Error("Evidence signature mismatch");
+  if (typeof im.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(im.sha256) || evidenceHash_(bytes) !== im.sha256) throw new Error("Evidence SHA-256 mismatch");
+  return {bytes:bytes, meta:{kind:im.kind,capturedAt:im.capturedAt,mimeType:im.mimeType,sha256:im.sha256,byteSize:bytes.length}};
+}
+
+function requirePrivateEvidence_(item) {
+  if (item.getSharingAccess() !== DriveApp.Access.PRIVATE || item.getViewers().length || item.getEditors().length) throw new Error("Evidence storage must be owner-only");
+}
+
+function weatherEvidenceFolder_() {
+  const id = scriptProperty_(WEATHER_EVIDENCE_FOLDER_PROPERTY, "Evidence folder");
+  const folder = DriveApp.getFolderById(id);
+  requirePrivateEvidence_(folder);
+  return folder;
+}
+
+function getWeatherEvidence_(body) {
+  requireKey_(body.adminKey, adminKey_(), "管理キー");
+  if (Object.keys(body).some(function(k) { return ["action","adminKey","reportId","imageIndex"].indexOf(k) < 0; }) || typeof body.reportId !== "string" || !body.reportId || body.reportId.length > 100 || body.imageIndex !== 0) throw new Error("Invalid evidence request");
+  // No client-supplied file IDs. Only the pending row's reference can be resolved.
+  const rows = getSheet_().getDataRange().getValues(), headers = rows[0];
+  const row = rows.slice(1).find(function(r) { return String(r[headers.indexOf("id")]) === body.reportId && r[headers.indexOf("status")] === "pending"; });
+  if (!row || row[headers.indexOf("evidenceStatus")] !== "saved") throw new Error("Pending evidence unavailable");
+  try {
+    const refs = JSON.parse(row[headers.indexOf("evidenceImages")]);
+    if (!Array.isArray(refs) || refs.length !== 1 || !refs[0].fileId) throw new Error();
+    const ref = refs[0], folder = weatherEvidenceFolder_();
+    const file = DriveApp.getFileById(ref.fileId);
+    requirePrivateEvidence_(file);
+    const parents = file.getParents(); let belongs = false;
+    while (parents.hasNext()) { if (parents.next().getId() === folder.getId()) belongs = true; }
+    if (!belongs || file.isTrashed() || file.getSize() > 524288) throw new Error();
+    const bytes = file.getBlob().getBytes();
+    const bodyBase64 = Utilities.base64Encode(bytes);
+    validateWeatherEvidence_([Object.assign({}, {kind:ref.kind,capturedAt:ref.capturedAt,mimeType:ref.mimeType,sha256:ref.sha256,byteSize:ref.byteSize}, {bodyBase64:bodyBase64})]);
+    return json_({ok:true,mimeType:ref.mimeType,bodyBase64:bodyBase64});
+  } catch (_) { throw new Error("Pending evidence unavailable"); }
+}
+
 function weatherEvidenceUrl_(value, image) {
   if (value == null || value === "") return "";
   if (typeof value !== "string" || value.length > 2000 ||
@@ -984,8 +1085,8 @@ function getWeatherEvidenceSheet_() {
   if (sheet.getMaxColumns() < width) sheet.insertColumnsAfter(sheet.getMaxColumns(), width - sheet.getMaxColumns());
   const range = sheet.getRange(1, HEADERS.length + 1, 1, WEATHER_EVIDENCE_HEADERS.length);
   const actual = range.getValues()[0];
-  if (actual.every(function(v) { return !v; })) range.setValues([WEATHER_EVIDENCE_HEADERS]);
-  else if (!headersMatch_(actual, WEATHER_EVIDENCE_HEADERS)) throw new Error("Weather evidence columns conflict");
+  if (actual.some(function(v,i) { return v && v !== WEATHER_EVIDENCE_HEADERS[i]; })) throw new Error("Weather evidence columns conflict");
+  if (!headersMatch_(actual, WEATHER_EVIDENCE_HEADERS)) range.setValues([WEATHER_EVIDENCE_HEADERS]);
   return sheet;
 }
 
@@ -1080,8 +1181,13 @@ function addAccessDays_(date, offset) {
 
 function parseBody_(e) {
   const text = e && e.postData && e.postData.contents;
+  if (text && text.length > 1024 * 1024) throw new Error("リクエストが大きすぎます");
   if (text && Utilities.newBlob(text).getBytes().length > MAX_POST_BODY_BYTES) {
-    throw new Error("リクエストが大きすぎます");
+    if (text.length > 1024 * 1024 || Utilities.newBlob(text).getBytes().length > 1024 * 1024) throw new Error("リクエストが大きすぎます");
+    let large;
+    try { large = JSON.parse(text); } catch (_) { throw new Error("Large request must be JSON evidence submit"); }
+    if (large.action !== "submit" || !Array.isArray(large.evidenceImages) || large.evidenceImages.length !== 1) throw new Error("Large request must be evidence submit");
+    return large;
   }
   const parameters = (e && e.parameter) || {};
   if (parameters.action) {

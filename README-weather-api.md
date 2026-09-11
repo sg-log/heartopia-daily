@@ -1,5 +1,21 @@
 # 天気報告APIの準備
 
+## 非公開のweather証拠画像（ローカル実装・未deploy）
+
+Script Propertiesの `WEATHER_EVIDENCE_FOLDER_ID` に、実行者が所有する専用の非公開フォルダIDを設定する。コードやGit管理文書に実値を入れない。未設定・共有フォルダは画像付きsubmitを停止する。Driveの追加権限承認が必要。画像なし手動報告は設定不要。公開共有URLは作らない。
+
+既存POST_KEY認証付きsubmitで `evidenceImages` 最大1件を受信する。形式はローカルpreviewと同じ `mimeType / byteSize / sha256 / kind / capturedAt / bodyBase64`。PNG/JPEGのみ、実バイト最大512KiB、正規Base64・ファイルシグネチャ・SHA-256を検証する。Cookie・認証情報・ローカルパスは渡さない。取得側で画像をデコード確認済みであることが前提で、Apps Scriptのシグネチャ検証は画像全体のデコード検証の代わりではない。
+
+本文上限は画像1件付きJSON submitのみ1MiB、それ以外は従来64KiB。既存の `sourceUrl/sourceImageUrls` 列の後へ `sourceType/retrievedAt/evidenceStatus/evidenceImages` を追加する。画像本体はDrive、シートのevidenceImagesは `fileId/kind/capturedAt/mimeType/sha256/byteSize` のJSON配列だけ。旧行は画像なしとして扱い、承認済み編集でも末尾列を保つ。画像付きpayloadを送るCLIは今回追加しておらず、previewは通信しない。
+
+画像保存失敗ならpending行を追加しない。行保存失敗では今回のUUIDの行が書かれていないか確認し、あればその行だけを取り消して作成画像を `setTrashed(true)` でごみ箱へ移す。これは即時の完全削除ではない。Drive/Sheets間の完全な原子性は保証できず、タイムアウトや後始末失敗時は管理者が状態確認し、自動再送しない。保持期間・定期削除は未実装。
+
+画像取得はPOST `action:weatherEvidence, reportId, imageIndex:0, adminKey`。管理認証後、該当pending行の保存済み参照と専用フォルダ所属だけを使い、画像整合性を再検証してmimeType＋Base64を返す。任意fileIdは受け付けない。管理一覧からもfileIdを除外し、公開APIには証拠情報を返さない。管理キー保持者は全pendingを確認できる（報告者ごとのアクセス権ではない）。存在しない報告・画像なし報告・承認済み報告から画像は取得できない。
+
+管理画面はボタン操作時だけ既存apiPostで取得し、メモリ内Blobを表示する。一覧再読込時にObject URLを破棄する。秘密をURL・ログへ出さない。実環境のCORS/Apps Scriptリダイレクト・Drive権限は未検証。
+
+モックテスト：`powershell -NoProfile -ExecutionPolicy Bypass -File tools/test-weather-drive.ps1` で出力された一時HTMLをブラウザで開く。実装を取り込んだDrive/Sheetsモックで保存・失敗・認証・画面を検証し、CSPで外部通信を遮断する。実Drive書込み・実送信は行わない。
+
 この手順で、Googleスプレッドシートを保存先にした天気報告APIを用意できます。
 
 ## 1. スプレッドシートを作る
