@@ -8,7 +8,13 @@ param(
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/weather-discovery.ps1"
 
-$capture = Get-Content -LiteralPath $CapturePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$captureJson = Get-Content -LiteralPath $CapturePath -Raw -Encoding UTF8
+$jsonOptions = @{ InputObject = $captureJson }
+if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')) {
+    # PowerShell 7.5 otherwise converts ISO strings to DateTime and drops their text form.
+    $jsonOptions.DateKind = 'String'
+}
+$capture = ConvertFrom-Json @jsonOptions
 if ($capture.status -notin @('captured', 'failed')) { throw 'Unsupported capture status.' }
 if ([string]::IsNullOrWhiteSpace([string]$capture.sourceUrl) -or
     [string]::IsNullOrWhiteSpace([string]$capture.capturedAt)) {
