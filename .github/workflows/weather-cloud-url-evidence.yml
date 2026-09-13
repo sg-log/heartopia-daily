@@ -1,0 +1,52 @@
+name: Weather cloud URL evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_url:
+        description: Public HTTPS page to inspect directly
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Test generic URL layer
+        run: npm run test:weather-cloud-url
+
+      - name: Capture direct page and evidence image
+        env:
+          SOURCE_URL: ${{ inputs.source_url }}
+        run: >-
+          npm run weather:cloud:url --
+          --url "$SOURCE_URL"
+          --output-dir "$RUNNER_TEMP/weather-url-evidence"
+
+      - name: Upload evidence artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: weather-url-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/weather-url-evidence
+          if-no-files-found: error
+          retention-days: 7
