@@ -34,13 +34,27 @@ jobs:
       - name: Test generic URL layer
         run: npm run test:weather-cloud-url
 
+      - name: Test discovery candidate bridge
+        shell: pwsh
+        run: ./tools/test-weather-cloud-discovery.ps1
+
       - name: Capture direct page and evidence image
+        id: capture
+        continue-on-error: true
         env:
           SOURCE_URL: ${{ inputs.source_url }}
         run: >-
           npm run weather:cloud:url --
           --url "$SOURCE_URL"
           --output-dir "$RUNNER_TEMP/weather-url-evidence"
+
+      - name: Build discovery candidate record
+        if: ${{ always() }}
+        shell: pwsh
+        run: >-
+          ./tools/weather-cloud-discovery.ps1
+          -CapturePath "$env:RUNNER_TEMP/weather-url-evidence/capture.json"
+          -OutputPath "$env:RUNNER_TEMP/weather-url-evidence/discovery-candidate.json"
 
       - name: Upload evidence artifact
         if: ${{ always() }}
@@ -50,3 +64,7 @@ jobs:
           path: ${{ runner.temp }}/weather-url-evidence
           if-no-files-found: error
           retention-days: 7
+
+      - name: Preserve capture failure result
+        if: ${{ steps.capture.outcome != 'success' }}
+        run: exit 1

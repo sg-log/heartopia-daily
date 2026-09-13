@@ -101,7 +101,11 @@ $result = ConvertTo-SectionedWeatherReportDryRun -Candidate $candidate
 
 URLは資格情報・ポート・ローカル名・IPリテラルを拒否し、メインページとサブリソースのDNS解決結果にprivate/link-local等が混じれば遮断する。ブラウザ識別はrunnerに導入されたChromium版から通常Chrome形式を組み立て、サービス固有の偽装や分岐はしない。ログイン・challenge・CAPTCHA画面は失敗として記録し、突破操作はしない。ページHTML、Cookie、認証情報、画像URLのクエリはartifactへ保存しない。証拠JPEGは既存 `weather-evidence.ps1` の上限に合わせ512KiB以下にし、SHA-256は後段の同一性確認へ使える形式にする。
 
-このworkflowはURL取得とartifact保存だけを行う。公開検索、天気判読、候補JSON生成、重複pending確認、Apps Script送信、承認、公開、定期scheduleはまだ接続しない。実行はActions画面の `Run workflow` で `source_url` を渡す。
+取得結果は成功・失敗とも `tools/weather-cloud-discovery.ps1` が既存 `weather-discovery.ps1` を使って `discovery-candidate.json` に変換し、同じartifactへ保存する。通常Webの成功は `retrievalStatus: confirmed`、HTTP 403やログイン壁等の失敗は `retrievalStatus: failed` となる。同じ候補形式なので、GitHub Actionsで取得可能な通常Webと、別の取得アダプターが将来必要になるSNSを、後段で分岐形式を増やさず統合できる。失敗を成功扱いにせず、後段候補への変換も既存チェックで停止する。
+
+2026-09-14の実機確認（run `34765100475`）では、既知の公開X投稿はGitHub-hosted runnerにHTTP 403を返し、画面は白紙、`evidence.jpg` は未生成だった。challenge・login wall・CAPTCHAの表示ではなくHTTP応答段階の拒否であり、この取得層からのX直接取得は利用不能と判断する。X向けのCookie、ログインセッション、proxy、fingerprint回避は追加しない。X/SNS用の別取得アダプターは未実装のままとする。
+
+このworkflowはURL取得、共通discovery候補記録、artifact保存だけを行う。公開検索、天気判読、重複pending確認、Apps Script送信、承認、公開、定期scheduleはまだ接続しない。実行はActions画面の `Run workflow` で `source_url` を渡す。
 
 後段候補は `discovery` に全履歴を保持します。各セクションを省略すると `missing`。画像理解や本文の曖昧さ・矛盾の分類はAI側に残し、既存の時間別安全検証を通します。現在天気と週間天気はAPIへ変換しません。既存dry-runの返却値は `discovery` を含まないため、監査用には `$candidate` と `$result` を一緒に扱ってください。
 
@@ -110,6 +114,7 @@ URLは資格情報・ポート・ローカル名・IPリテラルを拒否し、
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-discovery.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-candidate.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-cloud-discovery.ps1
 ```
 
 テストは合成データのみ。次の実機確認ではアカウント名・既知URLを使わず複数の公開検索を行い、得たURLと探索元をメモリ内でこの形式へ渡します。重複排除後にMCPで直接確認し、成功・失敗を記録。画像から抽出した3セクションを接続し、時間別dry-runの結果まで照合します。登録・API送信は含みません。
