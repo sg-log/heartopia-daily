@@ -41,7 +41,7 @@ try {
  let old=listByStatus_('pending')[0];
  assert(old.sourceUrl==='' && old.sourceImageUrls.length===0,'legacy read');
  assert(rows[0].length===HEADERS.length,'read must not migrate');
- const body={postKey:'synthetic',date:'2026-09-11',startSlot:'06',slots:{slot0:['晴'],slot1:['雨'],slot2:['晴'],slot3:['晴'],slot4:['晴']},weeks:{},sourceUrl:'https://example.org/post',sourceImageUrls:['https://example.org/one.png','https://example.org/two.png']};
+ const body={postKey:'synthetic',date:'2026-09-11',startSlot:'06',slots:{slot0:['晴'],slot1:['雨'],slot2:['晴'],slot3:['晴'],slot4:['晴']},weeks:{},memo:'user memo',sourceUrl:'https://example.org/post',sourceImageUrls:['https://example.org/one.png','https://example.org/two.png']};
  const receipt=submit_(body);
  assert(receipt.ok && receipt.status==='pending','submit pending');
  assert(rows[0].slice(HEADERS.length).join(',')===WEATHER_EVIDENCE_HEADERS.join(','),'append headers');
@@ -57,9 +57,16 @@ try {
  host.innerHTML=[old,report,{...report,sourceImageUrls:[body.sourceImageUrls[0]]},{...report,sourceImageUrls:['',null,'javascript:alert(1)','https://user:secret@example.org/a']}].map(pendingWeatherCard).join('');
  assert(host.querySelectorAll('article').length===4,'all cards rendered');
  assert(host.querySelectorAll('img').length===3,'single/multiple/invalid images');
+ assert(host.querySelectorAll('[data-load-weather-evidence]').length===0,'manual evidence button removed');
+ assert(host.querySelectorAll('details.pendingWeatherDetails').length===4,'details available for old and new rows');
  assert(host.querySelectorAll('[data-approve-weather]').length===4 && host.querySelectorAll('[data-reject-weather]').length===4,'existing action attributes');
  assert(host.querySelectorAll('a[target="_blank"][rel="noopener noreferrer"]').length===6,'safe links');
  assert(host.firstElementChild.textContent.includes('元画像情報なし'),'legacy fallback');
+ const primary=host.children[1], sourceLink=primary.querySelector('.pendingWeatherSourceLink'), actions=primary.querySelector('.pendingWeatherActions'), details=primary.querySelector('.pendingWeatherDetails');
+ assert(sourceLink && (sourceLink.compareDocumentPosition(actions)&Node.DOCUMENT_POSITION_FOLLOWING),'source link before actions');
+ assert(actions.compareDocumentPosition(details)&Node.DOCUMENT_POSITION_FOLLOWING,'actions before details');
+ assert(details.textContent.includes('取得元') && details.textContent.includes('user memo'),'metadata and memo retained in details');
+ assert(sourceLink.textContent==='元投稿を開く' && !primary.textContent.includes(body.sourceUrl),'source URL is link-only');
  // Prevent external requests: CSP blocks these synthetic image URLs. Replace only for visual fixture.
  host.querySelectorAll('img').forEach(img=>{img.src='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="300"><rect width="600" height="300" fill="lightblue"/><text x="20" y="130" font-size="30">TEST: 06 sun / 12 rain / 18 sun</text></svg>');});
  const mobile=document.createElement('iframe');
