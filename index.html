@@ -4623,7 +4623,6 @@ function renderWeather(date, w){
     <div class="weatherNow">${weatherSlotRowsHtml(w)}</div>
     ${focusWeatherHtml(w, date)}
     ${weeklyRowsHtml(w, date, "compactWeatherWeek")}
-    ${w.memo ? `<div class="small">メモ：${esc(w.memo)}</div>` : ""}
   `;
 }
 
@@ -4637,7 +4636,6 @@ function renderWeatherSummary(){
   E.weatherSummary.innerHTML = `
     <span class="datepill">${esc(jpDate(today))}</span>
     <div class="weatherNow">${weatherSlotRowsHtml(w)}</div>
-    ${w.memo ? `<p class="small">メモ：${esc(w.memo)}</p>` : ""}
   `;
 }
 

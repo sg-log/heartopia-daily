@@ -116,8 +116,7 @@ function publicWeatherItem_(item) {
     date: item.date,
     startSlot: item.startSlot,
     slots: item.slots || {},
-    weeks: item.weeks || {},
-    memo: String(item.memo || "")
+    weeks: item.weeks || {}
   };
 }
 
