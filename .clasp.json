@@ -1,0 +1,17 @@
+{
+  "scriptId": "1wj4xN1vAUnlXCBChGyzLMj9s8bn1uAPe_NDDIyaydK6gKaIjm-HklMim",
+  "rootDir": "apps-script",
+  "scriptExtensions": [
+    ".gs"
+  ],
+  "htmlExtensions": [
+    ".html"
+  ],
+  "jsonExtensions": [
+    ".json"
+  ],
+  "filePushOrder": [
+    "apps-script/weather-api.gs"
+  ],
+  "skipSubdirectories": true
+}

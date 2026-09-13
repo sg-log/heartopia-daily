@@ -5,6 +5,8 @@ assets/weather-templates/source/
 .env
 .env.*
 !.env.example
+.clasprc.json
+.clasprc.json.*
 assets/puzzles/source/
 assets/puzzles/source-char2/
 assets/puzzles/review/bright-restoration-paired-test/
