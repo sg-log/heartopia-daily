@@ -105,6 +105,8 @@ URLは資格情報・ポート・ローカル名・IPリテラルを拒否し、
 
 2026-09-14の実機確認（run `34765100475`）では、既知の公開X投稿はGitHub-hosted runnerにHTTP 403を返し、画面は白紙、`evidence.jpg` は未生成だった。challenge・login wall・CAPTCHAの表示ではなくHTTP応答段階の拒否であり、この取得層からのX直接取得は利用不能と判断する。X向けのCookie、ログインセッション、proxy、fingerprint回避は追加しない。X/SNS用の別取得アダプターは未実装のままとする。
 
+X公式公開埋め込みの実機確認は `.github/workflows/weather-cloud-x-embed-evidence.yml` と `tools/weather-x-embed-evidence.mjs` に分離する。アダプターは公開投稿URLから投稿IDだけを検証し、`publish.twitter.com/oembed` と公式 `platform.twitter.com/widgets.js` が生成する埋め込みを、ログイン・持ち込みCookie・proxy・ブラウザ識別変更なしの一時Chromium contextで表示する。許可する通信先も公式埋め込み・syndication・メディアhostに限定し、x.com本体は開かない。成功時は投稿本文、埋め込み画面、投稿画像の証拠JPEG、SHA-256、各公式経路のHTTP状態をartifactへ保存し、既存の `weather-cloud-discovery.ps1` で共通候補へ変換する。取得失敗は同じ形式の `failed` とし、追加回避は行わない。
+
 このworkflowはURL取得、共通discovery候補記録、artifact保存だけを行う。公開検索、天気判読、重複pending確認、Apps Script送信、承認、公開、定期scheduleはまだ接続しない。実行はActions画面の `Run workflow` で `source_url` を渡す。
 
 後段候補は `discovery` に全履歴を保持します。各セクションを省略すると `missing`。画像理解や本文の曖昧さ・矛盾の分類はAI側に残し、既存の時間別安全検証を通します。現在天気と週間天気はAPIへ変換しません。既存dry-runの返却値は `discovery` を含まないため、監査用には `$candidate` と `$result` を一緒に扱ってください。

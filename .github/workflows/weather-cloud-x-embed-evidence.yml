@@ -1,0 +1,68 @@
+name: Weather cloud X official embed evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_url:
+        description: Public X post URL to inspect through official embed services
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Test X official embed adapter
+        run: npm run test:weather-cloud-x-embed
+
+      - name: Capture post through official embed services
+        id: capture
+        continue-on-error: true
+        env:
+          SOURCE_URL: ${{ inputs.source_url }}
+        run: >-
+          npm run weather:cloud:x-embed --
+          --url "$SOURCE_URL"
+          --output-dir "$RUNNER_TEMP/weather-x-embed-evidence"
+
+      - name: Build existing discovery candidate record
+        if: ${{ always() }}
+        shell: pwsh
+        run: >-
+          ./tools/weather-cloud-discovery.ps1
+          -CapturePath "$env:RUNNER_TEMP/weather-x-embed-evidence/capture.json"
+          -OutputPath "$env:RUNNER_TEMP/weather-x-embed-evidence/discovery-candidate.json"
+          -DiscoverySource "x-official-embed"
+          -SearchQuery "workflow_dispatch X official embed"
+
+      - name: Upload X embed evidence artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: weather-x-embed-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/weather-x-embed-evidence
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Preserve capture failure result
+        if: ${{ steps.capture.outcome != 'success' }}
+        run: exit 1
