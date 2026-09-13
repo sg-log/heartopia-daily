@@ -129,15 +129,20 @@ async function captureEvidence({ sourceUrl, outputDir }) {
   const capturedAt = new Date().toISOString();
   const checkedHosts = new Map();
   const browser = await chromium.launch({ headless: true });
+  const browserVersion = browser.version();
   const context = await browser.newContext({
     viewport: { width: 1440, height: 1200 },
     locale: "ja-JP",
     timezoneId: "Asia/Tokyo",
+    userAgent: `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${browserVersion} Safari/537.36`,
+    extraHTTPHeaders: { "Accept-Language": "ja,en-US;q=0.9,en;q=0.8" },
+    colorScheme: "light",
     ignoreHTTPSErrors: false
   });
   const page = await context.newPage();
   let finalUrl = sourceUrl.href;
   let title = "";
+  let httpStatus = 0;
 
   const checkHost = async (hostname) => {
     const key = hostname.toLowerCase();
@@ -164,7 +169,8 @@ async function captureEvidence({ sourceUrl, outputDir }) {
   try {
     await assertPublicHostname(sourceUrl.hostname);
     const response = await page.goto(sourceUrl.href, { waitUntil: "domcontentloaded", timeout: 45_000 });
-    if (!response || response.status() < 200 || response.status() >= 400) throw new WeatherCloudError("pageLoadFailed");
+    httpStatus = response?.status() || 0;
+    if (!response || httpStatus < 200 || httpStatus >= 400) throw new WeatherCloudError("pageLoadFailed");
     await page.waitForLoadState("networkidle", { timeout: 12_000 }).catch(() => {});
     await page.waitForTimeout(2_000);
     finalUrl = page.url();
@@ -208,6 +214,7 @@ async function captureEvidence({ sourceUrl, outputDir }) {
       sourceUrl: sourceUrl.href,
       finalUrl,
       title,
+      httpStatus,
       capturedAt,
       directPage: { file: "direct-page.png" },
       evidence: {
@@ -228,7 +235,7 @@ async function captureEvidence({ sourceUrl, outputDir }) {
   } catch (error) {
     await page.screenshot({ path: directPagePath, fullPage: false, animations: "disabled" }).catch(() => {});
     const code = error instanceof WeatherCloudError ? error.code : "captureFailed";
-    const report = { status: "failed", sourceUrl: sourceUrl.href, finalUrl, title, capturedAt, failureCode: code };
+    const report = { status: "failed", sourceUrl: sourceUrl.href, finalUrl, title, httpStatus, capturedAt, failureCode: code };
     await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8").catch(() => {});
     throw new WeatherCloudError(code);
   } finally {

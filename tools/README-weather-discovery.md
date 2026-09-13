@@ -99,7 +99,7 @@ $result = ConvertTo-SectionedWeatherReportDryRun -Candidate $candidate
 
 `.github/workflows/weather-cloud-url-evidence.yml` は手動入力された公開HTTPS URLをGitHub-hosted runnerのPlaywright Chromiumで直接開き、表示画面 `direct-page.png`、最大の可視コンテンツ画像を要素単位で撮った `evidence.jpg`、取得時刻・最終URL・画像SHA-256等の `capture.json` を7日保持のartifactへ保存する。特定サービス、アカウント、既知URLによる分岐は持たず、テストURLもworkflowへ固定しない。
 
-URLは資格情報・ポート・ローカル名・IPリテラルを拒否し、メインページとサブリソースのDNS解決結果にprivate/link-local等が混じれば遮断する。ログイン・challenge・CAPTCHA画面は失敗として記録し、突破操作はしない。ページHTML、Cookie、認証情報、画像URLのクエリはartifactへ保存しない。証拠JPEGは既存 `weather-evidence.ps1` の上限に合わせ512KiB以下にし、SHA-256は後段の同一性確認へ使える形式にする。
+URLは資格情報・ポート・ローカル名・IPリテラルを拒否し、メインページとサブリソースのDNS解決結果にprivate/link-local等が混じれば遮断する。ブラウザ識別はrunnerに導入されたChromium版から通常Chrome形式を組み立て、サービス固有の偽装や分岐はしない。ログイン・challenge・CAPTCHA画面は失敗として記録し、突破操作はしない。ページHTML、Cookie、認証情報、画像URLのクエリはartifactへ保存しない。証拠JPEGは既存 `weather-evidence.ps1` の上限に合わせ512KiB以下にし、SHA-256は後段の同一性確認へ使える形式にする。
 
 このworkflowはURL取得とartifact保存だけを行う。公開検索、天気判読、候補JSON生成、重複pending確認、Apps Script送信、承認、公開、定期scheduleはまだ接続しない。実行はActions画面の `Run workflow` で `source_url` を渡す。
 
