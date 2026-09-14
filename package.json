@@ -5,7 +5,9 @@
     "test:weather-cloud-url": "node --test tools/test-weather-cloud-url-evidence.mjs",
     "weather:cloud:url": "node tools/weather-cloud-url-evidence.mjs",
     "test:weather-cloud-x-embed": "node --test tools/test-weather-x-embed-evidence.mjs",
-    "weather:cloud:x-embed": "node tools/weather-x-embed-evidence.mjs"
+    "weather:cloud:x-embed": "node tools/weather-x-embed-evidence.mjs",
+    "test:weather-ai": "node --test tools/test-weather-ai-interpret.mjs tools/test-weather-evidence-inspect.mjs",
+    "weather:ai": "node tools/weather-ai-interpret.mjs"
   },
   "devDependencies": {
     "playwright": "1.63.0"

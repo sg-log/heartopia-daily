@@ -6,6 +6,8 @@ Script Propertiesの `WEATHER_EVIDENCE_FOLDER_ID` に、実行者が所有する
 
 既存POST_KEY認証付きsubmitで `evidenceImages` 最大1件を受信する。形式はローカルpreviewと同じ `mimeType / byteSize / sha256 / kind / capturedAt / bodyBase64`。PNG/JPEGのみ、実バイト最大512KiB、正規Base64・ファイルシグネチャ・SHA-256を検証する。Cookie・認証情報・ローカルパスは渡さない。取得側で画像をデコード確認済みであることが前提で、Apps Scriptのシグネチャ検証は画像全体のデコード検証の代わりではない。
 
+submitはScript Lock内で、sourceUrlがある場合に限り `date / startSlot / sourceUrl / pending` が一致する既存行を確認する。一致時は新しいDrive画像・行を作らず既存IDと `duplicate: true` を返す。sourceUrlなしの従来手動報告はこの自動重複判定の対象外。承認済み・却下済み行は新しいpendingを妨げない。
+
 本文上限は画像1件付きJSON submitのみ1MiB、それ以外は従来64KiB。既存の `sourceUrl/sourceImageUrls` 列の後へ `sourceType/retrievedAt/evidenceStatus/evidenceImages` を追加する。画像本体はDrive、シートのevidenceImagesは `fileId/kind/capturedAt/mimeType/sha256/byteSize` のJSON配列だけ。旧行は画像なしとして扱い、承認済み編集でも末尾列を保つ。画像付きpayloadを送るCLIは今回追加しておらず、previewは通信しない。
 
 画像保存失敗ならpending行を追加しない。行保存失敗では今回のUUIDの行が書かれていないか確認し、あればその行だけを取り消して作成画像を `setTrashed(true)` でごみ箱へ移す。これは即時の完全削除ではない。Drive/Sheets間の完全な原子性は保証できず、タイムアウトや後始末失敗時は管理者が状態確認し、自動再送しない。保持期間・定期削除は未実装。

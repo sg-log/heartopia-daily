@@ -107,7 +107,13 @@ URLは資格情報・ポート・ローカル名・IPリテラルを拒否し、
 
 X公式公開埋め込みの実機確認は `.github/workflows/weather-cloud-x-embed-evidence.yml` と `tools/weather-x-embed-evidence.mjs` に分離する。アダプターは公開投稿URLから投稿IDだけを検証し、`publish.twitter.com/oembed` と公式 `platform.twitter.com/widgets.js` が生成する埋め込みを、ログイン・持ち込みCookie・proxy・ブラウザ識別変更なしの一時Chromium contextで表示する。許可する通信先も公式埋め込み・syndication・メディアhostに限定し、x.com本体は開かない。成功時は投稿本文、埋め込み画面、投稿画像の証拠JPEG、SHA-256、各公式経路のHTTP状態をartifactへ保存し、既存の `weather-cloud-discovery.ps1` で共通候補へ変換する。個別画像要素を取得できない場合でも、本文とstatus IDが一致し、iframe全体の撮影が成功していれば、その投稿者・日時・本文・画像を含むiframeスクリーンショットを512KiB以下の証拠JPEGとして採用する。取得失敗は同じ形式の `failed` とし、追加回避は行わない。
 
-このworkflowはURL取得、共通discovery候補記録、artifact保存だけを行う。公開検索、天気判読、重複pending確認、Apps Script送信、承認、公開、定期scheduleはまだ接続しない。実行はActions画面の `Run workflow` で `source_url` を渡す。
+両workflowは取得成功後、保存済み `evidence.jpg` だけをOpenAI Responses APIへ画像入力し、strictなJSON Schemaで時間別判定を受け取る。既定modelは固定snapshot `gpt-5.4-mini-2026-03-17`、Repository Variablesの `WEATHER_AI_MODEL` で変更できる。`OPENAI_API_KEY` はActions secretだけから渡し、`store: false`、外部検索toolなしで1回呼ぶ。画像内の文字は命令として扱わず、画像外の本文・検索snippet・capture metadataから日付や枠を補完しない。
+
+`weather-ai-candidate.ps1` はAI出力とcaptureのSHA-256・byteSize・mimeTypeを照合し、ゲーム日、開始時刻、順序付き5枠の可視性、各枠high、許可天気、未解決0件をすべて満たす場合だけ `ready` にする。その後も既存 `ConvertTo-WeatherCandidateFromDiscovery` と `ConvertTo-SectionedWeatherReportDryRun` を再実行する。判定不能時は `weather-candidate.json` と `weather-dry-run.json` をartifactへ残して送信をskipする。現在天気と週間予報は常に `missing` で、APIへ送らない。
+
+readyの場合だけ `weather-cloud-submit.ps1` が既存submitへ証拠画像付きで接続する。`WEATHER_POST_KEY` / `WEATHER_ADMIN_KEY` はActions secretから受け取り、既存pending確認、submit、返却IDのpending確認、管理認証付き画像再取得、SHA-256一致まで確認する。Apps ScriptもScript Lock内で `date + startSlot + sourceUrl + pending` の一致を検査し、競合実行でも既存IDを返してDrive画像や行を増やさない。承認・却下・公開は呼ばない。
+
+現時点で公開検索と定期scheduleは未接続。実行はActions画面の `Run workflow` で `source_url` を渡す。将来の07:00 / 19:00 JST scheduleは、特定アカウント・既知URLに依存しない公開探索入力が実装されてから別途接続する。
 
 後段候補は `discovery` に全履歴を保持します。各セクションを省略すると `missing`。画像理解や本文の曖昧さ・矛盾の分類はAI側に残し、既存の時間別安全検証を通します。現在天気と週間天気はAPIへ変換しません。既存dry-runの返却値は `discovery` を含まないため、監査用には `$candidate` と `$result` を一緒に扱ってください。
 
@@ -117,6 +123,9 @@ X公式公開埋め込みの実機確認は `.github/workflows/weather-cloud-x-e
 powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-discovery.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-candidate.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-cloud-discovery.ps1
+node --test ./tools/test-weather-ai-interpret.mjs
+powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-ai-candidate.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-cloud-submit.ps1
 ```
 
-テストは合成データのみ。次の実機確認ではアカウント名・既知URLを使わず複数の公開検索を行い、得たURLと探索元をメモリ内でこの形式へ渡します。重複排除後にMCPで直接確認し、成功・失敗を記録。画像から抽出した3セクションを接続し、時間別dry-runの結果まで照合します。登録・API送信は含みません。
+自動テストは合成データとmock通信のみ。実機確認ではアカウント名・既知URLを探索条件に使わず、得たURLをworkflowへ渡す。取得・判読・候補化のartifactとpending結果を確認し、承認は管理画面で人間が行う。

@@ -8,18 +8,33 @@ function Read-WeatherEvidenceFile {
     if ($file.Length -gt 524288) { throw "Evidence is $($file.Length) bytes; provisional limit is 524288 bytes. No compression performed." }
     $bytes = [IO.File]::ReadAllBytes($file.FullName)
     if ($bytes.Length -gt 524288) { throw "Evidence is $($bytes.Length) bytes; provisional limit is 524288 bytes." }
-    Add-Type -AssemblyName System.Drawing
-    $stream = [IO.MemoryStream]::new($bytes, $false)
-    $image = $null
-    try {
-        $image = [Drawing.Image]::FromStream($stream, $false, $true)
-        $mime = if ($image.RawFormat.Guid -eq [Drawing.Imaging.ImageFormat]::Png.Guid) { 'image/png' }
-            elseif ($image.RawFormat.Guid -eq [Drawing.Imaging.ImageFormat]::Jpeg.Guid) { 'image/jpeg' }
-            else { throw 'Only decoded PNG or JPEG evidence is supported.' }
-        if ([long]$image.Width * $image.Height -gt 16000000) { throw 'Evidence exceeds 16 megapixels.' }
-    } finally {
-        if ($null -ne $image) { $image.Dispose() }
-        $stream.Dispose()
+    if ($env:OS -eq 'Windows_NT') {
+        Add-Type -AssemblyName System.Drawing
+        $stream = [IO.MemoryStream]::new($bytes, $false)
+        $image = $null
+        try {
+            $image = [Drawing.Image]::FromStream($stream, $false, $true)
+            $mime = if ($image.RawFormat.Guid -eq [Drawing.Imaging.ImageFormat]::Png.Guid) { 'image/png' }
+                elseif ($image.RawFormat.Guid -eq [Drawing.Imaging.ImageFormat]::Jpeg.Guid) { 'image/jpeg' }
+                else { throw 'Only decoded PNG or JPEG evidence is supported.' }
+            if ([long]$image.Width * $image.Height -gt 16000000) { throw 'Evidence exceeds 16 megapixels.' }
+        } finally {
+            if ($null -ne $image) { $image.Dispose() }
+            $stream.Dispose()
+        }
+    } else {
+        $inspector = Join-Path $PSScriptRoot 'weather-evidence-inspect.mjs'
+        $inspectionText = & node $inspector --path $file.FullName 2>$null
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace([string]$inspectionText)) {
+            throw 'Evidence could not be decoded by the cloud image inspector.'
+        }
+        try { $inspection = [string]$inspectionText | ConvertFrom-Json -ErrorAction Stop }
+        catch { throw 'Evidence inspector returned an invalid result.' }
+        if ($inspection.byteSize -ne $bytes.Length -or $inspection.sha256 -notmatch '^[a-f0-9]{64}$') {
+            throw 'Evidence inspector metadata mismatch.'
+        }
+        $mime = [string]$inspection.mimeType
+        if ($mime -notin @('image/png','image/jpeg')) { throw 'Only decoded PNG or JPEG evidence is supported.' }
     }
     $sha = [Security.Cryptography.SHA256]::Create()
     try { $hash = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant() }

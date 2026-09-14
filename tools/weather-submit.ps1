@@ -94,7 +94,11 @@ function Invoke-WeatherPendingSubmission {
         $apiCall.diagnostic.apiStage = 'responseValidation'
         Throw-WeatherApiDiagnostic $apiCall.diagnostic
     }
-    [pscustomobject]@{ status = 'pending'; sent = $true; id = [string]$response.id; diagnostic = $apiCall.diagnostic }
+    [pscustomobject]@{
+        status = 'pending'; sent = $true; id = [string]$response.id
+        duplicate = $(if ((Test-WeatherObjectProperty $response 'duplicate') -and $response.duplicate -is [bool]) { $response.duplicate } else { $false })
+        diagnostic = $apiCall.diagnostic
+    }
 }
 
 function Test-WeatherObjectProperty {

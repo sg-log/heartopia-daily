@@ -254,10 +254,29 @@ function submit_(body) {
     now,
     ""
   ]);
+  let receiptId = row[0], duplicate = false;
   try { withScriptLock_(function() {
     let sheet = null, file = null, storageStage = "sheetSchema";
     try {
       sheet = getWeatherEvidenceSheet_();
+      if (sourceUrl) {
+        const existing = sheet.getDataRange().getValues();
+        const headers = existing[0].map(String);
+        const idColumn = headers.indexOf("id");
+        const dateColumn = headers.indexOf("date");
+        const startSlotColumn = headers.indexOf("startSlot");
+        const statusColumn = headers.indexOf("status");
+        const sourceUrlColumn = headers.indexOf("sourceUrl");
+        for (let i = 1; i < existing.length; i++) {
+          if (formatDateValue(existing[i][dateColumn]) !== date ||
+              normalizeStartSlot_(existing[i][startSlotColumn]) !== startSlot ||
+              normalizeStatusText_(existing[i][statusColumn]) !== "pending" ||
+              String(existing[i][sourceUrlColumn] || "") !== sourceUrl) continue;
+          receiptId = String(existing[i][idColumn]);
+          duplicate = true;
+          return;
+        }
+      }
       let references = [];
       if (evidence) {
         storageStage = "driveFolder";
@@ -292,7 +311,7 @@ function submit_(body) {
     if (weatherSubmitFailureCode_(error)) throw error;
     throw weatherSubmitFailure_("appsScriptError", "submit");
   }
-  return json_({ ok: true, id: row[0], status: "pending" });
+  return json_({ ok: true, id: receiptId, status: "pending", duplicate: duplicate });
 }
 
 function saveApproved_(body) {

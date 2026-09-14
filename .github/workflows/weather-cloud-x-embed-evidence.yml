@@ -34,6 +34,13 @@ jobs:
       - name: Test X official embed adapter
         run: npm run test:weather-cloud-x-embed
 
+      - name: Test AI candidate and submit bridges
+        shell: pwsh
+        run: |
+          npm run test:weather-ai
+          ./tools/test-weather-ai-candidate.ps1
+          ./tools/test-weather-cloud-submit.ps1
+
       - name: Capture post through official embed services
         id: capture
         continue-on-error: true
@@ -54,6 +61,48 @@ jobs:
           -DiscoverySource "x-official-embed"
           -SearchQuery "workflow_dispatch X official embed"
 
+      - name: Interpret saved evidence image
+        id: interpret
+        if: ${{ steps.capture.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          WEATHER_AI_MODEL: ${{ vars.WEATHER_AI_MODEL || 'gpt-5.4-mini-2026-03-17' }}
+        run: >-
+          npm run weather:ai --
+          --capture "$RUNNER_TEMP/weather-x-embed-evidence/capture.json"
+          --evidence "$RUNNER_TEMP/weather-x-embed-evidence/evidence.jpg"
+          --output "$RUNNER_TEMP/weather-x-embed-evidence/ai-interpretation.json"
+
+      - name: Build and validate existing weather candidate
+        id: candidate
+        if: ${{ steps.interpret.outcome == 'success' }}
+        continue-on-error: true
+        shell: pwsh
+        run: >-
+          ./tools/weather-ai-candidate.ps1
+          -CapturePath "$env:RUNNER_TEMP/weather-x-embed-evidence/capture.json"
+          -DiscoveryPath "$env:RUNNER_TEMP/weather-x-embed-evidence/discovery-candidate.json"
+          -InterpretationPath "$env:RUNNER_TEMP/weather-x-embed-evidence/ai-interpretation.json"
+          -EvidencePath "$env:RUNNER_TEMP/weather-x-embed-evidence/evidence.jpg"
+          -CandidatePath "$env:RUNNER_TEMP/weather-x-embed-evidence/weather-candidate.json"
+          -DryRunPath "$env:RUNNER_TEMP/weather-x-embed-evidence/weather-dry-run.json"
+
+      - name: Register ready candidate as pending
+        id: submit
+        if: ${{ steps.candidate.outputs.ready == 'true' }}
+        continue-on-error: true
+        shell: pwsh
+        env:
+          WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
+          WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
+        run: >-
+          ./tools/weather-cloud-submit.ps1
+          -CandidatePath "$env:RUNNER_TEMP/weather-x-embed-evidence/weather-candidate.json"
+          -CapturePath "$env:RUNNER_TEMP/weather-x-embed-evidence/capture.json"
+          -EvidencePath "$env:RUNNER_TEMP/weather-x-embed-evidence/evidence.jpg"
+          -ResultPath "$env:RUNNER_TEMP/weather-x-embed-evidence/submit-result.json"
+
       - name: Upload X embed evidence artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -63,6 +112,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Preserve capture failure result
-        if: ${{ steps.capture.outcome != 'success' }}
+      - name: Preserve stopped pipeline result
+        if: ${{ always() && (steps.capture.outcome != 'success' || steps.interpret.outcome == 'failure' || steps.candidate.outcome == 'failure' || (steps.candidate.outputs.ready == 'true' && steps.submit.outcome != 'success')) }}
         run: exit 1

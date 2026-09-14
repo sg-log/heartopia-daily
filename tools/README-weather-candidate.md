@@ -109,11 +109,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/test-weather-candida
 
 収集側は `weather-discovery.ps1` から上記共通候補に接続します。アカウント名は変換条件に使いません。「登録可能候補」は送信・登録・公開済みを意味しません。
 
-## pending送信接続（明示指定のみ）
+## pending送信接続
+
+GitHub Actionsの取得workflowは、AI判読と既存dry-runの双方を通過した `ready` 候補だけを `weather-cloud-submit.ps1` でpendingへ自動登録する。重複確認、証拠画像の保存後照合、秘密の扱いは下記の対話送信と同じ既存関数を再利用する。公開承認は自動化しない。判読不能候補はartifactへ残すだけで送信しない。
 
 ### 承認用の元画像
 
-#### 保存済み画像付きローカルpreview（通信なし）
+#### 保存済み画像付きローカルpreviewと対話送信
 
 画像付き実送信を明示許可された場合は、候補JSONと判定済み画像を用意し、`weather-evidence.ps1` を読み込んだローカルPowerShell画面で `Invoke-WeatherEvidenceSubmissionInteractive` を実行する。公開API URLは `index.html` の既存 `WEATHER_API_URL` を実行時に読み取り、重複保存や手入力はしない。POST_KEYとADMIN_KEYだけを `Read-Host -AsSecureString` の伏せ字入力で受け取り、引数・候補・README・結果ファイルへ保存しない。候補と画像のパス、`CapturedAt`、秘密を含まない結果ファイルのパスだけを引数にする。
 
