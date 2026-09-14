@@ -31,7 +31,11 @@ $artifactRoot = [IO.Path]::GetFullPath($ArtifactDirectory)
 $captureFiles = @(Get-ChildItem -LiteralPath $artifactRoot -Recurse -File -Filter 'capture.json')
 if ($captureFiles.Count -ne 1) { throw 'Review image artifact must contain exactly one capture.json.' }
 $evidenceDirectory = $captureFiles[0].Directory.FullName
-$capture = Read-WeatherReviewPublishJson $captureFiles[0].FullName
+$captureJson = Get-Content -LiteralPath $captureFiles[0].FullName -Raw -Encoding UTF8
+$capture = $captureJson | ConvertFrom-Json -ErrorAction Stop
+$capturedAtMatches = [regex]::Matches($captureJson, '"capturedAt"\s*:\s*"([^"\\]+)"')
+if ($capturedAtMatches.Count -ne 1) { throw 'Capture artifact must contain one literal capturedAt timestamp.' }
+$capturedAtText = $capturedAtMatches[0].Groups[1].Value
 $rawMedia = @($capture.rawMedia)
 if ($capture.status -cne 'captured' -or [string]$capture.adapter -cne 'x-official-embed' -or
     $rawMedia.Count -lt 1 -or $rawMedia.Count -gt 4) {
@@ -67,7 +71,9 @@ try {
         $sha = [Security.Cryptography.SHA256]::Create()
         try { $hash = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant() }
         finally { $sha.Dispose() }
-        $capturedAt = ConvertTo-WeatherDiscoveryTime ([string]$capture.capturedAt)
+        # PowerShell 7.5 converts ISO JSON strings to DateTime objects by default.
+        # Preserve the wire-format timezone instead of relying on culture-sensitive string conversion.
+        $capturedAt = ConvertTo-WeatherDiscoveryTime $capturedAtText
         $artifact = [pscustomobject]@{ localPath=$fileInfo.FullName;mimeType=$mimeType;byteSize=$bytes.Length;sha256=$hash;capturedAt=$capturedAt }
         if ($artifact.sha256 -cne [string]$media.sha256 -or $artifact.mimeType -cne [string]$media.mimeType -or
             $artifact.byteSize -ne [long]$media.byteSize) {
