@@ -47,6 +47,11 @@ export function getOfficialPathwayName(value) {
   return "";
 }
 
+export function chooseEmbedEvidence(images) {
+  const selected = rankEvidenceImages(images)[0];
+  return selected ? { kind: "image-screenshot", selected } : { kind: "embed-screenshot", selected: null };
+}
+
 function setPathway(pathways, name, httpStatus) {
   if (!name) return;
   const prior = pathways.find((item) => item.name === name);
@@ -164,14 +169,28 @@ async function captureXEmbed({ post, outputDir }) {
         inViewport: rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth
       };
     }));
-    const selected = rankEvidenceImages(images)[0];
-    if (!selected) throw new WeatherCloudError("embedEvidenceImageNotFound");
-    const evidenceImage = imageLocator.nth(selected.index);
-    await evidenceImage.scrollIntoViewIfNeeded();
-    await evidenceImage.screenshot({ path: evidencePath, type: "jpeg", quality: 88, animations: "disabled" });
+    const evidenceChoice = chooseEmbedEvidence(images);
+    let evidenceTarget;
+    let evidenceDimensions;
+    if (evidenceChoice.selected) {
+      evidenceTarget = imageLocator.nth(evidenceChoice.selected.index);
+      await evidenceTarget.scrollIntoViewIfNeeded();
+      evidenceDimensions = evidenceChoice.selected;
+    } else {
+      const box = await iframe.boundingBox();
+      if (!box || box.width < 280 || box.height < 160) throw new WeatherCloudError("embedScreenshotUnavailable");
+      evidenceTarget = iframe;
+      evidenceDimensions = {
+        width: Math.round(box.width),
+        height: Math.round(box.height),
+        naturalWidth: 0,
+        naturalHeight: 0
+      };
+    }
+    await evidenceTarget.screenshot({ path: evidencePath, type: "jpeg", quality: 88, animations: "disabled" });
     let evidenceSize = (await stat(evidencePath)).size;
     if (evidenceSize > MAX_EVIDENCE_BYTES) {
-      await evidenceImage.screenshot({ path: evidencePath, type: "jpeg", quality: 70, animations: "disabled" });
+      await evidenceTarget.screenshot({ path: evidencePath, type: "jpeg", quality: 70, animations: "disabled" });
       evidenceSize = (await stat(evidencePath)).size;
     }
     if (evidenceSize > MAX_EVIDENCE_BYTES) throw new WeatherCloudError("evidenceTooLarge");
@@ -192,12 +211,12 @@ async function captureXEmbed({ post, outputDir }) {
         mimeType: "image/jpeg",
         byteSize: evidenceSize,
         sha256: await sha256File(evidencePath),
-        kind: "screenshot",
+        kind: evidenceChoice.kind,
         capturedAt,
-        renderedWidth: selected.width,
-        renderedHeight: selected.height,
-        naturalWidth: selected.naturalWidth,
-        naturalHeight: selected.naturalHeight
+        renderedWidth: evidenceDimensions.width,
+        renderedHeight: evidenceDimensions.height,
+        naturalWidth: evidenceDimensions.naturalWidth,
+        naturalHeight: evidenceDimensions.naturalHeight
       }
     };
     await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, { encoding: "utf8", flag: "wx" });

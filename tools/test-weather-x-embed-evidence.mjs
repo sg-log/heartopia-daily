@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { WeatherCloudError } from "./weather-cloud-url-evidence.mjs";
-import { getOfficialPathwayName, parseXPostUrl } from "./weather-x-embed-evidence.mjs";
+import { chooseEmbedEvidence, getOfficialPathwayName, parseXPostUrl } from "./weather-x-embed-evidence.mjs";
 
 test("normalizes public X post URLs without depending on account name", () => {
   const first = parseXPostUrl("https://x.com/first_account/status/2098156260520861877/photo/1?s=20#media");
@@ -27,4 +27,15 @@ test("classifies only official public embed pathways", () => {
   assert.equal(getOfficialPathwayName("https://cdn.syndication.twimg.com/tweet-result?id=123"), "syndication");
   assert.equal(getOfficialPathwayName("https://pbs.twimg.com/media/example.jpg"), "media");
   assert.equal(getOfficialPathwayName("https://x.com/example/status/123"), "");
+});
+
+test("uses a content image when available and the verified embed otherwise", () => {
+  const image = {
+    index: 2, alt: "weather", width: 500, height: 300,
+    naturalWidth: 1000, naturalHeight: 600, visible: true, inViewport: true
+  };
+  const selected = chooseEmbedEvidence([image]);
+  assert.equal(selected.kind, "image-screenshot");
+  assert.equal(selected.selected.index, image.index);
+  assert.deepEqual(chooseEmbedEvidence([]), { kind: "embed-screenshot", selected: null });
 });
