@@ -22,11 +22,11 @@ function Test-WeatherReviewPublishExactProperties {
     $actual.Count -eq $expected.Count -and (($actual -join "`n") -ceq ($expected -join "`n"))
 }
 
-function ConvertTo-WeatherReviewPublishExpiry {
+function ConvertTo-WeatherReviewPublishTimestamp {
     param([Parameter(Mandatory)] [object] $Value)
     if ($Value -is [datetimeoffset]) { return $Value.ToUniversalTime().ToString('o') }
     if ($Value -is [datetime]) {
-        if ($Value.Kind -eq [DateTimeKind]::Unspecified) { throw 'Review image API returned an invalid expiry.' }
+        if ($Value.Kind -eq [DateTimeKind]::Unspecified) { throw 'Timestamp timezone is required.' }
         return $Value.ToUniversalTime().ToString('o')
     }
     ConvertTo-WeatherDiscoveryTime ([string]$Value)
@@ -41,11 +41,7 @@ $artifactRoot = [IO.Path]::GetFullPath($ArtifactDirectory)
 $captureFiles = @(Get-ChildItem -LiteralPath $artifactRoot -Recurse -File -Filter 'capture.json')
 if ($captureFiles.Count -ne 1) { throw 'Review image artifact must contain exactly one capture.json.' }
 $evidenceDirectory = $captureFiles[0].Directory.FullName
-$captureJson = Get-Content -LiteralPath $captureFiles[0].FullName -Raw -Encoding UTF8
-$capture = $captureJson | ConvertFrom-Json -ErrorAction Stop
-$capturedAtMatches = [regex]::Matches($captureJson, '"capturedAt"\s*:\s*"([^"\\]+)"')
-if ($capturedAtMatches.Count -ne 1) { throw 'Capture artifact must contain one literal capturedAt timestamp.' }
-$capturedAtText = $capturedAtMatches[0].Groups[1].Value
+$capture = Read-WeatherReviewPublishJson $captureFiles[0].FullName
 $rawMedia = @($capture.rawMedia)
 if ($capture.status -cne 'captured' -or [string]$capture.adapter -cne 'x-official-embed' -or
     $rawMedia.Count -lt 1 -or $rawMedia.Count -gt 4) {
@@ -83,7 +79,7 @@ try {
         finally { $sha.Dispose() }
         # PowerShell 7.5 converts ISO JSON strings to DateTime objects by default.
         # Preserve the wire-format timezone instead of relying on culture-sensitive string conversion.
-        $capturedAt = ConvertTo-WeatherDiscoveryTime $capturedAtText
+        $capturedAt = ConvertTo-WeatherReviewPublishTimestamp $capture.capturedAt
         $artifact = [pscustomobject]@{ localPath=$fileInfo.FullName;mimeType=$mimeType;byteSize=$bytes.Length;sha256=$hash;capturedAt=$capturedAt }
         if ($artifact.sha256 -cne [string]$media.sha256 -or $artifact.mimeType -cne [string]$media.mimeType -or
             $artifact.byteSize -ne [long]$media.byteSize) {
@@ -137,7 +133,7 @@ try {
             [string]$call.data.artifact.name -cne $ExpectedArtifactName) {
             throw 'Review image API returned mismatched artifact metadata.'
         }
-        $expiresAt = ConvertTo-WeatherReviewPublishExpiry $call.data.expiresAt
+        $expiresAt = ConvertTo-WeatherReviewPublishTimestamp $call.data.expiresAt
         $results.Add([pscustomobject][ordered]@{
             file=[string]$media.file;mimeType=$artifact.mimeType;byteSize=$artifact.byteSize
             captureSha256=$artifact.sha256;reviewStoredSha256=[string]$call.data.reviewStoredSha256
