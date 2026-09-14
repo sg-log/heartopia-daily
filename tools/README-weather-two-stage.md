@@ -1,18 +1,10 @@
 # Weather evidence two-stage handoff
 
-## Stage 1: capture only
+## Stage 1: capture and private review publication
 
-`weather-cloud-x-embed-evidence.yml` は、検証済みのX投稿URLをofficial embed経路で開く。embed DOMから元投稿ですでに公開されている `https://pbs.twimg.com/...` の投稿media URLだけを収集し、そのURLの画像バイト列をcapture時にダウンロードする。
+`weather-cloud-x-embed-evidence.yml` は、検証済みX投稿URLをofficial embed経路で開き、元投稿で公開済みの `pbs.twimg.com` 投稿mediaをcaptureする。各画像を `raw-media-0.jpg` などとしてartifactへ保存し、URL、ファイル名、MIME type、サイズ、Actionsが計算したSHA-256を `capture.json.rawMedia` に記録する。
 
-各画像は `raw-media-0.jpg` などの名前でartifactへ保存し、`capture.json` の `rawMedia` に次を記録する。
-
-- `url`: capture時にembedから得た公開media URL
-- `file`: artifact内のraw mediaファイル名
-- `mimeType`: capture時に検証したJPEGまたはPNG MIME type
-- `byteSize`: capture時のバイト数
-- `sha256`: GitHub Actionsがcapture時に計算したSHA-256
-
-従来の `evidence.jpg` とそのSHAも互換性のため残す。X media URLがない、raw mediaを取得できない、画像形式・サイズ検証に失敗した場合、X Stage 1は失敗しartifact返却コメントを作らない。Stage 1ではcandidate生成やpending送信を行わない。
+Issue連携では、取得依頼Issueのrepository、作成者、sender、owner association、title、raw JSONを検証したjobが成功した後だけ、別jobへ `WEATHER_POST_KEY` を渡す。このjobはexact artifactを取得し、artifact内raw mediaの実SHA・MIME・サイズを再検証してから、既存Heartopia Weather Apps Scriptへ1画像ずつPOSTする。Apps Script側も認証、Base64、MIME、サイズ、画像signature、capture SHAを検証し、同じバイト列だけを既存private Drive evidence folderへ期限付きreview画像として保存する。
 
 取得依頼Issueは `[weather-capture-request]`、本文はraw JSONだけとする。
 
@@ -20,27 +12,41 @@
 {"schemaVersion":1,"requestType":"weather-evidence-capture","adapter":"x-official-embed","sourceUrl":"https://x.com/i/status/123"}
 ```
 
-成功時の `heartopia-weather-artifact-v2` コメントにはexact artifact識別子、従来画像SHA、各raw mediaのURL・ファイル名・MIME type・capture時SHAを返す。画像自体をPagesやrepositoryへ新規公開しない。
+成功時の `heartopia-weather-artifact-v3` コメントにはexact artifact識別子と `reviewImages` を返す。各要素はartifactファイル名、MIME、サイズ、capture SHA、review Drive保存SHA、期限付きreview URL、有効期限を持つ。元のpbs URL、Drive fileId、POST_KEY、ADMIN_KEYは返さない。
 
-## Stage 2: public media URL visual review
+## Expiring review image URL
 
-Workはartifact ZIPを開かず、Stage 1コメントの `media[].url` を直接開いて視認する。X投稿ページを再取得して判読しない。判読不能または利用可能なmedia URLがない場合、review Issueを作らない。
+Apps Scriptは2個のUUIDと時刻をPOST_KEYでHMAC-SHA256署名し、43文字のbase64url tokenを生成する。Script Propertiesにはraw tokenではなくtokenのSHA-256をkeyとして、Drive fileId、MIME、サイズ、SHA、有効期限だけを保存する。有効期限は発行から15分。
 
-review Issueは `[weather-review-result]`、本文はschemaVersion 2のraw JSONだけとする。
+review URLは既存deployment URLの次の形式である。
+
+```text
+https://script.google.com/macros/s/.../exec?reviewToken=<43-character-token>
+```
+
+`doGet`は `reviewToken` 以外のquery parameterを拒否し、token hashからサーバー側の保存情報だけを解決する。クライアント指定のpathやfileIdは使わない。Driveファイルがprivate、専用folder所属、未削除、期限内で、保存済みSHA・サイズと実バイトが一致した場合だけ、画像をdata URLとしてHTMLへ埋め込む。Drive共有設定は変更しない。期限切れ・不正・不一致は同じunavailable HTMLを返し、token propertyを削除して一時ファイルをゴミ箱へ移す。新規発行時にも期限切れレコードを清掃する。
+
+Workはartifact ZIPやpbs URLを開かず、Issueコメントのreview URLだけをブラウザで開いて視認する。Work自身が画像SHAを計算または検証したとは扱わない。
+
+## Stage 2: Work review
+
+判読結果Issueは `[weather-review-result]`、本文はschemaVersion 3のraw JSONだけとする。
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "artifact": {
     "runId": "123456789",
     "id": "987654321",
     "name": "weather-x-embed-evidence-123456789"
   },
-  "selectedMedia": {
-    "url": "https://pbs.twimg.com/media/example?format=jpg&name=small",
+  "selectedReviewImage": {
     "file": "raw-media-0.jpg",
     "mimeType": "image/jpeg",
-    "captureSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    "captureSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "reviewStoredSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "reviewUrl": "https://script.google.com/macros/s/example/exec?reviewToken=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "expiresAt": "2026-09-15T12:34:56.789Z"
   },
   "interpretation": {
     "ready": true,
@@ -54,28 +60,16 @@ review Issueは `[weather-review-result]`、本文はschemaVersion 2のraw JSON�
       { "slot": "slot4", "visible": true, "weather": ["晴"], "confidence": "high", "description": "翌06時の晴れを視認" }
     ],
     "confidence": "high",
-    "summary": "公開media URLで日付、開始時刻、5枠を視認",
+    "summary": "期限付きreview URLで日付、開始時刻、5枠を視認",
     "unresolved": []
   }
 }
 ```
 
-`captureSha256` はWorkが計算または検証した値ではなく、Stage 1でActionsが返した値を選択mediaと一緒に引き継ぐものとする。
+`captureSha256` と `reviewStoredSha256` はWorkが計算した値ではなく、Stage 1でActionsとApps Scriptが返した値を選択画像と一緒に引き継ぐ。Issue automationはschemaVersion 3だけを本番review経路として受け付ける。旧schemaVersion 1/2は手動workflowとの互換性だけを残す。
 
-Stage 2は次をすべて満たす場合だけ既存candidate検証とpending送信へ進む。
+Stage 2はexact artifactを取得し、選択ファイル・MIME・capture SHAが `capture.json.rawMedia` と一致すること、artifact内raw mediaの実SHA・MIME・サイズが一致すること、review Drive保存SHAが同じであることを検証する。その後だけ既存candidate検証へ進む。判読不能、missing media、SHA不一致、candidate未readyではpending送信しない。
 
-1. Issue作成者、title、JSON、exact artifact識別子、selected mediaを厳格検証する。
-2. exact artifactを取得し、selected mediaのURL・ファイル名・MIME type・capture SHAが `capture.json` と完全一致することを確認する。
-3. artifact内raw mediaを読み、実SHA・サイズ・MIME typeがcapture metadataと一致することを確認する。
-4. selected media URLをStage 2で再取得し、SHA・サイズ・MIME typeがartifact内raw mediaと一致することを確認する。
-5. candidate検証を通過した場合だけsubmit処理へ進む。
+candidate、pending preview、pending添付に使う画像はcapture時artifact内raw mediaそのもの。review Drive画像は表示専用で、pending添付には使わない。review Drive画像とpending元画像は、それぞれの保存・Stage2検証時に同一capture SHAへ結び付ける。
 
-Stage 2の再取得画像は一致検証専用であり、candidate、pending preview、pending添付には使わない。pendingへ渡すのはcapture時artifact内のraw mediaそのものとする。不一致、media URLなし、判読結果がreadyでない場合は送信しない。週間予報と自動承認は扱わず、scheduleも設定しない。
-
-## 保証範囲
-
-厳密に照合するのは、capture時artifact raw mediaのSHA、Stage 2再取得SHA、pendingへ渡すartifact raw mediaである。SHA不一致ではpending登録しない。
-
-Workについて確認するのは「capture時に取得されたmedia URLを直接視認した」という運用上の事実だけである。公開URLは不変・content-addressedではないため、Workのブラウザが表示した実バイト列のSHAや、Work表示画像とartifact画像の暗号学的同一性は保証しない。review結果とログでは、SHA検証主体をGitHub Actionsとして記録する。
-
-従来のschemaVersion 1 artifact画像reviewは既存artifact互換のため残す。
+週間予報、自動承認、scheduleは扱わない。

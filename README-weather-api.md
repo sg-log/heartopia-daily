@@ -1,5 +1,13 @@
 # 天気報告APIの準備
 
+## 期限付きWork review画像
+
+trustedな取得依頼Issueの検証後、GitHub ActionsはPOST_KEY認証付き `weatherReviewImage` actionでcapture artifact内raw mediaを1画像ずつ送る。Apps Scriptは既存の画像検証とprivate evidence folderを再利用し、capture SHA一致時だけ一時Drive画像を保存する。保存直後にDriveから読み戻してSHA・MIME・サイズを再検証する。
+
+応答にはDrive fileIdやキーを含めず、既存web app deploymentの `?reviewToken=...` URL、capture SHA、保存SHA、有効期限だけを返す。tokenはHMAC-SHA256由来の43文字base64url、TTLは15分。Script Propertiesにはraw tokenを保存せず、token SHAをkeyにしてprivate file参照を保持する。`doGet`はtokenだけから画像を解決し、private Drive blobをdata URLとしてHTMLに埋め込む。期限切れ、不正token、余分なquery、folder不一致、SHA不一致では画像を表示しない。
+
+review画像はWork視認専用で、pending添付は従来どおりcapture artifact内raw mediaを使う。Workが表示バイトのSHAを計算・検証したとは扱わない。
+
 ## 非公開のweather証拠画像（ローカル実装・未deploy）
 
 Script Propertiesの `WEATHER_EVIDENCE_FOLDER_ID` に、実行者が所有する専用の非公開フォルダIDを設定する。コードやGit管理文書に実値を入れない。未設定・共有フォルダは画像付きsubmitを停止する。Driveの追加権限承認が必要。画像なし手動報告は設定不要。公開共有URLは作らない。

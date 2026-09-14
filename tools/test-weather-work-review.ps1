@@ -149,13 +149,50 @@ try {
     catch { $failed = $true }
     Assert $failed 'A missing media URL is rejected before Stage2'
 
+    $privateReview = [ordered]@{
+        schemaVersion=3
+        artifact=$review.artifact
+        selectedReviewImage=[ordered]@{
+            file='raw-media-0.png';mimeType=$rawArtifact.mimeType
+            captureSha256=$rawArtifact.sha256;reviewStoredSha256=$rawArtifact.sha256
+            reviewUrl=('https://script.google.com/macros/s/test-deployment/exec?reviewToken=' + ('A' * 43))
+            expiresAt='2026-09-15T12:34:56.789Z'
+        }
+        interpretation=$interpretation
+    }
+    $privateReviewPath = Join-Path $root 'private-review.json'
+    Clear-Content -LiteralPath $githubOutput
+    & "$PSScriptRoot/weather-work-review-request.ps1" -ReviewPayloadBase64 (ConvertTo-ReviewBase64 $privateReview) -ReviewPath $privateReviewPath | Out-Null
+    $outputs = @(Get-Content -LiteralPath $githubOutput -Encoding UTF8)
+    Assert ($outputs -contains 'review_mode=private-review-url-visual') 'Private review URL schema is explicitly visual-only'
+    $privateCandidatePath = Join-Path $resultDirectory 'private-review-candidate.json'
+    $privateDryRunPath = Join-Path $resultDirectory 'private-review-dry-run.json'
+    $privatePreviewPath = Join-Path $resultDirectory 'private-review-preview.json'
+    & "$PSScriptRoot/weather-work-review-bridge.ps1" `
+        -ReviewPath $privateReviewPath -ArtifactDirectory $downloadDirectory `
+        -DownloadedArtifactId $review.artifact.id -DownloadedArtifactName $review.artifact.name -DownloadedArtifactRunId $review.artifact.runId `
+        -CandidatePath $privateCandidatePath -DryRunPath $privateDryRunPath -PendingPreviewPath $privatePreviewPath | Out-Null
+    $outputs = @(Get-Content -LiteralPath $githubOutput -Encoding UTF8)
+    Assert ($outputs -contains ('review_storage_sha256=' + $rawArtifact.sha256)) 'Apps Script review storage SHA matches the capture artifact SHA'
+    Assert ($outputs -contains ('evidence_path=' + $rawMediaPath)) 'Private review mode keeps the capture artifact raw media as pending evidence'
+    $privateCandidate = Get-Content -LiteralPath $privateCandidatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert ($privateCandidate.aiReview.verificationScope.visualReview -eq 'expiring-private-review-url-only' -and
+        $privateCandidate.aiReview.verificationScope.sha256VerifiedBy -eq 'github-actions') 'Candidate records private URL visual scope without claiming Work hashed the image'
+
+    $badPrivateReview = ($privateReview | ConvertTo-Json -Depth 30 | ConvertFrom-Json)
+    $badPrivateReview.selectedReviewImage.reviewStoredSha256 = '0' * 64
+    $failed = $false
+    try { & "$PSScriptRoot/weather-work-review-request.ps1" -ReviewPayloadBase64 (ConvertTo-ReviewBase64 $badPrivateReview) -ReviewPath $badReviewPath | Out-Null }
+    catch { $failed = $true }
+    Assert $failed 'A review Drive SHA mismatch is rejected before Stage2'
+
     $extra = ($review | ConvertTo-Json -Depth 30 | ConvertFrom-Json)
     $extra.interpretation | Add-Member -NotePropertyName weeklyForecast -NotePropertyValue ([pscustomobject]@{})
     $failed = $false
     try { & "$PSScriptRoot/weather-work-review-request.ps1" -ReviewPayloadBase64 (ConvertTo-ReviewBase64 $extra) -ReviewPath $badReviewPath | Out-Null }
     catch { $failed = $true }
     Assert $failed 'Unexpected weekly data is rejected by the handoff envelope'
-    'PASS: legacy handoff plus ZIP-free public media review, Actions capture SHA, Stage2 re-fetch gate, artifact raw media pending preview'
+    'PASS: legacy, public-media, and expiring private review URL handoffs; Actions/Drive SHA gates; artifact raw media pending preview'
 } finally {
     $env:GITHUB_OUTPUT = $null
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue

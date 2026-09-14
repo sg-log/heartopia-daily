@@ -42,6 +42,8 @@ on:
         value: ${{ jobs.validate.outputs.capture_sha256 }}
       stage2_refetch_sha256:
         value: ${{ jobs.validate.outputs.stage2_refetch_sha256 }}
+      review_storage_sha256:
+        value: ${{ jobs.validate.outputs.review_storage_sha256 }}
       pending_evidence_source:
         value: ${{ jobs.validate.outputs.pending_evidence_source }}
       review_scope:
@@ -67,6 +69,7 @@ jobs:
       sha256_match: ${{ steps.bridge.outputs.sha256_match }}
       capture_sha256: ${{ steps.bridge.outputs.capture_sha256 }}
       stage2_refetch_sha256: ${{ steps.bridge.outputs.stage2_refetch_sha256 }}
+      review_storage_sha256: ${{ steps.bridge.outputs.review_storage_sha256 }}
       pending_evidence_source: ${{ steps.bridge.outputs.pending_evidence_source }}
       review_scope: ${{ steps.bridge.outputs.review_scope }}
       result_artifact_id: ${{ steps.result_artifact.outputs.artifact-id }}

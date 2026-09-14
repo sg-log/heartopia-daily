@@ -50,20 +50,22 @@ if ($capture.status -cne 'captured' -or $null -eq $capture.evidence) { throw 'Co
 $resultDirectory = Split-Path -Parent $CandidatePath
 if ($resultDirectory) { New-Item -ItemType Directory -Path $resultDirectory -Force | Out-Null }
 $capturePathForCandidate = $capturePath
-$reviewMode = if ($review.schemaVersion -eq 2) { 'public-media-url-visual' } else { 'legacy-evidence' }
+$reviewMode = if ($review.schemaVersion -eq 3) { 'private-review-url-visual' } elseif ($review.schemaVersion -eq 2) { 'public-media-url-visual' } else { 'legacy-evidence' }
 $refetchedSha256 = ''
-if ($reviewMode -ceq 'public-media-url-visual') {
-    $selected = $review.selectedMedia
+$reviewStoredSha256 = ''
+if ($reviewMode -in @('public-media-url-visual','private-review-url-visual')) {
+    $selected = if ($reviewMode -ceq 'private-review-url-visual') { $review.selectedReviewImage } else { $review.selectedMedia }
+    $selectedCaptureSha256 = if ($reviewMode -ceq 'private-review-url-visual') { [string]$selected.captureSha256 } else { [string]$selected.captureSha256 }
     if ($null -eq $selected -or [string]$selected.file -notmatch '^raw-media-[0-3]\.(?:jpg|png)$' -or
         [string]$selected.mimeType -notin @('image/jpeg','image/png') -or
-        [string]$selected.captureSha256 -notmatch '^[a-f0-9]{64}$') {
+        $selectedCaptureSha256 -notmatch '^[a-f0-9]{64}$') {
         throw 'Invalid selected public media binding.'
     }
     $matches = @($capture.rawMedia | Where-Object {
-        [string]$_.url -ceq [string]$selected.url -and
         [string]$_.file -ceq [string]$selected.file -and
         [string]$_.mimeType -ceq [string]$selected.mimeType -and
-        [string]$_.sha256 -ceq [string]$selected.captureSha256
+        [string]$_.sha256 -ceq $selectedCaptureSha256 -and
+        ($reviewMode -cne 'public-media-url-visual' -or [string]$_.url -ceq [string]$selected.url)
     })
     if ($matches.Count -ne 1) { throw 'Selected public media does not exactly match capture metadata.' }
     $mediaRecord = $matches[0]
@@ -72,19 +74,26 @@ if ($reviewMode -ceq 'public-media-url-visual') {
     $rawCapturedAt = if (-not [string]::IsNullOrWhiteSpace([string]$capture.capturedAt)) { [string]$capture.capturedAt } else { [string]$capture.evidence.capturedAt }
     $artifact = New-WeatherEvidenceImage -Path $evidencePath -Kind original -CapturedAt $rawCapturedAt
     if ($artifact.sha256 -cne [string]$mediaRecord.sha256 -or
-        $artifact.sha256 -cne [string]$selected.captureSha256 -or
+        $artifact.sha256 -cne $selectedCaptureSha256 -or
         $artifact.byteSize -ne [long]$mediaRecord.byteSize -or
         $artifact.mimeType -cne [string]$mediaRecord.mimeType) {
         throw 'Capture artifact raw media does not match its Actions capture metadata.'
     }
-    if ([string]::IsNullOrWhiteSpace($RefetchedMediaPath) -or -not [IO.File]::Exists($RefetchedMediaPath)) {
-        throw 'Stage2 public media re-fetch is required.'
-    }
-    $refetched = New-WeatherEvidenceImage -Path $RefetchedMediaPath -Kind original -CapturedAt $rawCapturedAt
-    $refetchedSha256 = $refetched.sha256
-    if ($refetched.sha256 -cne $artifact.sha256 -or $refetched.byteSize -ne $artifact.byteSize -or
-        $refetched.mimeType -cne $artifact.mimeType) {
-        throw 'Stage2 public media re-fetch does not match the capture artifact raw media.'
+    if ($reviewMode -ceq 'public-media-url-visual') {
+        if ([string]::IsNullOrWhiteSpace($RefetchedMediaPath) -or -not [IO.File]::Exists($RefetchedMediaPath)) {
+            throw 'Stage2 public media re-fetch is required.'
+        }
+        $refetched = New-WeatherEvidenceImage -Path $RefetchedMediaPath -Kind original -CapturedAt $rawCapturedAt
+        $refetchedSha256 = $refetched.sha256
+        if ($refetched.sha256 -cne $artifact.sha256 -or $refetched.byteSize -ne $artifact.byteSize -or
+            $refetched.mimeType -cne $artifact.mimeType) {
+            throw 'Stage2 public media re-fetch does not match the capture artifact raw media.'
+        }
+    } else {
+        $reviewStoredSha256 = [string]$selected.reviewStoredSha256
+        if ($reviewStoredSha256 -cne $artifact.sha256) {
+            throw 'Private review image stored SHA-256 does not match the capture artifact raw media.'
+        }
     }
     $normalizedCapture = $capture | ConvertTo-Json -Depth 40 | ConvertFrom-Json
     $normalizedCapture.evidence = [pscustomobject]@{
@@ -114,7 +123,7 @@ $interpretationPath = Join-Path $resultDirectory 'work-interpretation.json'
 $interpretation = [ordered]@{
     status = 'completed'
     inputSha256 = $artifact.sha256
-    model = $(if ($reviewMode -ceq 'public-media-url-visual') { 'work-public-media-url-visual-review' } else { 'work-visual-review' })
+    model = $(if ($reviewMode -ceq 'private-review-url-visual') { 'work-private-review-url-visual-review' } elseif ($reviewMode -ceq 'public-media-url-visual') { 'work-public-media-url-visual-review' } else { 'work-visual-review' })
     responseId = ''
     interpretation = $review.interpretation
 }
@@ -131,7 +140,7 @@ $candidate.aiReview | Add-Member -NotePropertyName artifact -NotePropertyValue (
     name = [string]$review.artifact.name
 }) -Force
 $candidate.aiReview | Add-Member -NotePropertyName verificationScope -NotePropertyValue ([pscustomobject]@{
-    visualReview = $(if ($reviewMode -ceq 'public-media-url-visual') { 'capture-time-public-media-url-only' } else { 'artifact-image' })
+    visualReview = $(if ($reviewMode -ceq 'private-review-url-visual') { 'expiring-private-review-url-only' } elseif ($reviewMode -ceq 'public-media-url-visual') { 'capture-time-public-media-url-only' } else { 'artifact-image' })
     sha256VerifiedBy = 'github-actions'
     workDisplayBytesCryptographicallyVerified = $false
 }) -Force
@@ -157,9 +166,10 @@ if ($env:GITHUB_OUTPUT) {
         'evidence_path=' + $evidencePath
         'capture_sha256=' + $artifact.sha256
         'stage2_refetch_sha256=' + $refetchedSha256
+        'review_storage_sha256=' + $reviewStoredSha256
         'pending_evidence_source=capture-artifact'
         'review_scope=' + $reviewMode
     ) -join [Environment]::NewLine
     [IO.File]::AppendAllText($env:GITHUB_OUTPUT, $outputs + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
 }
-[pscustomobject]@{ sha256Match=$true; ready=$ready; pendingPrepared=$pendingPrepared; sent=$false; captureSha256=$artifact.sha256; stage2RefetchSha256=$refetchedSha256; pendingEvidenceSource='capture-artifact'; reviewScope=$reviewMode }
+[pscustomobject]@{ sha256Match=$true; ready=$ready; pendingPrepared=$pendingPrepared; sent=$false; captureSha256=$artifact.sha256; stage2RefetchSha256=$refetchedSha256; reviewStorageSha256=$reviewStoredSha256; pendingEvidenceSource='capture-artifact'; reviewScope=$reviewMode }

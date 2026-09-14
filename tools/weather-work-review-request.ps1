@@ -28,7 +28,7 @@ try {
     $review = ConvertFrom-Json @options
 } catch { throw 'Invalid Work review envelope JSON.' }
 
-if ($review.schemaVersion -notin @(1,2) -or
+if ($review.schemaVersion -notin @(1,2,3) -or
     -not (Test-WeatherWorkExactProperties $review.artifact @('runId','id','name'))) {
     throw 'Invalid Work review envelope shape.'
 }
@@ -45,7 +45,7 @@ if ($review.schemaVersion -eq 1) {
     }
     $reviewMode = 'legacy-evidence'
     $evidenceSha256 = [string]$review.evidenceSha256
-} else {
+} elseif ($review.schemaVersion -eq 2) {
     if (-not (Test-WeatherWorkExactProperties $review @('schemaVersion','artifact','selectedMedia','interpretation')) -or
         -not (Test-WeatherWorkExactProperties $review.selectedMedia @('url','file','mimeType','captureSha256'))) {
         throw 'Invalid Work public media review envelope shape.'
@@ -75,6 +75,34 @@ if ($review.schemaVersion -eq 1) {
             ($pair[0] -ceq 'name' -and $pair[1] -notin @('thumb','small','medium','large','orig'))) {
             throw 'Invalid Work public media binding.'
         }
+    }
+} else {
+    if (-not (Test-WeatherWorkExactProperties $review @('schemaVersion','artifact','selectedReviewImage','interpretation')) -or
+        -not (Test-WeatherWorkExactProperties $review.selectedReviewImage @('file','mimeType','captureSha256','reviewStoredSha256','reviewUrl','expiresAt'))) {
+        throw 'Invalid Work private review image envelope shape.'
+    }
+    $reviewMode = 'private-review-url-visual'
+    $selectedReviewImage = $review.selectedReviewImage
+    $mediaFile = [string]$selectedReviewImage.file
+    $mediaMimeType = [string]$selectedReviewImage.mimeType
+    $evidenceSha256 = [string]$selectedReviewImage.captureSha256
+    $reviewStoredSha256 = [string]$selectedReviewImage.reviewStoredSha256
+    $reviewUrl = [string]$selectedReviewImage.reviewUrl
+    $reviewUri = $null
+    $expiresAt = [datetimeoffset]::MinValue
+    if ($mediaFile -notmatch '^raw-media-[0-3]\.(?:jpg|png)$' -or
+        $mediaMimeType -notin @('image/jpeg','image/png') -or
+        ($mediaMimeType -ceq 'image/jpeg' -and $mediaFile -notmatch '\.jpg$') -or
+        ($mediaMimeType -ceq 'image/png' -and $mediaFile -notmatch '\.png$') -or
+        $reviewStoredSha256 -cne $evidenceSha256 -or
+        $reviewUrl.Length -gt 2048 -or $reviewUrl -match '[\x00-\x20\x7f]' -or
+        -not [uri]::TryCreate($reviewUrl, [UriKind]::Absolute, [ref]$reviewUri) -or
+        $reviewUri.Scheme -cne 'https' -or $reviewUri.UserInfo -or -not $reviewUri.IsDefaultPort -or $reviewUri.Fragment -or
+        $reviewUri.DnsSafeHost -cne 'script.google.com' -or
+        $reviewUri.AbsolutePath -notmatch '^/macros/s/[A-Za-z0-9_-]+/(?:exec|dev)$' -or
+        $reviewUri.Query -notmatch '^\?reviewToken=[A-Za-z0-9_-]{43}$' -or
+        -not [datetimeoffset]::TryParseExact([string]$selectedReviewImage.expiresAt, 'yyyy-MM-ddTHH:mm:ss.fffZ', [cultureinfo]::InvariantCulture, [Globalization.DateTimeStyles]::AssumeUniversal, [ref]$expiresAt)) {
+        throw 'Invalid Work private review image binding.'
     }
 }
 if ($runId -notmatch '^[1-9][0-9]{0,19}$' -or $artifactId -notmatch '^[1-9][0-9]{0,19}$' -or

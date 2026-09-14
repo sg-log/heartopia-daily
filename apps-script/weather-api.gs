@@ -57,6 +57,7 @@ function requestWeatherDriveAuthorization() {
 
 function doGet(e) {
   try {
+    if (e && e.parameter && e.parameter.reviewToken != null) return weatherReviewImageOutput_(e);
     const action = String((e && e.parameter && e.parameter.action) || "");
     if (action === "pending") {
       return json_({ ok: false, error: "pending はPOSTで取得してください" });
@@ -83,6 +84,7 @@ function doPost(e) {
     if (action === "recordAccess") return recordAccess_();
     if (action === "getAccessStats") return getAccessStats_(body);
     if (action === "submit") return submit_(body);
+    if (action === "weatherReviewImage") return createWeatherReviewImage_(body);
     if (action === "weatherEvidence") return getWeatherEvidence_(body);
     if (action === "pending") {
       requireKey_(body.adminKey, adminKey_(), "管理キー");
@@ -1256,7 +1258,9 @@ function parseBody_(e) {
     if (text.length > 1024 * 1024 || Utilities.newBlob(text).getBytes().length > 1024 * 1024) throw weatherSubmitFailure_("requestTooLarge", "requestParsing");
     let large;
     try { large = JSON.parse(text); } catch (_) { throw weatherSubmitFailure_("invalidEvidencePayload", "requestParsing"); }
-    if (large.action !== "submit" || !Array.isArray(large.evidenceImages) || large.evidenceImages.length !== 1) throw weatherSubmitFailure_("requestTooLarge", "requestParsing");
+    const evidenceSubmit = large.action === "submit" && Array.isArray(large.evidenceImages) && large.evidenceImages.length === 1;
+    const reviewImage = large.action === "weatherReviewImage" && large.image && typeof large.image === "object";
+    if (!evidenceSubmit && !reviewImage) throw weatherSubmitFailure_("requestTooLarge", "requestParsing");
     return large;
   }
   const parameters = (e && e.parameter) || {};

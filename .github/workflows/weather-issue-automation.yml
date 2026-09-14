@@ -49,9 +49,48 @@ jobs:
     with:
       source_url: ${{ needs.validate_capture.outputs.source_url }}
 
-  return_x_artifact:
+  publish_x_review_images:
     needs: [validate_capture, capture_x]
-    if: ${{ needs.capture_x.result == 'success' }}
+    if: ${{ needs.validate_capture.outputs.adapter == 'x-official-embed' && needs.capture_x.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      review_images_base64: ${{ steps.publish.outputs.review_images_base64 }}
+    steps:
+      - name: Check out trusted repository code
+        uses: actions/checkout@v4
+
+      - name: Download captured raw media artifact
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.capture_x.outputs.artifact_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ needs.capture_x.outputs.artifact_run_id }}
+          path: ${{ runner.temp }}/weather-review-source
+
+      - name: Test private review image handoff
+        shell: pwsh
+        run: |
+          node tools/test-weather-review-image.mjs
+          ./tools/test-weather-review-image-publish.ps1
+
+      - name: Save private expiring review images
+        id: publish
+        shell: pwsh
+        env:
+          WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
+        run: >-
+          ./tools/weather-review-image-publish.ps1
+          -ArtifactDirectory "$env:RUNNER_TEMP/weather-review-source"
+          -ExpectedArtifactId "${{ needs.capture_x.outputs.artifact_id }}"
+          -ExpectedArtifactName "${{ needs.capture_x.outputs.artifact_name }}"
+          -ExpectedArtifactRunId "${{ needs.capture_x.outputs.artifact_run_id }}"
+          -ResultPath "$env:RUNNER_TEMP/weather-review-publish-result.json"
+
+  return_x_artifact:
+    needs: [validate_capture, capture_x, publish_x_review_images]
+    if: ${{ needs.publish_x_review_images.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -63,23 +102,24 @@ jobs:
           ARTIFACT_ID: ${{ needs.capture_x.outputs.artifact_id }}
           ARTIFACT_NAME: ${{ needs.capture_x.outputs.artifact_name }}
           EVIDENCE_SHA256: ${{ needs.capture_x.outputs.evidence_sha256 }}
-          RAW_MEDIA_BASE64: ${{ needs.capture_x.outputs.raw_media_base64 }}
+          REVIEW_IMAGES_BASE64: ${{ needs.publish_x_review_images.outputs.review_images_base64 }}
         with:
           script: |
-            const rawMedia = JSON.parse(Buffer.from(process.env.RAW_MEDIA_BASE64, 'base64').toString('utf8'))
-            const validMedia = Array.isArray(rawMedia) && rawMedia.length >= 1 && rawMedia.length <= 4 && rawMedia.every((item, index) =>
-              item && item.url?.startsWith('https://pbs.twimg.com/') &&
-              item.file === `raw-media-${index}.${item.mimeType === 'image/png' ? 'png' : 'jpg'}` &&
+            const reviewImages = JSON.parse(Buffer.from(process.env.REVIEW_IMAGES_BASE64, 'base64').toString('utf8'))
+            const validImages = Array.isArray(reviewImages) && reviewImages.length >= 1 && reviewImages.length <= 4 && reviewImages.every((item, index) =>
+              item && item.file === `raw-media-${index}.${item.mimeType === 'image/png' ? 'png' : 'jpg'}` &&
               (item.mimeType === 'image/jpeg' || item.mimeType === 'image/png') &&
               Number.isSafeInteger(item.byteSize) && item.byteSize > 0 && item.byteSize <= 524288 &&
-              /^[a-f0-9]{64}$/.test(item.sha256)
+              /^[a-f0-9]{64}$/.test(item.captureSha256) && item.reviewStoredSha256 === item.captureSha256 &&
+              /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/(?:exec|dev)\?reviewToken=[A-Za-z0-9_-]{43}$/.test(item.reviewUrl) &&
+              /^20[0-9]{2}-[0-9]{2}-[0-9]{2}T/.test(item.expiresAt)
             )
-            if (!validMedia) {
-              core.setFailed('Captured public X raw media metadata is missing.')
+            if (!validImages) {
+              core.setFailed('Private review image bindings are missing or invalid.')
               return
             }
             const record = {
-              schemaVersion: 2,
+              schemaVersion: 3,
               responseType: 'weather-evidence-artifact',
               requestIssue: Number(process.env.ISSUE_NUMBER),
               artifact: {
@@ -88,12 +128,12 @@ jobs:
                 name: process.env.ARTIFACT_NAME
               },
               legacyEvidenceSha256: process.env.EVIDENCE_SHA256,
-              media: rawMedia
+              reviewImages
             }
             await github.rest.issues.createComment({
               ...context.repo,
               issue_number: record.requestIssue,
-              body: `<!-- heartopia-weather-artifact-v2 -->\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\``
+              body: `<!-- heartopia-weather-artifact-v3 -->\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\``
             })
 
   return_url_artifact:
@@ -186,6 +226,7 @@ jobs:
           DUPLICATE: ${{ needs.register_reviewed_pending.outputs.duplicate }}
           CAPTURE_SHA256: ${{ needs.register_reviewed_pending.outputs.capture_sha256 }}
           STAGE2_REFETCH_SHA256: ${{ needs.register_reviewed_pending.outputs.stage2_refetch_sha256 }}
+          REVIEW_STORAGE_SHA256: ${{ needs.register_reviewed_pending.outputs.review_storage_sha256 }}
           PENDING_EVIDENCE_SOURCE: ${{ needs.register_reviewed_pending.outputs.pending_evidence_source }}
           REVIEW_SCOPE: ${{ needs.register_reviewed_pending.outputs.review_scope }}
           SHA256_MATCH: ${{ needs.register_reviewed_pending.outputs.sha256_match }}
@@ -207,6 +248,7 @@ jobs:
               verification: {
                 captureArtifactSha256: process.env.CAPTURE_SHA256,
                 stage2RefetchSha256: process.env.STAGE2_REFETCH_SHA256,
+                reviewStorageSha256: process.env.REVIEW_STORAGE_SHA256,
                 sha256Match: process.env.SHA256_MATCH === 'true',
                 pendingEvidenceSource: process.env.PENDING_EVIDENCE_SOURCE,
                 workVisualReviewScope: process.env.REVIEW_SCOPE,

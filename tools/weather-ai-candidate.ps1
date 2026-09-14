@@ -104,7 +104,9 @@ for ($index = 0; $index -lt 5; $index++) {
 $summary = [string]$interpretation.summary
 if ([string]::IsNullOrWhiteSpace($summary)) { $issues.Add('画像判読の要約がありません') }
 if ($summary.Length -gt 300) { $issues.Add('画像判読の要約が長すぎます') }
-$evidenceDescription = if ([string]$review.model -ceq 'work-public-media-url-visual-review') {
+$evidenceDescription = if ([string]$review.model -ceq 'work-private-review-url-visual-review') {
+    'Workは期限付きprivate review URLを直接視認。画像バイト列のSHA-256はApps Script保存時とGitHub Actions artifact検証で照合（' + $artifact.sha256 + '）: ' + $summary
+} elseif ([string]$review.model -ceq 'work-public-media-url-visual-review') {
     'Workはcapture時に収集された公開media URLを直接視認。画像バイト列のSHA-256はGitHub Actionsがcapture artifactとStage2再取得で照合（' + $artifact.sha256 + '）: ' + $summary
 } else {
     'AIが保存済み画像を判読（SHA-256 ' + $artifact.sha256 + '）: ' + $summary

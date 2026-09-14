@@ -11,7 +11,8 @@
     ".json"
   ],
   "filePushOrder": [
-    "apps-script/weather-api.gs"
+    "apps-script/weather-api.gs",
+    "apps-script/weather-review-image.gs"
   ],
   "skipSubdirectories": true
 }
