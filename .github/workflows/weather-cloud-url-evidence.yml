@@ -38,12 +38,9 @@ jobs:
         shell: pwsh
         run: ./tools/test-weather-cloud-discovery.ps1
 
-      - name: Test AI candidate and submit bridges
+      - name: Test two-stage review bridge
         shell: pwsh
-        run: |
-          npm run test:weather-ai
-          ./tools/test-weather-ai-candidate.ps1
-          ./tools/test-weather-cloud-submit.ps1
+        run: ./tools/test-weather-work-review.ps1
 
       - name: Capture direct page and evidence image
         id: capture
@@ -63,48 +60,6 @@ jobs:
           -CapturePath "$env:RUNNER_TEMP/weather-url-evidence/capture.json"
           -OutputPath "$env:RUNNER_TEMP/weather-url-evidence/discovery-candidate.json"
 
-      - name: Interpret saved evidence image
-        id: interpret
-        if: ${{ steps.capture.outcome == 'success' }}
-        continue-on-error: true
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          WEATHER_AI_MODEL: ${{ vars.WEATHER_AI_MODEL || 'gpt-5.4-mini-2026-03-17' }}
-        run: >-
-          npm run weather:ai --
-          --capture "$RUNNER_TEMP/weather-url-evidence/capture.json"
-          --evidence "$RUNNER_TEMP/weather-url-evidence/evidence.jpg"
-          --output "$RUNNER_TEMP/weather-url-evidence/ai-interpretation.json"
-
-      - name: Build and validate existing weather candidate
-        id: candidate
-        if: ${{ steps.interpret.outcome == 'success' }}
-        continue-on-error: true
-        shell: pwsh
-        run: >-
-          ./tools/weather-ai-candidate.ps1
-          -CapturePath "$env:RUNNER_TEMP/weather-url-evidence/capture.json"
-          -DiscoveryPath "$env:RUNNER_TEMP/weather-url-evidence/discovery-candidate.json"
-          -InterpretationPath "$env:RUNNER_TEMP/weather-url-evidence/ai-interpretation.json"
-          -EvidencePath "$env:RUNNER_TEMP/weather-url-evidence/evidence.jpg"
-          -CandidatePath "$env:RUNNER_TEMP/weather-url-evidence/weather-candidate.json"
-          -DryRunPath "$env:RUNNER_TEMP/weather-url-evidence/weather-dry-run.json"
-
-      - name: Register ready candidate as pending
-        id: submit
-        if: ${{ steps.candidate.outputs.ready == 'true' }}
-        continue-on-error: true
-        shell: pwsh
-        env:
-          WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
-          WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
-        run: >-
-          ./tools/weather-cloud-submit.ps1
-          -CandidatePath "$env:RUNNER_TEMP/weather-url-evidence/weather-candidate.json"
-          -CapturePath "$env:RUNNER_TEMP/weather-url-evidence/capture.json"
-          -EvidencePath "$env:RUNNER_TEMP/weather-url-evidence/evidence.jpg"
-          -ResultPath "$env:RUNNER_TEMP/weather-url-evidence/submit-result.json"
-
       - name: Upload evidence artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -115,5 +70,5 @@ jobs:
           retention-days: 7
 
       - name: Preserve stopped pipeline result
-        if: ${{ always() && (steps.capture.outcome != 'success' || steps.interpret.outcome == 'failure' || steps.candidate.outcome == 'failure' || (steps.candidate.outputs.ready == 'true' && steps.submit.outcome != 'success')) }}
+        if: ${{ always() && steps.capture.outcome != 'success' }}
         run: exit 1

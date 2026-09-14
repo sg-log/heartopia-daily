@@ -1,0 +1,93 @@
+name: Weather cloud reviewed evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      review_payload_base64:
+        description: Base64 UTF-8 Work review envelope bound to one evidence artifact
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Validate Work review envelope
+        id: review
+        shell: pwsh
+        env:
+          REVIEW_PAYLOAD_BASE64: ${{ inputs.review_payload_base64 }}
+        run: >-
+          ./tools/weather-work-review-request.ps1
+          -ReviewPayloadBase64 "$env:REVIEW_PAYLOAD_BASE64"
+          -ReviewPath "$env:RUNNER_TEMP/weather-work-review.json"
+
+      - name: Verify immutable artifact identity
+        uses: actions/github-script@v7
+        env:
+          ARTIFACT_ID: ${{ steps.review.outputs.artifact_id }}
+          ARTIFACT_NAME: ${{ steps.review.outputs.artifact_name }}
+          ARTIFACT_RUN_ID: ${{ steps.review.outputs.artifact_run_id }}
+        with:
+          script: |
+            const artifactId = Number(process.env.ARTIFACT_ID)
+            const runId = Number(process.env.ARTIFACT_RUN_ID)
+            const { data } = await github.rest.actions.getArtifact({
+              ...context.repo,
+              artifact_id: artifactId
+            })
+            if (data.expired || data.id !== artifactId || data.name !== process.env.ARTIFACT_NAME || data.workflow_run?.id !== runId) {
+              core.setFailed('Work review artifact identifiers do not resolve to the same immutable artifact.')
+            }
+
+      - name: Download the exact reviewed artifact
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ steps.review.outputs.artifact_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.review.outputs.artifact_run_id }}
+          path: ${{ runner.temp }}/weather-reviewed-evidence
+
+      - name: Verify SHA and build existing candidate
+        id: bridge
+        shell: pwsh
+        run: >-
+          ./tools/weather-work-review-bridge.ps1
+          -ReviewPath "$env:RUNNER_TEMP/weather-work-review.json"
+          -ArtifactDirectory "$env:RUNNER_TEMP/weather-reviewed-evidence"
+          -DownloadedArtifactId "${{ steps.review.outputs.artifact_id }}"
+          -DownloadedArtifactName "${{ steps.review.outputs.artifact_name }}"
+          -DownloadedArtifactRunId "${{ steps.review.outputs.artifact_run_id }}"
+          -CandidatePath "$env:RUNNER_TEMP/weather-reviewed-result/weather-candidate.json"
+          -DryRunPath "$env:RUNNER_TEMP/weather-reviewed-result/weather-dry-run.json"
+          -PendingPreviewPath "$env:RUNNER_TEMP/weather-reviewed-result/pending-preview.json"
+
+      - name: Upload validated handoff result
+        if: ${{ always() && steps.bridge.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: weather-reviewed-result-${{ github.run_id }}
+          path: ${{ runner.temp }}/weather-reviewed-result
+          if-no-files-found: error
+          retention-days: 7
