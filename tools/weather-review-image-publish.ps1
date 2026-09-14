@@ -22,6 +22,16 @@ function Test-WeatherReviewPublishExactProperties {
     $actual.Count -eq $expected.Count -and (($actual -join "`n") -ceq ($expected -join "`n"))
 }
 
+function ConvertTo-WeatherReviewPublishExpiry {
+    param([Parameter(Mandatory)] [object] $Value)
+    if ($Value -is [datetimeoffset]) { return $Value.ToUniversalTime().ToString('o') }
+    if ($Value -is [datetime]) {
+        if ($Value.Kind -eq [DateTimeKind]::Unspecified) { throw 'Review image API returned an invalid expiry.' }
+        return $Value.ToUniversalTime().ToString('o')
+    }
+    ConvertTo-WeatherDiscoveryTime ([string]$Value)
+}
+
 if ($ExpectedArtifactId -notmatch '^[1-9][0-9]{0,19}$' -or
     $ExpectedArtifactRunId -notmatch '^[1-9][0-9]{0,19}$' -or
     $ExpectedArtifactName -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$') {
@@ -127,13 +137,11 @@ try {
             [string]$call.data.artifact.name -cne $ExpectedArtifactName) {
             throw 'Review image API returned mismatched artifact metadata.'
         }
-        if ([string]$call.data.expiresAt -notmatch '^20[0-9]{2}-[0-9]{2}-[0-9]{2}T') {
-            throw 'Review image API returned an invalid expiry.'
-        }
+        $expiresAt = ConvertTo-WeatherReviewPublishExpiry $call.data.expiresAt
         $results.Add([pscustomobject][ordered]@{
             file=[string]$media.file;mimeType=$artifact.mimeType;byteSize=$artifact.byteSize
             captureSha256=$artifact.sha256;reviewStoredSha256=[string]$call.data.reviewStoredSha256
-            reviewUrl=$reviewUri.AbsoluteUri;expiresAt=[string]$call.data.expiresAt
+            reviewUrl=$reviewUri.AbsoluteUri;expiresAt=$expiresAt
         })
     }
 } finally {
