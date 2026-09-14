@@ -7,6 +7,11 @@ on:
         description: Base64 UTF-8 Work review envelope bound to one evidence artifact
         required: true
         type: string
+      submit_pending:
+        description: Register one verified pending report after all gates pass
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   actions: read
@@ -31,6 +36,12 @@ jobs:
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
+
+      - name: Test review and pending submit bridges
+        shell: pwsh
+        run: |
+          ./tools/test-weather-work-review.ps1
+          ./tools/test-weather-cloud-submit.ps1
 
       - name: Validate Work review envelope
         id: review
@@ -82,6 +93,20 @@ jobs:
           -CandidatePath "$env:RUNNER_TEMP/weather-reviewed-result/weather-candidate.json"
           -DryRunPath "$env:RUNNER_TEMP/weather-reviewed-result/weather-dry-run.json"
           -PendingPreviewPath "$env:RUNNER_TEMP/weather-reviewed-result/pending-preview.json"
+
+      - name: Register one verified candidate as pending
+        id: submit
+        if: ${{ inputs.submit_pending && steps.bridge.outputs.sha256_match == 'true' && steps.bridge.outputs.ready == 'true' && steps.bridge.outputs.pending_prepared == 'true' }}
+        shell: pwsh
+        env:
+          WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
+          WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
+        run: >-
+          ./tools/weather-cloud-submit.ps1
+          -CandidatePath "$env:RUNNER_TEMP/weather-reviewed-result/weather-candidate.json"
+          -CapturePath "$env:RUNNER_TEMP/weather-reviewed-evidence/capture.json"
+          -EvidencePath "$env:RUNNER_TEMP/weather-reviewed-evidence/evidence.jpg"
+          -ResultPath "$env:RUNNER_TEMP/weather-reviewed-result/submit-result.json"
 
       - name: Upload validated handoff result
         if: ${{ always() && steps.bridge.outcome == 'success' }}

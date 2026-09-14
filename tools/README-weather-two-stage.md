@@ -37,4 +37,4 @@ Workはartifact内の `evidence.jpg` そのものを見て、次のJSONをUTF-8�
 
 天気値は既存candidateの正規値（`晴`、`雨`、`流星群`、`虹`、`猛暑`、`雪`、`桜`、`月`）を使う。複数天気は同じ `weather` 配列に入れる。週間予報フィールドは受け付けない。
 
-後段はGitHub APIでartifact ID・run ID・名前の組を確認し、そのartifactをID指定で取得する。`evidence.jpg` の実SHA-256がWork申告値と `capture.json` の値の両方に一致した場合だけ、既存candidate検証と `pending-preview.json` 作成へ進む。previewは `sent: false` で、送信処理や送信用secretは使用しない。
+後段はGitHub APIでartifact ID・run ID・名前の組を確認し、そのartifactをID指定で取得する。`evidence.jpg` の実SHA-256がWork申告値と `capture.json` の値の両方に一致した場合だけ、既存candidate検証と `pending-preview.json` 作成へ進む。`submit_pending` の既定値は `false` で、previewは `sent: false` のまま送信しない。実地テスト等で明示的に `true` にした場合だけ、最終ステップへ送信用secretを渡し、既存の重複確認・pending登録・保存画像再取得・SHA再検証を行う。承認・公開処理には接続しない。
