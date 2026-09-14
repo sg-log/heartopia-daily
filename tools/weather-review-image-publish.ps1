@@ -111,7 +111,12 @@ try {
             $request.image.bodyBase64 = ''
             if ($null -ne $bodyBytes) { [Array]::Clear($bodyBytes, 0, $bodyBytes.Length) }
         }
-        if ($call.diagnostic.failureCode -or $call.data.ok -ne $true) { throw 'Review image API rejected the captured raw media.' }
+        if ($call.diagnostic.failureCode -or $call.data.ok -ne $true) {
+            $failureCode = if ($call.diagnostic.failureCode) { [string]$call.diagnostic.failureCode } else { 'apiError' }
+            $failureStage = if ($call.diagnostic.apiStage) { [string]$call.diagnostic.apiStage } else { 'unknown' }
+            throw ("Review image API rejected the captured raw media: failureCode={0}; stage={1}; httpStatus={2}" -f
+                $failureCode, $failureStage, [int]$call.diagnostic.httpStatus)
+        }
         $responseJson = $call.data | ConvertTo-Json -Depth 10 -Compress
         if ($responseJson -match '(?i)postKey|adminKey|fileId') { throw 'Review image API response exposed a protected value.' }
         $reviewUri = $null
