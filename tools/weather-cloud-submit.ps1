@@ -48,6 +48,7 @@ function Confirm-WeatherCloudStoredEvidence {
 $result = [ordered]@{
     attempted=$false; apiSuccess=$false; driveSaved=$false; pendingRegistered=$false
     sha256Match=$false; imageRetrieved=$false; duplicate=$false
+    reportId=''
     stage='localValidation'; failureCode=''; httpStatus=0; contentType=''; jsonParsed=$false; ok=$null; apiStage=''
 }
 $postKey = $null; $adminKey = $null; $failure = $false
@@ -86,6 +87,7 @@ try {
     if ($matches.Count -eq 1) {
         if (-not (Test-WeatherCloudReportMatch $matches[0] $preview.payload)) { throw 'WEATHER_SAFE:duplicateConflict' }
         $result.duplicate = $true
+        $result.reportId = [string]$matches[0].id
         $result.stage = 'duplicateVerification'
         if (-not (Confirm-WeatherCloudStoredEvidence $matches[0] $artifact $apiUrl $adminKey)) { throw 'WEATHER_SAFE:duplicateConflict' }
         $result.apiSuccess=$true; $result.driveSaved=$true; $result.pendingRegistered=$true
@@ -97,6 +99,7 @@ try {
         foreach ($name in @('httpStatus','contentType','jsonParsed','ok','apiStage')) { $result[$name] = $receipt.diagnostic.$name }
         $result.apiSuccess = $true
         $result.duplicate = $receipt.duplicate
+        $result.reportId = [string]$receipt.id
 
         $result.stage = 'pendingVerification'
         $pendingCall = Invoke-WeatherPrivateApiRequest -ApiUrl $apiUrl -AdminKey $adminKey -Payload ([ordered]@{action='pending'})

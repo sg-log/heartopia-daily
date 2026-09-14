@@ -36,14 +36,14 @@ try {
     $env:WEATHER_POST_KEY='synthetic-post';$env:WEATHER_ADMIN_KEY='synthetic-admin'
     & "$PSScriptRoot/weather-cloud-submit.ps1" $candidatePath $capturePath $imagePath $resultPath | Out-Null
     $result=Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8|ConvertFrom-Json
-    Assert ($result.stage -eq 'complete' -and $result.pendingRegistered -and $result.sha256Match) 'Mock submit reaches verified pending'
+    Assert ($result.stage -eq 'complete' -and $result.pendingRegistered -and $result.sha256Match -and $result.reportId -eq 'mock-id') 'Mock submit reaches verified pending and retains report ID'
     Assert ($global:weatherTestSubmitCalls -eq 1 -and $global:weatherTestPrivateCalls -eq 3) 'One submit with pending and evidence verification'
     Assert ($null -eq $env:WEATHER_POST_KEY -and $null -eq $env:WEATHER_ADMIN_KEY) 'Secrets cleared from environment'
 
     $env:WEATHER_POST_KEY='synthetic-post';$env:WEATHER_ADMIN_KEY='synthetic-admin'
     & "$PSScriptRoot/weather-cloud-submit.ps1" $candidatePath $capturePath $imagePath $resultPath | Out-Null
     $result=Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8|ConvertFrom-Json
-    Assert ($result.stage -eq 'complete' -and $result.duplicate) 'Existing exact pending is accepted as duplicate'
+    Assert ($result.stage -eq 'complete' -and $result.duplicate -and $result.reportId -eq 'mock-id') 'Existing exact pending is accepted as duplicate and retains report ID'
     Assert ($global:weatherTestSubmitCalls -eq 1) 'Duplicate path never submits again'
     'PASS: cloud submit uses existing transport, exact duplicate skip, pending and evidence SHA-256 verification; all HTTP mocked'
 } finally {
