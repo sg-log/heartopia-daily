@@ -12,6 +12,36 @@ on:
         required: true
         default: false
         type: boolean
+  workflow_call:
+    inputs:
+      review_payload_base64:
+        description: Validated Base64 UTF-8 Work review envelope
+        required: true
+        type: string
+      submit_pending:
+        description: Register one verified pending report after all gates pass
+        required: true
+        type: boolean
+    secrets:
+      WEATHER_POST_KEY:
+        required: false
+      WEATHER_ADMIN_KEY:
+        required: false
+    outputs:
+      report_id:
+        value: ${{ jobs.validate.outputs.report_id }}
+      duplicate:
+        value: ${{ jobs.validate.outputs.duplicate }}
+      pending_registered:
+        value: ${{ jobs.validate.outputs.pending_registered }}
+      drive_saved:
+        value: ${{ jobs.validate.outputs.drive_saved }}
+      sha256_match:
+        value: ${{ jobs.validate.outputs.sha256_match }}
+      result_artifact_id:
+        value: ${{ jobs.validate.outputs.result_artifact_id }}
+      result_artifact_name:
+        value: ${{ jobs.validate.outputs.result_artifact_name }}
 
 permissions:
   actions: read
@@ -21,6 +51,14 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      report_id: ${{ steps.submit.outputs.report_id }}
+      duplicate: ${{ steps.submit.outputs.duplicate }}
+      pending_registered: ${{ steps.submit.outputs.pending_registered }}
+      drive_saved: ${{ steps.submit.outputs.drive_saved }}
+      sha256_match: ${{ steps.submit.outputs.sha256_match }}
+      result_artifact_id: ${{ steps.result_artifact.outputs.artifact-id }}
+      result_artifact_name: weather-reviewed-result-${{ github.run_id }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -109,6 +147,7 @@ jobs:
           -ResultPath "$env:RUNNER_TEMP/weather-reviewed-result/submit-result.json"
 
       - name: Upload validated handoff result
+        id: result_artifact
         if: ${{ always() && steps.bridge.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:

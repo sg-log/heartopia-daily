@@ -1,0 +1,192 @@
+name: Weather Issue automation
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+jobs:
+  validate_capture:
+    if: ${{ github.event.issue.title == '[weather-capture-request]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      adapter: ${{ steps.validate.outputs.adapter }}
+      source_url: ${{ steps.validate.outputs.source_url }}
+      issue_number: ${{ steps.validate.outputs.issue_number }}
+    steps:
+      - name: Check out trusted repository code
+        uses: actions/checkout@v4
+
+      - name: Validate capture Issue author, format, and JSON
+        id: validate
+        shell: pwsh
+        run: >-
+          ./tools/weather-issue-request.ps1
+          -Mode Capture
+          -EventPath "$env:GITHUB_EVENT_PATH"
+          -NormalizedPath "$env:RUNNER_TEMP/weather-capture-request.json"
+
+      - name: Test strict Issue validation
+        shell: pwsh
+        run: ./tools/test-weather-issue-request.ps1
+
+  capture_x:
+    needs: validate_capture
+    if: ${{ needs.validate_capture.outputs.adapter == 'x-official-embed' }}
+    uses: ./.github/workflows/weather-cloud-x-embed-evidence.yml
+    with:
+      source_url: ${{ needs.validate_capture.outputs.source_url }}
+
+  capture_url:
+    needs: validate_capture
+    if: ${{ needs.validate_capture.outputs.adapter == 'direct-url' }}
+    uses: ./.github/workflows/weather-cloud-url-evidence.yml
+    with:
+      source_url: ${{ needs.validate_capture.outputs.source_url }}
+
+  return_x_artifact:
+    needs: [validate_capture, capture_x]
+    if: ${{ needs.capture_x.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Return machine-readable artifact binding to Issue
+        uses: actions/github-script@v7
+        env:
+          ISSUE_NUMBER: ${{ needs.validate_capture.outputs.issue_number }}
+          ARTIFACT_RUN_ID: ${{ needs.capture_x.outputs.artifact_run_id }}
+          ARTIFACT_ID: ${{ needs.capture_x.outputs.artifact_id }}
+          ARTIFACT_NAME: ${{ needs.capture_x.outputs.artifact_name }}
+          EVIDENCE_SHA256: ${{ needs.capture_x.outputs.evidence_sha256 }}
+        with:
+          script: |
+            const record = {
+              schemaVersion: 1,
+              responseType: 'weather-evidence-artifact',
+              requestIssue: Number(process.env.ISSUE_NUMBER),
+              artifact: {
+                runId: process.env.ARTIFACT_RUN_ID,
+                id: process.env.ARTIFACT_ID,
+                name: process.env.ARTIFACT_NAME
+              },
+              evidenceSha256: process.env.EVIDENCE_SHA256
+            }
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: record.requestIssue,
+              body: `<!-- heartopia-weather-artifact-v1 -->\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\``
+            })
+
+  return_url_artifact:
+    needs: [validate_capture, capture_url]
+    if: ${{ needs.capture_url.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Return machine-readable artifact binding to Issue
+        uses: actions/github-script@v7
+        env:
+          ISSUE_NUMBER: ${{ needs.validate_capture.outputs.issue_number }}
+          ARTIFACT_RUN_ID: ${{ needs.capture_url.outputs.artifact_run_id }}
+          ARTIFACT_ID: ${{ needs.capture_url.outputs.artifact_id }}
+          ARTIFACT_NAME: ${{ needs.capture_url.outputs.artifact_name }}
+          EVIDENCE_SHA256: ${{ needs.capture_url.outputs.evidence_sha256 }}
+        with:
+          script: |
+            const record = {
+              schemaVersion: 1,
+              responseType: 'weather-evidence-artifact',
+              requestIssue: Number(process.env.ISSUE_NUMBER),
+              artifact: {
+                runId: process.env.ARTIFACT_RUN_ID,
+                id: process.env.ARTIFACT_ID,
+                name: process.env.ARTIFACT_NAME
+              },
+              evidenceSha256: process.env.EVIDENCE_SHA256
+            }
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: record.requestIssue,
+              body: `<!-- heartopia-weather-artifact-v1 -->\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\``
+            })
+
+  validate_review:
+    if: ${{ github.event.issue.title == '[weather-review-result]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      issue_number: ${{ steps.validate.outputs.issue_number }}
+      review_payload_base64: ${{ steps.validate.outputs.review_payload_base64 }}
+      artifact_run_id: ${{ steps.validate.outputs.artifact_run_id }}
+      artifact_id: ${{ steps.validate.outputs.artifact_id }}
+      artifact_name: ${{ steps.validate.outputs.artifact_name }}
+      evidence_sha256: ${{ steps.validate.outputs.evidence_sha256 }}
+    steps:
+      - name: Check out trusted repository code
+        uses: actions/checkout@v4
+
+      - name: Validate review Issue author, format, and JSON
+        id: validate
+        shell: pwsh
+        run: >-
+          ./tools/weather-issue-request.ps1
+          -Mode Review
+          -EventPath "$env:GITHUB_EVENT_PATH"
+          -NormalizedPath "$env:RUNNER_TEMP/weather-review-request.json"
+
+      - name: Test strict Issue validation
+        shell: pwsh
+        run: ./tools/test-weather-issue-request.ps1
+
+  register_reviewed_pending:
+    needs: validate_review
+    uses: ./.github/workflows/weather-cloud-reviewed-evidence.yml
+    with:
+      review_payload_base64: ${{ needs.validate_review.outputs.review_payload_base64 }}
+      submit_pending: true
+    secrets:
+      WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
+      WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
+
+  return_pending_result:
+    needs: [validate_review, register_reviewed_pending]
+    if: ${{ needs.register_reviewed_pending.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Return machine-readable pending result to Issue
+        uses: actions/github-script@v7
+        env:
+          ISSUE_NUMBER: ${{ needs.validate_review.outputs.issue_number }}
+          ARTIFACT_RUN_ID: ${{ needs.validate_review.outputs.artifact_run_id }}
+          ARTIFACT_ID: ${{ needs.validate_review.outputs.artifact_id }}
+          ARTIFACT_NAME: ${{ needs.validate_review.outputs.artifact_name }}
+          EVIDENCE_SHA256: ${{ needs.validate_review.outputs.evidence_sha256 }}
+          REPORT_ID: ${{ needs.register_reviewed_pending.outputs.report_id }}
+          DUPLICATE: ${{ needs.register_reviewed_pending.outputs.duplicate }}
+        with:
+          script: |
+            const record = {
+              schemaVersion: 1,
+              responseType: 'weather-pending-result',
+              requestIssue: Number(process.env.ISSUE_NUMBER),
+              status: 'pending',
+              reportId: process.env.REPORT_ID,
+              duplicate: process.env.DUPLICATE === 'true',
+              artifact: {
+                runId: process.env.ARTIFACT_RUN_ID,
+                id: process.env.ARTIFACT_ID,
+                name: process.env.ARTIFACT_NAME
+              },
+              evidenceSha256: process.env.EVIDENCE_SHA256
+            }
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: record.requestIssue,
+              body: `<!-- heartopia-weather-pending-v1 -->\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\``
+            })

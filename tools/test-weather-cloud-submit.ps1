@@ -15,7 +15,7 @@ try {
     $hourly = @{observedDate='2026-09-11';startSlot='06';values=$slots;evidence=@{image='Synthetic image review';reviewedImageSha256=$artifact.sha256;userConfirmed=$false};status='ready';confidence='high';unresolved=@()}
     $candidate = ConvertTo-WeatherCandidateFromDiscovery $discovery $null $hourly $null
     $capture = @{status='captured';sourceUrl=$candidate.sourceUrl;evidence=@{sha256=$artifact.sha256;byteSize=$artifact.byteSize;mimeType=$artifact.mimeType;kind='screenshot';capturedAt=$artifact.capturedAt}}
-    $candidatePath=Join-Path $root 'candidate.json';$capturePath=Join-Path $root 'capture.json';$resultPath=Join-Path $root 'result.json'
+    $candidatePath=Join-Path $root 'candidate.json';$capturePath=Join-Path $root 'capture.json';$resultPath=Join-Path $root 'result.json';$githubOutput=Join-Path $root 'github-output.txt'
     [IO.File]::WriteAllText($candidatePath,($candidate|ConvertTo-Json -Depth 30),[Text.UTF8Encoding]::new($false))
     [IO.File]::WriteAllText($capturePath,($capture|ConvertTo-Json -Depth 10),[Text.UTF8Encoding]::new($false))
 
@@ -33,10 +33,12 @@ try {
         } else { throw 'unexpected action' }
         [pscustomobject]@{StatusCode=200;Headers=@{'Content-Type'='application/json'};Content=($data|ConvertTo-Json -Depth 20 -Compress)}
     }
-    $env:WEATHER_POST_KEY='synthetic-post';$env:WEATHER_ADMIN_KEY='synthetic-admin'
+    $env:GITHUB_OUTPUT=$githubOutput;$env:WEATHER_POST_KEY='synthetic-post';$env:WEATHER_ADMIN_KEY='synthetic-admin'
     & "$PSScriptRoot/weather-cloud-submit.ps1" $candidatePath $capturePath $imagePath $resultPath | Out-Null
     $result=Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8|ConvertFrom-Json
     Assert ($result.stage -eq 'complete' -and $result.pendingRegistered -and $result.sha256Match -and $result.reportId -eq 'mock-id') 'Mock submit reaches verified pending and retains report ID'
+    $outputs=@(Get-Content -LiteralPath $githubOutput -Encoding UTF8)
+    Assert ($outputs -contains 'report_id=mock-id' -and $outputs -contains 'pending_registered=true' -and $outputs -contains 'sha256_match=true') 'Verified submit exports reusable workflow outputs'
     Assert ($global:weatherTestSubmitCalls -eq 1 -and $global:weatherTestPrivateCalls -eq 3) 'One submit with pending and evidence verification'
     Assert ($null -eq $env:WEATHER_POST_KEY -and $null -eq $env:WEATHER_ADMIN_KEY) 'Secrets cleared from environment'
 
@@ -47,7 +49,7 @@ try {
     Assert ($global:weatherTestSubmitCalls -eq 1) 'Duplicate path never submits again'
     'PASS: cloud submit uses existing transport, exact duplicate skip, pending and evidence SHA-256 verification; all HTTP mocked'
 } finally {
-    $env:WEATHER_POST_KEY=$null;$env:WEATHER_ADMIN_KEY=$null
+    $env:GITHUB_OUTPUT=$null;$env:WEATHER_POST_KEY=$null;$env:WEATHER_ADMIN_KEY=$null
     Remove-Variable -Scope Global -Name weatherTestPendingReports,weatherTestSubmitCalls,weatherTestPrivateCalls -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }

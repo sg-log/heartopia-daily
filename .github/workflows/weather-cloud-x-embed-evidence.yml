@@ -7,6 +7,21 @@ on:
         description: Public X post URL to inspect through official embed services
         required: true
         type: string
+  workflow_call:
+    inputs:
+      source_url:
+        description: Validated public X post URL
+        required: true
+        type: string
+    outputs:
+      artifact_run_id:
+        value: ${{ jobs.capture.outputs.artifact_run_id }}
+      artifact_id:
+        value: ${{ jobs.capture.outputs.artifact_id }}
+      artifact_name:
+        value: ${{ jobs.capture.outputs.artifact_name }}
+      evidence_sha256:
+        value: ${{ jobs.capture.outputs.evidence_sha256 }}
 
 permissions:
   contents: read
@@ -15,6 +30,11 @@ jobs:
   capture:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      artifact_run_id: ${{ steps.metadata.outputs.artifact_run_id }}
+      artifact_id: ${{ steps.artifact.outputs.artifact-id }}
+      artifact_name: ${{ steps.metadata.outputs.artifact_name }}
+      evidence_sha256: ${{ steps.metadata.outputs.evidence_sha256 }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -59,11 +79,23 @@ jobs:
           -DiscoverySource "x-official-embed"
           -SearchQuery "workflow_dispatch X official embed"
 
+      - name: Read captured evidence metadata
+        id: metadata
+        if: ${{ steps.capture.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $capture = Get-Content -LiteralPath "$env:RUNNER_TEMP/weather-x-embed-evidence/capture.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($capture.status -cne 'captured' -or [string]$capture.evidence.sha256 -notmatch '^[a-f0-9]{64}$') { throw 'Invalid capture metadata.' }
+          [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "artifact_run_id=$env:GITHUB_RUN_ID$([Environment]::NewLine)", [Text.UTF8Encoding]::new($false))
+          [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "artifact_name=weather-x-embed-evidence-$env:GITHUB_RUN_ID$([Environment]::NewLine)", [Text.UTF8Encoding]::new($false))
+          [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "evidence_sha256=$($capture.evidence.sha256)$([Environment]::NewLine)", [Text.UTF8Encoding]::new($false))
+
       - name: Upload X embed evidence artifact
+        id: artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: weather-x-embed-evidence-${{ github.run_id }}
+          name: ${{ steps.metadata.outputs.artifact_name || format('weather-x-embed-evidence-{0}', github.run_id) }}
           path: ${{ runner.temp }}/weather-x-embed-evidence
           if-no-files-found: error
           retention-days: 7

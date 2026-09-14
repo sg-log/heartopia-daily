@@ -129,4 +129,14 @@ try {
     [IO.File]::WriteAllText([IO.Path]::GetFullPath($ResultPath), $safeJson + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
     Write-Output $safeJson
 }
+if (-not $failure -and $env:GITHUB_OUTPUT) {
+    $outputs = @(
+        'report_id=' + [string]$result.reportId
+        'duplicate=' + $result.duplicate.ToString().ToLowerInvariant()
+        'pending_registered=' + $result.pendingRegistered.ToString().ToLowerInvariant()
+        'drive_saved=' + $result.driveSaved.ToString().ToLowerInvariant()
+        'sha256_match=' + $result.sha256Match.ToString().ToLowerInvariant()
+    ) -join [Environment]::NewLine
+    [IO.File]::AppendAllText($env:GITHUB_OUTPUT, $outputs + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+}
 if ($failure) { throw ('WEATHER_SAFE:' + $result.failureCode) }
