@@ -10,7 +10,8 @@ function ConvertTo-ReviewBase64($Value) {
 $root = Join-Path ([IO.Path]::GetTempPath()) ('heartopia-work-review-' + [guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Path $root | Out-Null
 try {
-    $artifactDirectory = Join-Path $root 'downloaded-artifact'
+    $downloadDirectory = Join-Path $root 'downloaded-artifact'
+    $artifactDirectory = Join-Path $downloadDirectory 'weather-x-embed-evidence-34794384921'
     $resultDirectory = Join-Path $root 'result'
     New-Item -ItemType Directory -Path $artifactDirectory | Out-Null
     $evidencePath = Join-Path $artifactDirectory 'evidence.jpg'
@@ -54,9 +55,12 @@ try {
     $dryRunPath = Join-Path $resultDirectory 'weather-dry-run.json'
     $previewPath = Join-Path $resultDirectory 'pending-preview.json'
     & "$PSScriptRoot/weather-work-review-bridge.ps1" `
-        -ReviewPath $reviewPath -ArtifactDirectory $artifactDirectory `
+        -ReviewPath $reviewPath -ArtifactDirectory $downloadDirectory `
         -DownloadedArtifactId $review.artifact.id -DownloadedArtifactName $review.artifact.name -DownloadedArtifactRunId $review.artifact.runId `
         -CandidatePath $candidatePath -DryRunPath $dryRunPath -PendingPreviewPath $previewPath | Out-Null
+    $outputs = @(Get-Content -LiteralPath $githubOutput -Encoding UTF8)
+    Assert ($outputs -contains ('capture_path=' + (Join-Path $artifactDirectory 'capture.json'))) 'Bridge exports the exact nested capture path'
+    Assert ($outputs -contains ('evidence_path=' + $evidencePath)) 'Bridge exports the exact nested evidence path'
     $candidate = Get-Content -LiteralPath $candidatePath -Raw -Encoding UTF8 | ConvertFrom-Json
     $preview = Get-Content -LiteralPath $previewPath -Raw -Encoding UTF8 | ConvertFrom-Json
     Assert ($candidate.hourlyForecast.status -eq 'ready') 'Work review connects to the existing ready candidate path'
@@ -68,7 +72,7 @@ try {
     $failed = $false
     try {
         & "$PSScriptRoot/weather-work-review-bridge.ps1" `
-            -ReviewPath $reviewPath -ArtifactDirectory $artifactDirectory `
+            -ReviewPath $reviewPath -ArtifactDirectory $downloadDirectory `
             -DownloadedArtifactId '999999' -DownloadedArtifactName $review.artifact.name -DownloadedArtifactRunId $review.artifact.runId `
             -CandidatePath $candidatePath -DryRunPath $dryRunPath -PendingPreviewPath $previewPath | Out-Null
     } catch { $failed = $true }
@@ -81,7 +85,7 @@ try {
     $failed = $false
     try {
         & "$PSScriptRoot/weather-work-review-bridge.ps1" `
-            -ReviewPath $badReviewPath -ArtifactDirectory $artifactDirectory `
+            -ReviewPath $badReviewPath -ArtifactDirectory $downloadDirectory `
             -DownloadedArtifactId $review.artifact.id -DownloadedArtifactName $review.artifact.name -DownloadedArtifactRunId $review.artifact.runId `
             -CandidatePath $candidatePath -DryRunPath $dryRunPath -PendingPreviewPath $previewPath | Out-Null
     } catch { $failed = $true }

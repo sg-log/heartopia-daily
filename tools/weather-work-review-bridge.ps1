@@ -97,6 +97,8 @@ if ($env:GITHUB_OUTPUT) {
         'sha256_match=true'
         'ready=' + $ready.ToString().ToLowerInvariant()
         'pending_prepared=' + $pendingPrepared.ToString().ToLowerInvariant()
+        'capture_path=' + $capturePath
+        'evidence_path=' + $evidencePath
     ) -join [Environment]::NewLine
     [IO.File]::AppendAllText($env:GITHUB_OUTPUT, $outputs + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
 }

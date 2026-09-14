@@ -104,8 +104,8 @@ jobs:
         run: >-
           ./tools/weather-cloud-submit.ps1
           -CandidatePath "$env:RUNNER_TEMP/weather-reviewed-result/weather-candidate.json"
-          -CapturePath "$env:RUNNER_TEMP/weather-reviewed-evidence/capture.json"
-          -EvidencePath "$env:RUNNER_TEMP/weather-reviewed-evidence/evidence.jpg"
+          -CapturePath "${{ steps.bridge.outputs.capture_path }}"
+          -EvidencePath "${{ steps.bridge.outputs.evidence_path }}"
           -ResultPath "$env:RUNNER_TEMP/weather-reviewed-result/submit-result.json"
 
       - name: Upload validated handoff result
