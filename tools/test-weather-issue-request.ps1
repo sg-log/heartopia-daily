@@ -49,7 +49,8 @@ try {
     $imagePath=Join-Path $root 'evidence.png';Copy-Item -LiteralPath(Join-Path $PSScriptRoot '..\assets\weather-templates\sun-day.png')-Destination $imagePath
     $bytes=[IO.File]::ReadAllBytes($imagePath);$sha=[Security.Cryptography.SHA256]::Create();try{$hash=([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
     $review=[ordered]@{
-        schemaVersion=1;artifact=[ordered]@{runId='34794384921';id='10328214917';name='weather-x-embed-evidence-34794384921'};evidenceSha256=$hash
+        schemaVersion=2;artifact=[ordered]@{runId='34794384921';id='10328214917';name='weather-x-embed-evidence-34794384921'}
+        selectedMedia=[ordered]@{url='https://pbs.twimg.com/media/weather-example?format=png&name=small';file='raw-media-0.png';mimeType='image/png';captureSha256=$hash}
         interpretation=[ordered]@{ready=$true;observedDate='2026-09-11';startSlot='06';confidence='high';summary='Visible';unresolved=@();slots=@(
             [ordered]@{slot='slot0';visible=$true;weather=@('晴');confidence='high';description='06'},[ordered]@{slot='slot1';visible=$true;weather=@('雨');confidence='high';description='12'},
             [ordered]@{slot='slot2';visible=$true;weather=@('晴');confidence='high';description='18'},[ordered]@{slot='slot3';visible=$true;weather=@('晴');confidence='high';description='00'},
@@ -59,7 +60,7 @@ try {
     Write-TestJson $eventPath (New-TestEvent '[weather-review-result]' ($review|ConvertTo-Json -Depth 30 -Compress))
     & "$PSScriptRoot/weather-issue-request.ps1" Review $eventPath $normalizedPath | Out-Null
     $outputs=@(Get-Content -LiteralPath $outputPath -Encoding UTF8)
-    Assert ($outputs -contains 'request_kind=review' -and $outputs -contains 'artifact_id=10328214917') 'Authorized review issue exports a validated exact artifact binding'
+    Assert ($outputs -contains 'request_kind=review' -and $outputs -contains 'artifact_id=10328214917' -and $outputs -contains 'review_mode=public-media-url-visual') 'Authorized review issue exports a validated exact artifact and public media binding'
     Assert (@($outputs|Where-Object{$_ -like 'review_payload_base64=*'}).Count -eq 1) 'Validated review payload is exported without evaluation'
     'PASS: authorized dedicated issues, strict capture/review JSON, safe workflow outputs'
 } finally {

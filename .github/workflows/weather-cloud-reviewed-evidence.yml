@@ -38,6 +38,14 @@ on:
         value: ${{ jobs.validate.outputs.drive_saved }}
       sha256_match:
         value: ${{ jobs.validate.outputs.sha256_match }}
+      capture_sha256:
+        value: ${{ jobs.validate.outputs.capture_sha256 }}
+      stage2_refetch_sha256:
+        value: ${{ jobs.validate.outputs.stage2_refetch_sha256 }}
+      pending_evidence_source:
+        value: ${{ jobs.validate.outputs.pending_evidence_source }}
+      review_scope:
+        value: ${{ jobs.validate.outputs.review_scope }}
       result_artifact_id:
         value: ${{ jobs.validate.outputs.result_artifact_id }}
       result_artifact_name:
@@ -56,7 +64,11 @@ jobs:
       duplicate: ${{ steps.submit.outputs.duplicate }}
       pending_registered: ${{ steps.submit.outputs.pending_registered }}
       drive_saved: ${{ steps.submit.outputs.drive_saved }}
-      sha256_match: ${{ steps.submit.outputs.sha256_match }}
+      sha256_match: ${{ steps.bridge.outputs.sha256_match }}
+      capture_sha256: ${{ steps.bridge.outputs.capture_sha256 }}
+      stage2_refetch_sha256: ${{ steps.bridge.outputs.stage2_refetch_sha256 }}
+      pending_evidence_source: ${{ steps.bridge.outputs.pending_evidence_source }}
+      review_scope: ${{ steps.bridge.outputs.review_scope }}
       result_artifact_id: ${{ steps.result_artifact.outputs.artifact-id }}
       result_artifact_name: weather-reviewed-result-${{ github.run_id }}
     steps:
@@ -118,6 +130,16 @@ jobs:
           run-id: ${{ steps.review.outputs.artifact_run_id }}
           path: ${{ runner.temp }}/weather-reviewed-evidence
 
+      - name: Re-fetch selected public media for Stage2 identity verification
+        if: ${{ steps.review.outputs.review_mode == 'public-media-url-visual' }}
+        shell: pwsh
+        env:
+          MEDIA_URL: ${{ steps.review.outputs.media_url }}
+        run: >-
+          node tools/weather-x-raw-media.mjs
+          --url "$env:MEDIA_URL"
+          --output "$env:RUNNER_TEMP/weather-stage2-refetched-media.bin"
+
       - name: Verify SHA and build existing candidate
         id: bridge
         shell: pwsh
@@ -131,6 +153,7 @@ jobs:
           -CandidatePath "$env:RUNNER_TEMP/weather-reviewed-result/weather-candidate.json"
           -DryRunPath "$env:RUNNER_TEMP/weather-reviewed-result/weather-dry-run.json"
           -PendingPreviewPath "$env:RUNNER_TEMP/weather-reviewed-result/pending-preview.json"
+          -RefetchedMediaPath "$env:RUNNER_TEMP/weather-stage2-refetched-media.bin"
 
       - name: Register one verified candidate as pending
         id: submit

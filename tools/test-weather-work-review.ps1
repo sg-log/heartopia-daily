@@ -91,13 +91,71 @@ try {
     } catch { $failed = $true }
     Assert $failed 'A Work SHA-256 mismatch stops before candidate conversion'
 
+    $rawMediaPath = Join-Path $artifactDirectory 'raw-media-0.png'
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\assets\weather-templates\rain.png') -Destination $rawMediaPath
+    $rawArtifact = New-WeatherEvidenceImage $rawMediaPath original '2026-09-11T06:01:00+09:00'
+    $mediaUrl = 'https://pbs.twimg.com/media/weather-example?format=png&name=small'
+    $capture['rawMedia'] = @([ordered]@{
+        url=$mediaUrl;file='raw-media-0.png';mimeType=$rawArtifact.mimeType;byteSize=$rawArtifact.byteSize;sha256=$rawArtifact.sha256
+    })
+    [IO.File]::WriteAllText((Join-Path $artifactDirectory 'capture.json'), ($capture | ConvertTo-Json -Depth 20), [Text.UTF8Encoding]::new($false))
+    $publicMediaReview = [ordered]@{
+        schemaVersion=2
+        artifact=$review.artifact
+        selectedMedia=[ordered]@{url=$mediaUrl;file='raw-media-0.png';mimeType=$rawArtifact.mimeType;captureSha256=$rawArtifact.sha256}
+        interpretation=$interpretation
+    }
+    $publicMediaReviewPath = Join-Path $root 'public-media-review.json'
+    Clear-Content -LiteralPath $githubOutput
+    & "$PSScriptRoot/weather-work-review-request.ps1" -ReviewPayloadBase64 (ConvertTo-ReviewBase64 $publicMediaReview) -ReviewPath $publicMediaReviewPath | Out-Null
+    $outputs = @(Get-Content -LiteralPath $githubOutput -Encoding UTF8)
+    Assert ($outputs -contains 'review_mode=public-media-url-visual') 'Public media review is explicitly visual-only'
+    Assert ($outputs -contains ('media_url=' + $mediaUrl)) 'Selected public media URL is exported literally'
+    Assert ($outputs -contains ('evidence_sha256=' + $rawArtifact.sha256)) 'Actions capture SHA is exported without claiming Work calculated it'
+
+    $refetchedMediaPath = Join-Path $root 'stage2-refetched.bin'
+    Copy-Item -LiteralPath $rawMediaPath -Destination $refetchedMediaPath
+    $publicCandidatePath = Join-Path $resultDirectory 'public-media-candidate.json'
+    $publicDryRunPath = Join-Path $resultDirectory 'public-media-dry-run.json'
+    $publicPreviewPath = Join-Path $resultDirectory 'public-media-preview.json'
+    & "$PSScriptRoot/weather-work-review-bridge.ps1" `
+        -ReviewPath $publicMediaReviewPath -ArtifactDirectory $downloadDirectory `
+        -DownloadedArtifactId $review.artifact.id -DownloadedArtifactName $review.artifact.name -DownloadedArtifactRunId $review.artifact.runId `
+        -CandidatePath $publicCandidatePath -DryRunPath $publicDryRunPath -PendingPreviewPath $publicPreviewPath `
+        -RefetchedMediaPath $refetchedMediaPath | Out-Null
+    $outputs = @(Get-Content -LiteralPath $githubOutput -Encoding UTF8)
+    Assert ($outputs -contains ('capture_sha256=' + $rawArtifact.sha256) -and $outputs -contains ('stage2_refetch_sha256=' + $rawArtifact.sha256)) 'Capture artifact and Stage2 re-fetch SHA values both match'
+    Assert ($outputs -contains ('evidence_path=' + $rawMediaPath)) 'Pending evidence path is the capture artifact raw media, not the re-fetch'
+    $publicCandidate = Get-Content -LiteralPath $publicCandidatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $publicPreview = Get-Content -LiteralPath $publicPreviewPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert ($publicCandidate.aiReview.verificationScope.sha256VerifiedBy -eq 'github-actions' -and -not $publicCandidate.aiReview.verificationScope.workDisplayBytesCryptographicallyVerified) 'Candidate records the limited Work visual-review guarantee'
+    Assert ($publicPreview.payload.evidenceImages[0].sha256 -eq $rawArtifact.sha256) 'Pending preview contains the capture artifact raw media SHA'
+
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\assets\weather-templates\sun-night.png') -Destination $refetchedMediaPath -Force
+    $failed = $false
+    try {
+        & "$PSScriptRoot/weather-work-review-bridge.ps1" `
+            -ReviewPath $publicMediaReviewPath -ArtifactDirectory $downloadDirectory `
+            -DownloadedArtifactId $review.artifact.id -DownloadedArtifactName $review.artifact.name -DownloadedArtifactRunId $review.artifact.runId `
+            -CandidatePath $publicCandidatePath -DryRunPath $publicDryRunPath -PendingPreviewPath $publicPreviewPath `
+            -RefetchedMediaPath $refetchedMediaPath | Out-Null
+    } catch { $failed = $true }
+    Assert $failed 'A Stage2 re-fetch SHA mismatch stops before candidate and pending conversion'
+
+    $missingMediaReview = ($publicMediaReview | ConvertTo-Json -Depth 30 | ConvertFrom-Json)
+    $missingMediaReview.selectedMedia.url = ''
+    $failed = $false
+    try { & "$PSScriptRoot/weather-work-review-request.ps1" -ReviewPayloadBase64 (ConvertTo-ReviewBase64 $missingMediaReview) -ReviewPath $badReviewPath | Out-Null }
+    catch { $failed = $true }
+    Assert $failed 'A missing media URL is rejected before Stage2'
+
     $extra = ($review | ConvertTo-Json -Depth 30 | ConvertFrom-Json)
     $extra.interpretation | Add-Member -NotePropertyName weeklyForecast -NotePropertyValue ([pscustomobject]@{})
     $failed = $false
     try { & "$PSScriptRoot/weather-work-review-request.ps1" -ReviewPayloadBase64 (ConvertTo-ReviewBase64 $extra) -ReviewPath $badReviewPath | Out-Null }
     catch { $failed = $true }
     Assert $failed 'Unexpected weekly data is rejected by the handoff envelope'
-    'PASS: two-stage Work handoff, artifact identifiers, SHA-256 gate, existing candidate, unsent pending preview'
+    'PASS: legacy handoff plus ZIP-free public media review, Actions capture SHA, Stage2 re-fetch gate, artifact raw media pending preview'
 } finally {
     $env:GITHUB_OUTPUT = $null
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue

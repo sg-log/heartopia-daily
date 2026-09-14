@@ -8,6 +8,7 @@ import {
   assertPublicHostname,
   rankEvidenceImages
 } from "./weather-cloud-url-evidence.mjs";
+import { collectXPublicMedia, downloadXPublicMedia } from "./weather-x-raw-media.mjs";
 
 const MAX_EVIDENCE_BYTES = 512 * 1024;
 const X_POST_HOSTS = new Set([
@@ -84,6 +85,7 @@ async function captureXEmbed({ post, outputDir }) {
   const reportPath = path.join(outputDir, "capture.json");
   const capturedAt = new Date().toISOString();
   const pathways = [];
+  const observedMediaUrls = [];
   let browser;
   let page;
 
@@ -132,6 +134,9 @@ async function captureXEmbed({ post, outputDir }) {
     });
     page.on("response", (response) => {
       setPathway(pathways, getOfficialPathwayName(response.url()), response.status());
+      if (response.status() === 200 && getOfficialPathwayName(response.url()) === "media") {
+        observedMediaUrls.push(response.url());
+      }
     });
 
     const documentHtml = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>X official embed</title></head>` +
@@ -160,6 +165,7 @@ async function captureXEmbed({ post, outputDir }) {
       const style = getComputedStyle(node);
       return {
         index,
+        url: node.currentSrc || node.src || "",
         alt: node.getAttribute("alt") || "",
         width: Math.round(rect.width),
         height: Math.round(rect.height),
@@ -169,6 +175,33 @@ async function captureXEmbed({ post, outputDir }) {
         inViewport: rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth
       };
     }));
+    const networkMedia = observedMediaUrls.map((url, index) => ({
+      index: images.length + index,
+      url,
+      alt: "",
+      width: 1,
+      height: 1,
+      naturalWidth: 1,
+      naturalHeight: 1,
+      visible: true,
+      inViewport: true
+    }));
+    const rawMediaCandidates = collectXPublicMedia([...images, ...networkMedia]);
+    if (!rawMediaCandidates.length) throw new WeatherCloudError("xMediaUrlMissing");
+    const rawMedia = [];
+    for (const [index, candidate] of rawMediaCandidates.entries()) {
+      const downloaded = await downloadXPublicMedia(candidate.url);
+      const extension = downloaded.mimeType === "image/png" ? "png" : "jpg";
+      const file = `raw-media-${index}.${extension}`;
+      await writeFile(path.join(outputDir, file), downloaded.bytes, { flag: "wx" });
+      rawMedia.push({
+        url: downloaded.url,
+        file,
+        mimeType: downloaded.mimeType,
+        byteSize: downloaded.byteSize,
+        sha256: downloaded.sha256
+      });
+    }
     const evidenceChoice = chooseEmbedEvidence(images);
     let evidenceTarget;
     let evidenceDimensions;
@@ -206,6 +239,7 @@ async function captureXEmbed({ post, outputDir }) {
       pathways,
       postContent: { file: "post-content.txt" },
       directPage: { file: "direct-page.png" },
+      rawMedia,
       evidence: {
         file: "evidence.jpg",
         mimeType: "image/jpeg",

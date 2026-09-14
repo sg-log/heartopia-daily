@@ -22,6 +22,8 @@ on:
         value: ${{ jobs.capture.outputs.artifact_name }}
       evidence_sha256:
         value: ${{ jobs.capture.outputs.evidence_sha256 }}
+      raw_media_base64:
+        value: ${{ jobs.capture.outputs.raw_media_base64 }}
 
 permissions:
   contents: read
@@ -35,6 +37,7 @@ jobs:
       artifact_id: ${{ steps.artifact.outputs.artifact-id }}
       artifact_name: ${{ steps.metadata.outputs.artifact_name }}
       evidence_sha256: ${{ steps.metadata.outputs.evidence_sha256 }}
+      raw_media_base64: ${{ steps.metadata.outputs.raw_media_base64 }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -86,9 +89,25 @@ jobs:
         run: |
           $capture = Get-Content -LiteralPath "$env:RUNNER_TEMP/weather-x-embed-evidence/capture.json" -Raw -Encoding UTF8 | ConvertFrom-Json
           if ($capture.status -cne 'captured' -or [string]$capture.evidence.sha256 -notmatch '^[a-f0-9]{64}$') { throw 'Invalid capture metadata.' }
+          $rawMedia = @($capture.rawMedia)
+          if ($rawMedia.Count -lt 1 -or $rawMedia.Count -gt 4) { throw 'Capture did not contain usable public X raw media.' }
+          foreach ($media in $rawMedia) {
+            $mediaPath = Join-Path "$env:RUNNER_TEMP/weather-x-embed-evidence" ([string]$media.file)
+            if ([string]$media.url -notmatch '^https://pbs\.twimg\.com/' -or
+                [string]$media.file -notmatch '^raw-media-[0-3]\.(?:jpg|png)$' -or
+                [string]$media.mimeType -notin @('image/jpeg','image/png') -or
+                [string]$media.sha256 -notmatch '^[a-f0-9]{64}$' -or
+                -not [IO.File]::Exists($mediaPath) -or
+                (Get-FileHash -LiteralPath $mediaPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne [string]$media.sha256) {
+              throw 'Invalid captured public X raw media metadata.'
+            }
+          }
+          $rawMediaJson = ConvertTo-Json -InputObject $rawMedia -Depth 10 -Compress
+          $rawMediaBase64 = [Convert]::ToBase64String([Text.UTF8Encoding]::new($false).GetBytes($rawMediaJson))
           [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "artifact_run_id=$env:GITHUB_RUN_ID$([Environment]::NewLine)", [Text.UTF8Encoding]::new($false))
           [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "artifact_name=weather-x-embed-evidence-$env:GITHUB_RUN_ID$([Environment]::NewLine)", [Text.UTF8Encoding]::new($false))
           [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "evidence_sha256=$($capture.evidence.sha256)$([Environment]::NewLine)", [Text.UTF8Encoding]::new($false))
+          [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "raw_media_base64=$rawMediaBase64$([Environment]::NewLine)", [Text.UTF8Encoding]::new($false))
 
       - name: Upload X embed evidence artifact
         id: artifact

@@ -63,10 +63,23 @@ jobs:
           ARTIFACT_ID: ${{ needs.capture_x.outputs.artifact_id }}
           ARTIFACT_NAME: ${{ needs.capture_x.outputs.artifact_name }}
           EVIDENCE_SHA256: ${{ needs.capture_x.outputs.evidence_sha256 }}
+          RAW_MEDIA_BASE64: ${{ needs.capture_x.outputs.raw_media_base64 }}
         with:
           script: |
+            const rawMedia = JSON.parse(Buffer.from(process.env.RAW_MEDIA_BASE64, 'base64').toString('utf8'))
+            const validMedia = Array.isArray(rawMedia) && rawMedia.length >= 1 && rawMedia.length <= 4 && rawMedia.every((item, index) =>
+              item && item.url?.startsWith('https://pbs.twimg.com/') &&
+              item.file === `raw-media-${index}.${item.mimeType === 'image/png' ? 'png' : 'jpg'}` &&
+              (item.mimeType === 'image/jpeg' || item.mimeType === 'image/png') &&
+              Number.isSafeInteger(item.byteSize) && item.byteSize > 0 && item.byteSize <= 524288 &&
+              /^[a-f0-9]{64}$/.test(item.sha256)
+            )
+            if (!validMedia) {
+              core.setFailed('Captured public X raw media metadata is missing.')
+              return
+            }
             const record = {
-              schemaVersion: 1,
+              schemaVersion: 2,
               responseType: 'weather-evidence-artifact',
               requestIssue: Number(process.env.ISSUE_NUMBER),
               artifact: {
@@ -74,12 +87,13 @@ jobs:
                 id: process.env.ARTIFACT_ID,
                 name: process.env.ARTIFACT_NAME
               },
-              evidenceSha256: process.env.EVIDENCE_SHA256
+              legacyEvidenceSha256: process.env.EVIDENCE_SHA256,
+              media: rawMedia
             }
             await github.rest.issues.createComment({
               ...context.repo,
               issue_number: record.requestIssue,
-              body: `<!-- heartopia-weather-artifact-v1 -->\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\``
+              body: `<!-- heartopia-weather-artifact-v2 -->\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\``
             })
 
   return_url_artifact:
@@ -126,6 +140,7 @@ jobs:
       artifact_id: ${{ steps.validate.outputs.artifact_id }}
       artifact_name: ${{ steps.validate.outputs.artifact_name }}
       evidence_sha256: ${{ steps.validate.outputs.evidence_sha256 }}
+      review_mode: ${{ steps.validate.outputs.review_mode }}
     steps:
       - name: Check out trusted repository code
         uses: actions/checkout@v4
@@ -169,6 +184,11 @@ jobs:
           EVIDENCE_SHA256: ${{ needs.validate_review.outputs.evidence_sha256 }}
           REPORT_ID: ${{ needs.register_reviewed_pending.outputs.report_id }}
           DUPLICATE: ${{ needs.register_reviewed_pending.outputs.duplicate }}
+          CAPTURE_SHA256: ${{ needs.register_reviewed_pending.outputs.capture_sha256 }}
+          STAGE2_REFETCH_SHA256: ${{ needs.register_reviewed_pending.outputs.stage2_refetch_sha256 }}
+          PENDING_EVIDENCE_SOURCE: ${{ needs.register_reviewed_pending.outputs.pending_evidence_source }}
+          REVIEW_SCOPE: ${{ needs.register_reviewed_pending.outputs.review_scope }}
+          SHA256_MATCH: ${{ needs.register_reviewed_pending.outputs.sha256_match }}
         with:
           script: |
             const record = {
@@ -183,7 +203,15 @@ jobs:
                 id: process.env.ARTIFACT_ID,
                 name: process.env.ARTIFACT_NAME
               },
-              evidenceSha256: process.env.EVIDENCE_SHA256
+              evidenceSha256: process.env.EVIDENCE_SHA256,
+              verification: {
+                captureArtifactSha256: process.env.CAPTURE_SHA256,
+                stage2RefetchSha256: process.env.STAGE2_REFETCH_SHA256,
+                sha256Match: process.env.SHA256_MATCH === 'true',
+                pendingEvidenceSource: process.env.PENDING_EVIDENCE_SOURCE,
+                workVisualReviewScope: process.env.REVIEW_SCOPE,
+                workDisplayBytesCryptographicallyVerified: false
+              }
             }
             await github.rest.issues.createComment({
               ...context.repo,

@@ -28,15 +28,55 @@ try {
     $review = ConvertFrom-Json @options
 } catch { throw 'Invalid Work review envelope JSON.' }
 
-if (-not (Test-WeatherWorkExactProperties $review @('schemaVersion','artifact','evidenceSha256','interpretation')) -or
-    $review.schemaVersion -ne 1 -or
+if ($review.schemaVersion -notin @(1,2) -or
     -not (Test-WeatherWorkExactProperties $review.artifact @('runId','id','name'))) {
     throw 'Invalid Work review envelope shape.'
 }
 $runId = [string]$review.artifact.runId
 $artifactId = [string]$review.artifact.id
 $artifactName = [string]$review.artifact.name
-$evidenceSha256 = [string]$review.evidenceSha256
+$reviewMode = ''
+$mediaUrl = ''
+$mediaFile = ''
+$mediaMimeType = ''
+if ($review.schemaVersion -eq 1) {
+    if (-not (Test-WeatherWorkExactProperties $review @('schemaVersion','artifact','evidenceSha256','interpretation'))) {
+        throw 'Invalid Work review envelope shape.'
+    }
+    $reviewMode = 'legacy-evidence'
+    $evidenceSha256 = [string]$review.evidenceSha256
+} else {
+    if (-not (Test-WeatherWorkExactProperties $review @('schemaVersion','artifact','selectedMedia','interpretation')) -or
+        -not (Test-WeatherWorkExactProperties $review.selectedMedia @('url','file','mimeType','captureSha256'))) {
+        throw 'Invalid Work public media review envelope shape.'
+    }
+    $reviewMode = 'public-media-url-visual'
+    $mediaUrl = [string]$review.selectedMedia.url
+    $mediaFile = [string]$review.selectedMedia.file
+    $mediaMimeType = [string]$review.selectedMedia.mimeType
+    $evidenceSha256 = [string]$review.selectedMedia.captureSha256
+    $mediaUri = $null
+    if ($mediaUrl.Length -gt 2048 -or $mediaUrl -match '[\x00-\x20\x7f]' -or
+        -not [uri]::TryCreate($mediaUrl, [UriKind]::Absolute, [ref]$mediaUri) -or
+        $mediaUri.Scheme -cne 'https' -or $mediaUri.UserInfo -or -not $mediaUri.IsDefaultPort -or $mediaUri.Fragment -or
+        $mediaUri.DnsSafeHost -cne 'pbs.twimg.com' -or
+        $mediaUri.AbsolutePath -notmatch '^/(?:media|ext_tw_video_thumb|tweet_video_thumb)/[A-Za-z0-9._~%-]+$' -or
+        $mediaFile -notmatch '^raw-media-[0-3]\.(?:jpg|png)$' -or
+        $mediaMimeType -notin @('image/jpeg','image/png') -or
+        ($mediaMimeType -ceq 'image/jpeg' -and $mediaFile -notmatch '\.jpg$') -or
+        ($mediaMimeType -ceq 'image/png' -and $mediaFile -notmatch '\.png$')) {
+        throw 'Invalid Work public media binding.'
+    }
+    $queryNames = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+    foreach ($part in @($mediaUri.Query.TrimStart('?') -split '&' | Where-Object { $_ })) {
+        $pair = $part -split '=', 2
+        if ($pair.Count -ne 2 -or -not $queryNames.Add($pair[0]) -or $pair[0] -notin @('format','name') -or
+            ($pair[0] -ceq 'format' -and $pair[1] -notin @('jpg','jpeg','png')) -or
+            ($pair[0] -ceq 'name' -and $pair[1] -notin @('thumb','small','medium','large','orig'))) {
+            throw 'Invalid Work public media binding.'
+        }
+    }
+}
 if ($runId -notmatch '^[1-9][0-9]{0,19}$' -or $artifactId -notmatch '^[1-9][0-9]{0,19}$' -or
     $artifactName -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' -or
     $evidenceSha256 -notmatch '^[a-f0-9]{64}$' -or $null -eq $review.interpretation) {
@@ -84,7 +124,11 @@ if ($env:GITHUB_OUTPUT) {
         'artifact_id=' + $artifactId
         'artifact_name=' + $artifactName
         'evidence_sha256=' + $evidenceSha256
+        'review_mode=' + $reviewMode
+        'media_url=' + $mediaUrl
+        'media_file=' + $mediaFile
+        'media_mime_type=' + $mediaMimeType
     ) -join [Environment]::NewLine
     [IO.File]::AppendAllText($env:GITHUB_OUTPUT, $outputs + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
 }
-[pscustomobject]@{ artifactRunId=$runId; artifactId=$artifactId; artifactName=$artifactName; evidenceSha256=$evidenceSha256 }
+[pscustomobject]@{ artifactRunId=$runId; artifactId=$artifactId; artifactName=$artifactName; evidenceSha256=$evidenceSha256; reviewMode=$reviewMode; mediaUrl=$mediaUrl }
