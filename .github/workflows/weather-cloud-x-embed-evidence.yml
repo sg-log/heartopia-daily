@@ -24,6 +24,8 @@ on:
         value: ${{ jobs.capture.outputs.evidence_sha256 }}
       raw_media_base64:
         value: ${{ jobs.capture.outputs.raw_media_base64 }}
+      raw_media_count:
+        value: ${{ jobs.capture.outputs.raw_media_count }}
 
 permissions:
   contents: read
@@ -38,6 +40,7 @@ jobs:
       artifact_name: ${{ steps.metadata.outputs.artifact_name }}
       evidence_sha256: ${{ steps.metadata.outputs.evidence_sha256 }}
       raw_media_base64: ${{ steps.metadata.outputs.raw_media_base64 }}
+      raw_media_count: ${{ steps.metadata.outputs.raw_media_count }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -90,7 +93,7 @@ jobs:
           $capture = Get-Content -LiteralPath "$env:RUNNER_TEMP/weather-x-embed-evidence/capture.json" -Raw -Encoding UTF8 | ConvertFrom-Json
           if ($capture.status -cne 'captured' -or [string]$capture.evidence.sha256 -notmatch '^[a-f0-9]{64}$') { throw 'Invalid capture metadata.' }
           $rawMedia = @($capture.rawMedia)
-          if ($rawMedia.Count -lt 1 -or $rawMedia.Count -gt 4) { throw 'Capture did not contain usable public X raw media.' }
+          if ($rawMedia.Count -gt 4) { throw 'Capture contained too many public X raw media files.' }
           foreach ($media in $rawMedia) {
             $mediaPath = Join-Path "$env:RUNNER_TEMP/weather-x-embed-evidence" ([string]$media.file)
             if ([string]$media.url -notmatch '^https://pbs\.twimg\.com/' -or
@@ -108,6 +111,7 @@ jobs:
           [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "artifact_name=weather-x-embed-evidence-$env:GITHUB_RUN_ID$([Environment]::NewLine)", [Text.UTF8Encoding]::new($false))
           [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "evidence_sha256=$($capture.evidence.sha256)$([Environment]::NewLine)", [Text.UTF8Encoding]::new($false))
           [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "raw_media_base64=$rawMediaBase64$([Environment]::NewLine)", [Text.UTF8Encoding]::new($false))
+          [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "raw_media_count=$($rawMedia.Count)$([Environment]::NewLine)", [Text.UTF8Encoding]::new($false))
 
       - name: Upload X embed evidence artifact
         id: artifact
