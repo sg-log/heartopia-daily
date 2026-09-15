@@ -2,8 +2,10 @@ name: Weather ops patch
 
 on:
   push:
-    branches: [feature/weather-ops-hardening]
-    paths: [.github/workflows/weather-ops-patch.yml]
+    branches:
+      - feature/weather-ops-hardening
+    paths:
+      - ".github/workflows/weather-ops-patch.yml"
 
 permissions:
   contents: write
@@ -12,12 +14,14 @@ jobs:
   patch:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out branch
+        uses: actions/checkout@v4
         with:
           ref: feature/weather-ops-hardening
+
       - name: Patch Apps Script weather operations
-        shell: python
         run: |
+          python <<'PY'
           from pathlib import Path
           p = Path('apps-script/weather-api.gs')
           text = p.read_text(encoding='utf-8-sig')
@@ -114,8 +118,11 @@ jobs:
           assert '(existingStatus !== "pending" && existingStatus !== "approved")' in text
           assert 'notifyDiscordWeatherPending_' in text
           assert '🌤️ 天気の承認待ちがあります' in text
-      - name: Show focused diff
+          PY
+
+      - name: Validate focused diff
         run: git diff --check && git diff -- apps-script/weather-api.gs
+
       - name: Commit Apps Script patch
         run: |
           git config user.name "github-actions[bot]"
