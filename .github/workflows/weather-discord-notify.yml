@@ -7,6 +7,7 @@ on:
     workflows:
       - Weather Issue automation
       - Weather public discovery
+      - Weather weekly review automation
     types: [completed]
 
 permissions:
