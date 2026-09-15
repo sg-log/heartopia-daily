@@ -35,7 +35,8 @@ jobs:
           if ($body -match '(?s)<!-- heartopia-weather-pending-v1 -->\s*```json\s*(\{.*?\})\s*```') {
             try { $record = $Matches[1] | ConvertFrom-Json -ErrorAction Stop } catch { exit 0 }
             if ([string]$record.status -ceq 'pending' -and -not [bool]$record.duplicate) {
-              $message = "🌤️ Heartopia天気のpendingが届いたよ。`n管理画面で確認してね。`nhttps://sg-log.github.io/heartopia-daily/?admin=1"
+              $adminUrl = "https://sg-log.github.io/heartopia-daily/?admin=1&pending=$($record.reportId)#pendingWeatherReports"
+              $message = "🌤️ Heartopia天気のpendingが届いたよ。`n確認・承認する ↓`n$adminUrl"
             }
           }
           elseif ($body -match '(?s)<!-- heartopia-weather-discovery-v1 -->\s*```json\s*(\{.*?\})\s*```') {
