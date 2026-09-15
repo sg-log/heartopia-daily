@@ -96,6 +96,8 @@ if ($interpretation.summary -isnot [string] -or
     throw 'Invalid artifact weather interpretation.'
 }
 
+$reviewMode = if ([string]$pendingEvidence.file -ceq 'evidence.jpg') { 'artifact-captured-visual' } else { 'artifact-raw-media-visual' }
+
 $parent = Split-Path -Parent $ReviewPath
 if ($parent) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
 [IO.File]::WriteAllText(
@@ -109,7 +111,7 @@ if ($env:GITHUB_OUTPUT) {
         'artifact_id=' + $artifactId
         'artifact_name=' + $artifactName
         'evidence_sha256=' + [string]$pendingEvidence.captureSha256
-        'review_mode=artifact-raw-media-visual'
+        'review_mode=' + $reviewMode
         'media_url='
         'media_file=' + [string]$pendingEvidence.file
         'media_mime_type=' + [string]$pendingEvidence.mimeType
@@ -121,6 +123,6 @@ if ($env:GITHUB_OUTPUT) {
     artifactId=$artifactId
     artifactName=$artifactName
     evidenceSha256=[string]$pendingEvidence.captureSha256
-    reviewMode='artifact-raw-media-visual'
+    reviewMode=$reviewMode
     mediaUrl=''
 }
