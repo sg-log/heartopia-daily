@@ -1,4 +1,4 @@
-﻿param(
+param(
     [Parameter(Mandatory)] [ValidateSet('Capture','Review')] [string] $Mode,
     [Parameter(Mandatory)] [string] $EventPath,
     [Parameter(Mandatory)] [string] $NormalizedPath
@@ -81,7 +81,7 @@ if ($Mode -ceq 'Capture') {
 } else {
     $payload = [Convert]::ToBase64String([Text.UTF8Encoding]::new($false).GetBytes($body))
     $validatedReview = & "$PSScriptRoot/weather-review-request.ps1" -ReviewPayloadBase64 $payload -ReviewPath $NormalizedPath
-    if ([string]$validatedReview.reviewMode -notin @('private-review-url-visual','artifact-raw-media-visual')) {
+    if ([string]$validatedReview.reviewMode -notin @('private-review-url-visual','artifact-raw-media-visual','artifact-captured-visual')) {
         throw 'Issue automation accepts only approved visual review results.'
     }
     Write-WeatherIssueOutput request_kind 'review'
