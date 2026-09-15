@@ -1,4 +1,4 @@
-﻿param(
+param(
     [Parameter(Mandatory)] [string] $CandidatePath,
     [Parameter(Mandatory)] [string] $CapturePath,
     [Parameter(Mandatory)] [string] $EvidencePath,
@@ -45,6 +45,28 @@ function Confirm-WeatherCloudStoredEvidence {
     $hash -ceq $Artifact.sha256 -and $bytes.Length -eq $Artifact.byteSize
 }
 
+function Confirm-WeatherCloudExistingEvidence {
+    param(
+        [Parameter(Mandatory)] [object] $Report,
+        [Parameter(Mandatory)] [string] $ApiUrl,
+        [Parameter(Mandatory)] [Security.SecureString] $AdminKey
+    )
+    if ($Report.evidenceStatus -cne 'saved' -or @($Report.evidenceImages).Count -ne 1) { return $false }
+    $storedSha256 = [string]$Report.evidenceImages[0].sha256
+    if ($storedSha256 -notmatch '^[a-f0-9]{64}$') { return $false }
+    $call = Invoke-WeatherPrivateApiRequest -ApiUrl $ApiUrl -AdminKey $AdminKey `
+        -Payload ([ordered]@{ action='weatherEvidence'; reportId=[string]$Report.id; imageIndex=0 })
+    if ($call.diagnostic.failureCode -or $call.data.ok -ne $true -or
+        [string]$call.data.mimeType -notin @('image/jpeg','image/png')) { return $false }
+    try { $bytes = [Convert]::FromBase64String([string]$call.data.bodyBase64) }
+    catch { return $false }
+    if ($bytes.Length -le 0 -or $bytes.Length -gt 524288) { return $false }
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { $hash = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant() }
+    finally { $sha.Dispose() }
+    $hash -ceq $storedSha256
+}
+
 $result = [ordered]@{
     attempted=$false; apiSuccess=$false; driveSaved=$false; pendingRegistered=$false
     sha256Match=$false; imageRetrieved=$false; duplicate=$false
@@ -89,7 +111,7 @@ try {
         $result.duplicate = $true
         $result.reportId = [string]$matches[0].id
         $result.stage = 'duplicateVerification'
-        if (-not (Confirm-WeatherCloudStoredEvidence $matches[0] $artifact $apiUrl $adminKey)) { throw 'WEATHER_SAFE:duplicateConflict' }
+        if (-not (Confirm-WeatherCloudExistingEvidence $matches[0] $apiUrl $adminKey)) { throw 'WEATHER_SAFE:duplicateConflict' }
         $result.apiSuccess=$true; $result.driveSaved=$true; $result.pendingRegistered=$true
         $result.sha256Match=$true; $result.imageRetrieved=$true; $result.stage='complete'
     } else {
