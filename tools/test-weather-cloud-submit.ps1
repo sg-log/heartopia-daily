@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/weather-evidence.ps1"
 function Assert($Condition, $Message) { if (-not $Condition) { throw $Message } }
 
@@ -19,14 +19,18 @@ try {
     [IO.File]::WriteAllText($candidatePath,($candidate|ConvertTo-Json -Depth 30),[Text.UTF8Encoding]::new($false))
     [IO.File]::WriteAllText($capturePath,($capture|ConvertTo-Json -Depth 10),[Text.UTF8Encoding]::new($false))
 
-    $global:weatherTestPendingReports=@();$global:weatherTestSubmitCalls=0;$global:weatherTestPrivateCalls=0
+    $global:weatherTestPendingReports=@();$global:weatherTestSubmitCalls=0;$global:weatherTestPrivateCalls=0;$global:weatherTestStoredEvidenceBytes=$null
     function Invoke-WebRequest {
         param($Uri,$Method,[switch]$UseBasicParsing,$ContentType,$Body,$TimeoutSec)
         $wire=[Text.Encoding]::UTF8.GetString($Body)|ConvertFrom-Json
         if($wire.action -eq 'pending'){$global:weatherTestPrivateCalls++;$data=@{ok=$true;reports=@($global:weatherTestPendingReports)}}
-        elseif($wire.action -eq 'weatherEvidence'){$global:weatherTestPrivateCalls++;$data=@{ok=$true;mimeType=$artifact.mimeType;bodyBase64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($imagePath))}}
+        elseif($wire.action -eq 'weatherEvidence'){
+            $global:weatherTestPrivateCalls++
+            $data=@{ok=$true;mimeType='image/png';bodyBase64=[Convert]::ToBase64String($global:weatherTestStoredEvidenceBytes)}
+        }
         elseif($wire.action -eq 'submit'){
             $global:weatherTestSubmitCalls++
+            $global:weatherTestStoredEvidenceBytes=[IO.File]::ReadAllBytes($imagePath)
             $report=[pscustomobject]@{id='mock-id';date=$wire.date;startSlot=$wire.startSlot;slots=$wire.slots;sourceUrl=$wire.sourceUrl;evidenceStatus='saved';evidenceImages=@(@{sha256=$artifact.sha256})}
             $global:weatherTestPendingReports=@($report)
             $data=@{ok=$true;status='pending';id='mock-id';duplicate=$false}
@@ -47,9 +51,24 @@ try {
     $result=Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8|ConvertFrom-Json
     Assert ($result.stage -eq 'complete' -and $result.duplicate -and $result.reportId -eq 'mock-id') 'Existing exact pending is accepted as duplicate and retains report ID'
     Assert ($global:weatherTestSubmitCalls -eq 1) 'Duplicate path never submits again'
-    'PASS: cloud submit uses existing transport, exact duplicate skip, pending and evidence SHA-256 verification; all HTTP mocked'
+
+    # A later capture of the same source/content can have different screenshot bytes because rendered counters/timestamps changed.
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\assets\weather-templates\rain.png') -Destination $imagePath -Force
+    $refreshedArtifact = New-WeatherEvidenceImage $imagePath screenshot '2026-09-11T19:01:00+09:00'
+    $refreshedCapture = @{status='captured';sourceUrl=$candidate.sourceUrl;evidence=@{sha256=$refreshedArtifact.sha256;byteSize=$refreshedArtifact.byteSize;mimeType=$refreshedArtifact.mimeType;kind='screenshot';capturedAt=$refreshedArtifact.capturedAt}}
+    [IO.File]::WriteAllText($capturePath,($refreshedCapture|ConvertTo-Json -Depth 10),[Text.UTF8Encoding]::new($false))
+    Clear-Content -LiteralPath $githubOutput
+    $env:WEATHER_POST_KEY='synthetic-post';$env:WEATHER_ADMIN_KEY='synthetic-admin'
+    & "$PSScriptRoot/weather-cloud-submit.ps1" $candidatePath $capturePath $imagePath $resultPath | Out-Null
+    $result=Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8|ConvertFrom-Json
+    Assert ($result.stage -eq 'complete' -and $result.duplicate -and $result.pendingRegistered -and $result.sha256Match -and $result.reportId -eq 'mock-id') 'Refreshed screenshot bytes remain a benign verified duplicate when source and weather content match'
+    $outputs=@(Get-Content -LiteralPath $githubOutput -Encoding UTF8)
+    Assert ($outputs -contains 'duplicate=true' -and $outputs -contains 'report_id=mock-id') 'Refreshed duplicate exports normal duplicate outputs'
+    Assert ($global:weatherTestSubmitCalls -eq 1) 'Refreshed duplicate never submits again'
+
+    'PASS: cloud submit uses existing transport, exact/recapture duplicate skip, pending and evidence SHA-256 verification; all HTTP mocked'
 } finally {
     $env:GITHUB_OUTPUT=$null;$env:WEATHER_POST_KEY=$null;$env:WEATHER_ADMIN_KEY=$null
-    Remove-Variable -Scope Global -Name weatherTestPendingReports,weatherTestSubmitCalls,weatherTestPrivateCalls -ErrorAction SilentlyContinue
+    Remove-Variable -Scope Global -Name weatherTestPendingReports,weatherTestSubmitCalls,weatherTestPrivateCalls,weatherTestStoredEvidenceBytes -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
