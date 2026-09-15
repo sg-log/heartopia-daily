@@ -103,6 +103,11 @@ if ($null -eq $pendingArtifact -or [string]::IsNullOrWhiteSpace($pendingEvidence
     throw 'Pending evidence image was not verified.'
 }
 
+$isScreenshotReview = [string]$pendingArtifact.kind -ceq 'screenshot'
+$reviewModel = if ($isScreenshotReview) { 'artifact-captured-visual-review' } else { 'artifact-raw-media-visual-review' }
+$visualReviewScope = if ($isScreenshotReview) { 'artifact-captured-images' } else { 'artifact-raw-media-images' }
+$reviewScope = if ($isScreenshotReview) { 'artifact-captured-visual' } else { 'artifact-raw-media-visual' }
+
 $resultDirectory = Split-Path -Parent $CandidatePath
 if ($resultDirectory) { New-Item -ItemType Directory -Path $resultDirectory -Force | Out-Null }
 $normalizedCapture = $capture | ConvertTo-Json -Depth 40 | ConvertFrom-Json
@@ -121,7 +126,7 @@ $interpretationPath = Join-Path $resultDirectory 'work-interpretation.json'
 $interpretation = [ordered]@{
     status = 'completed'
     inputSha256 = $pendingArtifact.sha256
-    model = 'artifact-captured-visual-review'
+    model = $reviewModel
     responseId = ''
     interpretation = $review.interpretation
 }
@@ -139,7 +144,7 @@ $candidate.aiReview | Add-Member -NotePropertyName artifact -NotePropertyValue (
 }) -Force
 $candidate.aiReview | Add-Member -NotePropertyName reviewedImages -NotePropertyValue $verifiedImages -Force
 $candidate.aiReview | Add-Member -NotePropertyName verificationScope -NotePropertyValue ([pscustomobject]@{
-    visualReview = 'artifact-captured-images'
+    visualReview = $visualReviewScope
     sha256VerifiedBy = 'github-actions'
     workDisplayBytesCryptographicallyVerified = $false
 }) -Force
@@ -167,7 +172,7 @@ if ($env:GITHUB_OUTPUT) {
         'stage2_refetch_sha256='
         'review_storage_sha256='
         'pending_evidence_source=capture-artifact'
-        'review_scope=artifact-captured-visual'
+        'review_scope=' + $reviewScope
     ) -join [Environment]::NewLine
     [IO.File]::AppendAllText($env:GITHUB_OUTPUT, $outputs + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
 }
@@ -180,5 +185,5 @@ if ($env:GITHUB_OUTPUT) {
     stage2RefetchSha256=''
     reviewStorageSha256=''
     pendingEvidenceSource='capture-artifact'
-    reviewScope='artifact-captured-visual'
+    reviewScope=$reviewScope
 }
