@@ -31,7 +31,7 @@ function Write-WeatherIssueOutput {
 }
 
 $event = Read-WeatherIssueJson $EventPath
-if ([string]$event.action -cne 'opened' -or [string]$event.repository.full_name -cne 'sg-log/heartopia-daily' -or
+if ([string]$event.action -notin @('opened','reopened') -or [string]$event.repository.full_name -cne 'sg-log/heartopia-daily' -or
     [string]$event.issue.state -cne 'open' -or [string]$event.issue.user.login -cne 'sg-log' -or
     [string]$event.sender.login -cne 'sg-log' -or [string]$event.issue.author_association -cne 'OWNER' -or
     [long]$event.issue.number -le 0) {
