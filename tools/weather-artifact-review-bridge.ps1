@@ -1,4 +1,4 @@
-﻿param(
+param(
     [Parameter(Mandatory)] [string] $ReviewPath,
     [Parameter(Mandatory)] [string] $ArtifactDirectory,
     [Parameter(Mandatory)] [string] $DownloadedArtifactId,
@@ -44,38 +44,57 @@ $discoveryPath = Join-Path $evidenceDirectory 'discovery-candidate.json'
 if (-not [IO.File]::Exists($discoveryPath)) { throw 'Downloaded artifact is missing discovery-candidate.json.' }
 
 $capture = Read-Json $capturePath
-if ($capture.status -cne 'captured' -or $null -eq $capture.evidence -or $capture.rawMedia -isnot [System.Array]) {
-    throw 'Confirmed capture raw media is required.'
+if ($capture.status -cne 'captured' -or $null -eq $capture.evidence) {
+    throw 'Confirmed capture evidence is required.'
 }
+$rawMedia = @($capture.rawMedia)
 
 $rawCapturedAt = if (-not [string]::IsNullOrWhiteSpace([string]$capture.capturedAt)) { [string]$capture.capturedAt } else { [string]$capture.evidence.capturedAt }
 $verifiedImages = @()
 $pendingArtifact = $null
 $pendingEvidencePath = ''
 foreach ($selected in @($review.reviewedImages)) {
-    $matches = @($capture.rawMedia | Where-Object {
-        [string]$_.file -ceq [string]$selected.file -and
-        [string]$_.mimeType -ceq [string]$selected.mimeType -and
-        [string]$_.sha256 -ceq [string]$selected.captureSha256
-    })
-    if ($matches.Count -ne 1) { throw 'Reviewed artifact image does not exactly match capture metadata.' }
-    $mediaRecord = $matches[0]
-    $imagePath = Join-Path $evidenceDirectory ([string]$selected.file)
-    if (-not [IO.File]::Exists($imagePath)) { throw 'Reviewed raw media is missing from the capture artifact.' }
-    $artifact = New-WeatherEvidenceImage -Path $imagePath -Kind original -CapturedAt $rawCapturedAt
-    if ($artifact.sha256 -cne [string]$mediaRecord.sha256 -or
+    $file = [string]$selected.file
+    $imagePath = Join-Path $evidenceDirectory $file
+    if (-not [IO.File]::Exists($imagePath)) { throw 'Reviewed artifact image is missing from the capture artifact.' }
+
+    $expectedMime = ''
+    $expectedSha = ''
+    $expectedSize = 0L
+    $kind = 'original'
+    if ($file -ceq [string]$capture.evidence.file) {
+        $expectedMime = [string]$capture.evidence.mimeType
+        $expectedSha = [string]$capture.evidence.sha256
+        $expectedSize = [long]$capture.evidence.byteSize
+        $kind = if ([string]$capture.evidence.kind -match 'screenshot$') { 'screenshot' } else { 'original' }
+    } else {
+        $matches = @($rawMedia | Where-Object {
+            [string]$_.file -ceq $file -and
+            [string]$_.mimeType -ceq [string]$selected.mimeType -and
+            [string]$_.sha256 -ceq [string]$selected.captureSha256
+        })
+        if ($matches.Count -ne 1) { throw 'Reviewed artifact image does not exactly match capture metadata.' }
+        $expectedMime = [string]$matches[0].mimeType
+        $expectedSha = [string]$matches[0].sha256
+        $expectedSize = [long]$matches[0].byteSize
+    }
+
+    $artifact = New-WeatherEvidenceImage -Path $imagePath -Kind $kind -CapturedAt $rawCapturedAt
+    if ($artifact.sha256 -cne $expectedSha -or
         $artifact.sha256 -cne [string]$selected.captureSha256 -or
-        $artifact.byteSize -ne [long]$mediaRecord.byteSize -or
-        $artifact.mimeType -cne [string]$mediaRecord.mimeType) {
-        throw 'Reviewed artifact raw media does not match its Actions capture metadata.'
+        $artifact.byteSize -ne $expectedSize -or
+        $artifact.mimeType -cne $expectedMime -or
+        $artifact.mimeType -cne [string]$selected.mimeType) {
+        throw 'Reviewed artifact image does not match its Actions capture metadata.'
     }
     $verifiedImages += [pscustomobject]@{
-        file = [string]$selected.file
+        file = $file
         mimeType = $artifact.mimeType
         byteSize = $artifact.byteSize
         sha256 = $artifact.sha256
+        kind = $kind
     }
-    if ([string]$selected.file -ceq [string]$review.pendingEvidenceFile) {
+    if ($file -ceq [string]$review.pendingEvidenceFile) {
         $pendingArtifact = $artifact
         $pendingEvidencePath = $imagePath
     }
@@ -92,7 +111,7 @@ $normalizedCapture.evidence = [pscustomobject]@{
     mimeType = $pendingArtifact.mimeType
     byteSize = $pendingArtifact.byteSize
     sha256 = $pendingArtifact.sha256
-    kind = 'original'
+    kind = $pendingArtifact.kind
     capturedAt = $rawCapturedAt
 }
 $capturePathForCandidate = Join-Path $resultDirectory 'selected-artifact-media-capture.json'
@@ -102,7 +121,7 @@ $interpretationPath = Join-Path $resultDirectory 'work-interpretation.json'
 $interpretation = [ordered]@{
     status = 'completed'
     inputSha256 = $pendingArtifact.sha256
-    model = 'artifact-raw-media-visual-review'
+    model = 'artifact-captured-visual-review'
     responseId = ''
     interpretation = $review.interpretation
 }
@@ -120,7 +139,7 @@ $candidate.aiReview | Add-Member -NotePropertyName artifact -NotePropertyValue (
 }) -Force
 $candidate.aiReview | Add-Member -NotePropertyName reviewedImages -NotePropertyValue $verifiedImages -Force
 $candidate.aiReview | Add-Member -NotePropertyName verificationScope -NotePropertyValue ([pscustomobject]@{
-    visualReview = 'artifact-raw-media-images'
+    visualReview = 'artifact-captured-images'
     sha256VerifiedBy = 'github-actions'
     workDisplayBytesCryptographicallyVerified = $false
 }) -Force
@@ -148,7 +167,7 @@ if ($env:GITHUB_OUTPUT) {
         'stage2_refetch_sha256='
         'review_storage_sha256='
         'pending_evidence_source=capture-artifact'
-        'review_scope=artifact-raw-media-visual'
+        'review_scope=artifact-captured-visual'
     ) -join [Environment]::NewLine
     [IO.File]::AppendAllText($env:GITHUB_OUTPUT, $outputs + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
 }
@@ -161,5 +180,5 @@ if ($env:GITHUB_OUTPUT) {
     stage2RefetchSha256=''
     reviewStorageSha256=''
     pendingEvidenceSource='capture-artifact'
-    reviewScope='artifact-raw-media-visual'
+    reviewScope='artifact-captured-visual'
 }
