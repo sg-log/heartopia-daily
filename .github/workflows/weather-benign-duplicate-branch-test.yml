@@ -1,0 +1,25 @@
+name: Weather benign duplicate branch test
+
+on:
+  push:
+    branches:
+      - feature/weather-benign-duplicate
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Test benign duplicate handling
+        shell: pwsh
+        run: ./tools/test-weather-cloud-submit.ps1
