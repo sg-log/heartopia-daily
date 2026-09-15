@@ -1,0 +1,191 @@
+name: Pending weather correction patch
+
+on:
+  push:
+    branches: [feature/pending-weather-correction]
+    paths:
+      - .github/workflows/pending-weather-correction-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/pending-weather-correction
+
+      - name: Patch pending weather correction UI
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+
+          old_css = '.pendingWeatherSlots{display:flex;flex-wrap:wrap;gap:14px;margin:14px 0}\n'
+          new_css = '''.pendingWeatherSlots{display:grid;grid-template-columns:1fr;gap:8px;margin:12px 0}\n.pendingWeatherSlotEdit{margin-bottom:0}\n.pendingWeatherEditNote{font-size:12px;color:var(--muted);margin:8px 0 4px}\n.pendingWeatherCard .quickWeatherSlot{grid-template-columns:54px minmax(0,1fr);padding:7px 0;border-bottom:1px solid #eee8df}\n.pendingWeatherCard .quickWeatherSlot:last-child{border-bottom:0}\n.pendingWeatherCard .quickWeatherTime{align-self:center}\n'''
+          assert old_css in s
+          s = s.replace(old_css, new_css, 1)
+
+          old_media = '@media(max-width:640px){.pendingWeatherCard{padding:12px}.pendingWeatherSlots{gap:10px}.pendingWeatherImages img{width:100%;max-height:none}}'
+          new_media = '@media(max-width:640px){.pendingWeatherCard{padding:12px}.pendingWeatherSlots{gap:6px}.pendingWeatherCard .quickWeatherSlot{grid-template-columns:44px minmax(0,1fr)}.pendingWeatherCard .quickWeatherSlot .weatherChip{min-width:42px;padding:6px 7px}.pendingWeatherImages img{width:100%;max-height:none}}'
+          assert old_media in s
+          s = s.replace(old_media, new_media, 1)
+
+          marker = 'function pendingWeatherCard(r){\n'
+          assert marker in s
+          s = s.replace(marker, 'let pendingWeatherReportsCache = [];\n\n' + marker, 1)
+
+          old_card = '''  return `<article class="pendingWeatherCard" id="pending-weather-${esc(r.id)}" data-pending-weather-id="${esc(r.id)}"><strong>${esc(reportDate)} ／ ${esc(startSlot)}時開始</strong>
+    <div class="pendingWeatherSlots">${WEATHER_SLOT_KEYS.map(key => `<div><strong>${esc(slotLabel(key, startSlot))}</strong><br>${esc(weatherText(slots[key], key, startSlot, "未入力"))}</div>`).join("")}</div>
+    ${r.evidenceStatus === 'saved' && r.evidenceImages?.length ? `<div class="pendingWeatherImages" data-weather-evidence="${esc(r.id)}" data-evidence-display><p class="pendingWeatherEvidenceStatus">証拠画像を読み込み待ち…</p></div>` : '<p>保存済み証拠画像なし</p>'}
+    ${source ? `<a class="pendingWeatherSourceLink" href="${esc(source)}" target="_blank" rel="noopener noreferrer">元投稿を開く</a>` : "<p>元投稿URLなし</p>"}
+    <div class="buttons pendingWeatherActions"><button type="button" data-approve-weather="${esc(r.id)}">承認</button><button type="button" class="danger" data-reject-weather="${esc(r.id)}">却下</button></div>'''
+          new_card = '''  const editPrefix = `pending-edit-${r.id}`;
+  return `<article class="pendingWeatherCard" id="pending-weather-${esc(r.id)}" data-pending-weather-id="${esc(r.id)}"><strong>${esc(reportDate)} ／ ${esc(startSlot)}時開始</strong>
+    <p class="pendingWeatherEditNote">違っていたら、天気アイコンをタップして直してから承認できます。</p>
+    <div class="pendingWeatherSlots" data-pending-weather-editor="${esc(r.id)}">${quickWeatherGroupHtml(editPrefix, startSlot)}</div>
+    ${r.evidenceStatus === 'saved' && r.evidenceImages?.length ? `<div class="pendingWeatherImages" data-weather-evidence="${esc(r.id)}" data-evidence-display><p class="pendingWeatherEvidenceStatus">証拠画像を読み込み待ち…</p></div>` : '<p>保存済み証拠画像なし</p>'}
+    ${source ? `<a class="pendingWeatherSourceLink" href="${esc(source)}" target="_blank" rel="noopener noreferrer">元投稿を開く</a>` : "<p>元投稿URLなし</p>"}
+    <div class="buttons pendingWeatherActions"><button type="button" data-approve-weather="${esc(r.id)}">この内容で承認</button><button type="button" class="danger" data-reject-weather="${esc(r.id)}">却下</button></div>'''
+          assert old_card in s
+          s = s.replace(old_card, new_card, 1)
+
+          old_reports = '''    const reports = result.reports || result.data || [];
+    E.pendingWeatherStatus.textContent = reports.length ? `${reports.length}件の未承認報告があります。` : "未承認の天気報告はありません。";
+    clearPendingEvidenceImages();
+    E.pendingWeatherReports.innerHTML = reports.map(pendingWeatherCard).join("");
+    observePendingEvidence();'''
+          new_reports = '''    const reports = result.reports || result.data || [];
+    pendingWeatherReportsCache = reports;
+    E.pendingWeatherStatus.textContent = reports.length ? `${reports.length}件の未承認報告があります。` : "未承認の天気報告はありません。";
+    clearPendingEvidenceImages();
+    E.pendingWeatherReports.innerHTML = reports.map(pendingWeatherCard).join("");
+    reports.forEach(report => setChipSelections(`pending-edit-${report.id}`, normalizeWeatherSlots(report)));
+    observePendingEvidence();'''
+          assert old_reports in s
+          s = s.replace(old_reports, new_reports, 1)
+
+          pattern = r'async function approveWeatherReport\(id\)\{.*?\n\}\n\nasync function rejectWeatherReport\(id\)\{'
+          replacement = '''async function approveWeatherReport(id){
+  if(!WEATHER_API_URL) return;
+  const report = pendingWeatherReportsCache.find(item => String(item.id) === String(id));
+  try{
+    if(!report) throw new Error("対象の未承認報告が見つかりません。一覧を更新してください。");
+    const editedSlots = chipSelections(`pending-edit-${id}`);
+    if(WEATHER_SLOT_KEYS.some(key => !weatherValues(editedSlots[key]).length)){
+      throw new Error("5つの時間枠すべてに天気を1つ選んでください。");
+    }
+    const originalSlots = normalizeWeatherSlots(report);
+    const changed = WEATHER_SLOT_KEYS.some(key => {
+      const before = [...weatherValues(originalSlots[key])].sort();
+      const after = [...weatherValues(editedSlots[key])].sort();
+      return JSON.stringify(before) !== JSON.stringify(after);
+    });
+
+    if(!changed){
+      const result = await apiPost({action:"approve", id, adminKey:adminKeyValue()});
+      if(result.ok === false) throw new Error(result.error || "APIエラー");
+      await fetchPendingWeatherReports();
+      toast("天気報告を承認しました");
+      return;
+    }
+
+    const item = {
+      date:normalizeApiDate(report.date),
+      startSlot:normalizeStartSlot(report.startSlot),
+      slots:editedSlots,
+      weeks:normalizeWeatherWeeks(report),
+      memo:String(report.memo || "")
+    };
+    E.pendingWeatherStatus.textContent = "訂正版を保存中です…";
+    await saveApprovedWeatherToApi(item);
+    upsertWeather(item);
+    save();
+    renderToday();
+
+    const cleanup = await apiPost({action:"reject", id, adminKey:adminKeyValue()});
+    if(cleanup.ok === false){
+      E.pendingWeatherStatus.textContent = `訂正版は保存済みですが、元のpendingを片付けられませんでした：${cleanup.error || "APIエラー"}`;
+      toast("訂正版は保存しました");
+      return;
+    }
+    await fetchPendingWeatherReports();
+    toast("訂正して承認しました");
+  }catch(error){
+    E.pendingWeatherStatus.textContent = `承認できませんでした：${error.message}`;
+  }
+}
+
+async function rejectWeatherReport(id){'''
+          s, count = re.subn(pattern, replacement, s, count=1, flags=re.S)
+          assert count == 1
+
+          old_click = '''  E.pendingWeatherReports.onclick = event => {
+    const retry = event.target.closest('[data-retry-weather-evidence]');
+    if(retry){ const target=retry.closest('[data-weather-evidence]');delete target.dataset.evidenceState;loadPendingEvidence(target);return; }
+    const approve = event.target.closest("[data-approve-weather]");
+    const reject = event.target.closest("[data-reject-weather]");
+    if(approve) approveWeatherReport(approve.dataset.approveWeather);
+    if(reject) rejectWeatherReport(reject.dataset.rejectWeather);
+  };'''
+          new_click = '''  E.pendingWeatherReports.onclick = event => {
+    const retry = event.target.closest('[data-retry-weather-evidence]');
+    if(retry){ const target=retry.closest('[data-weather-evidence]');delete target.dataset.evidenceState;loadPendingEvidence(target);return; }
+    const clear = event.target.closest(".pendingWeatherCard [data-weather-clear]");
+    if(clear){
+      clear.closest(".chipGroup")?.querySelectorAll(".weatherChip.selected").forEach(chip => chip.classList.remove("selected"));
+      return;
+    }
+    const chip = event.target.closest(".pendingWeatherCard .weatherChip");
+    if(chip){
+      const wasSelected = chip.classList.contains("selected");
+      chip.closest(".chipGroup")?.querySelectorAll(".weatherChip.selected").forEach(item => item.classList.remove("selected"));
+      chip.classList.toggle("selected", !wasSelected);
+      return;
+    }
+    const approve = event.target.closest("[data-approve-weather]");
+    const reject = event.target.closest("[data-reject-weather]");
+    if(approve) approveWeatherReport(approve.dataset.approveWeather);
+    if(reject) rejectWeatherReport(reject.dataset.rejectWeather);
+  };'''
+          assert old_click in s
+          s = s.replace(old_click, new_click, 1)
+
+          p.write_text(s, encoding='utf-8')
+
+      - name: Verify correction patch
+        shell: bash
+        run: |
+          grep -F '違っていたら、天気アイコンをタップして直してから承認できます。' index.html
+          grep -F 'この内容で承認' index.html
+          grep -F '訂正して承認しました' index.html
+          grep -F 'pendingWeatherReportsCache = reports' index.html
+          grep -F 'quickWeatherGroupHtml(editPrefix, startSlot)' index.html
+          python - <<'PY'
+          from pathlib import Path
+          s = Path('index.html').read_text(encoding='utf-8')
+          assert s.count('let pendingWeatherReportsCache = [];') == 1
+          assert s.count('async function approveWeatherReport(id){') == 1
+          assert '.pendingWeatherCard [data-weather-clear]' in s
+          PY
+          node - <<'NODE'
+          const fs = require('fs');
+          const html = fs.readFileSync('index.html', 'utf8');
+          const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m => m[1]).filter(Boolean);
+          fs.writeFileSync('/tmp/inline.js', scripts.join('\n'));
+          NODE
+          node --check /tmp/inline.js
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git commit -m 'Allow correcting pending weather before approval'
+          git push origin HEAD:feature/pending-weather-correction
