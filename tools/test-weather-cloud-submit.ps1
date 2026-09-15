@@ -19,6 +19,14 @@ try {
     [IO.File]::WriteAllText($candidatePath,($candidate|ConvertTo-Json -Depth 30),[Text.UTF8Encoding]::new($false))
     [IO.File]::WriteAllText($capturePath,($capture|ConvertTo-Json -Depth 10),[Text.UTF8Encoding]::new($false))
 
+    function Invoke-TestSubmit([string]$Label) {
+        try { & "$PSScriptRoot/weather-cloud-submit.ps1" $candidatePath $capturePath $imagePath $resultPath | Out-Null }
+        catch {
+            if (Test-Path -LiteralPath $resultPath) { Write-Host "$Label result: $(Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8)" }
+            throw
+        }
+    }
+
     $global:weatherTestPendingReports=@();$global:weatherTestSubmitCalls=0;$global:weatherTestPrivateCalls=0;$global:weatherTestStoredEvidenceBytes=$null
     function Invoke-WebRequest {
         param($Uri,$Method,[switch]$UseBasicParsing,$ContentType,$Body,$TimeoutSec)
@@ -38,7 +46,7 @@ try {
         [pscustomobject]@{StatusCode=200;Headers=@{'Content-Type'='application/json'};Content=($data|ConvertTo-Json -Depth 20 -Compress)}
     }
     $env:GITHUB_OUTPUT=$githubOutput;$env:WEATHER_POST_KEY='synthetic-post';$env:WEATHER_ADMIN_KEY='synthetic-admin'
-    & "$PSScriptRoot/weather-cloud-submit.ps1" $candidatePath $capturePath $imagePath $resultPath | Out-Null
+    Invoke-TestSubmit 'initial submit'
     $result=Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8|ConvertFrom-Json
     Assert ($result.stage -eq 'complete' -and $result.pendingRegistered -and $result.sha256Match -and $result.reportId -eq 'mock-id') 'Mock submit reaches verified pending and retains report ID'
     $outputs=@(Get-Content -LiteralPath $githubOutput -Encoding UTF8)
@@ -47,7 +55,7 @@ try {
     Assert ($null -eq $env:WEATHER_POST_KEY -and $null -eq $env:WEATHER_ADMIN_KEY) 'Secrets cleared from environment'
 
     $env:WEATHER_POST_KEY='synthetic-post';$env:WEATHER_ADMIN_KEY='synthetic-admin'
-    & "$PSScriptRoot/weather-cloud-submit.ps1" $candidatePath $capturePath $imagePath $resultPath | Out-Null
+    Invoke-TestSubmit 'exact duplicate'
     $result=Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8|ConvertFrom-Json
     Assert ($result.stage -eq 'complete' -and $result.duplicate -and $result.reportId -eq 'mock-id') 'Existing exact pending is accepted as duplicate and retains report ID'
     Assert ($global:weatherTestSubmitCalls -eq 1) 'Duplicate path never submits again'
@@ -59,7 +67,7 @@ try {
     [IO.File]::WriteAllText($capturePath,($refreshedCapture|ConvertTo-Json -Depth 10),[Text.UTF8Encoding]::new($false))
     Clear-Content -LiteralPath $githubOutput
     $env:WEATHER_POST_KEY='synthetic-post';$env:WEATHER_ADMIN_KEY='synthetic-admin'
-    & "$PSScriptRoot/weather-cloud-submit.ps1" $candidatePath $capturePath $imagePath $resultPath | Out-Null
+    Invoke-TestSubmit 'refreshed duplicate'
     $result=Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8|ConvertFrom-Json
     Assert ($result.stage -eq 'complete' -and $result.duplicate -and $result.pendingRegistered -and $result.sha256Match -and $result.reportId -eq 'mock-id') 'Refreshed screenshot bytes remain a benign verified duplicate when source and weather content match'
     $outputs=@(Get-Content -LiteralPath $githubOutput -Encoding UTF8)
