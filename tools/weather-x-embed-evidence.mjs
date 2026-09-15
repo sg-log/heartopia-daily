@@ -187,7 +187,6 @@ async function captureXEmbed({ post, outputDir }) {
       inViewport: true
     }));
     const rawMediaCandidates = collectXPublicMedia([...images, ...networkMedia]);
-    if (!rawMediaCandidates.length) throw new WeatherCloudError("xMediaUrlMissing");
     const rawMedia = [];
     for (const [index, candidate] of rawMediaCandidates.entries()) {
       const downloaded = await downloadXPublicMedia(candidate.url);
@@ -202,7 +201,9 @@ async function captureXEmbed({ post, outputDir }) {
         sha256: downloaded.sha256
       });
     }
-    const evidenceChoice = chooseEmbedEvidence(images);
+    const evidenceChoice = rawMediaCandidates.length
+      ? chooseEmbedEvidence(images)
+      : { kind: "embed-screenshot", selected: null };
     let evidenceTarget;
     let evidenceDimensions;
     if (evidenceChoice.selected) {
