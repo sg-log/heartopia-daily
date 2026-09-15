@@ -1,0 +1,25 @@
+name: Weather weekly automation CI
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/weather-weekly-*.yml'
+      - 'tools/weather-weekly-*.mjs'
+      - 'tools/test-weather-weekly.mjs'
+      - 'tools/README-weather-weekly.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run weekly weather tests
+        run: node --test tools/test-weather-weekly.mjs
