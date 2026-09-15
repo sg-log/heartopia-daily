@@ -63,7 +63,10 @@ try {
     # A later capture of the same source/content can have different screenshot bytes because rendered counters/timestamps changed.
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\assets\weather-templates\rain.png') -Destination $imagePath -Force
     $refreshedArtifact = New-WeatherEvidenceImage $imagePath screenshot '2026-09-11T19:01:00+09:00'
-    $refreshedCapture = @{status='captured';sourceUrl=$candidate.sourceUrl;evidence=@{sha256=$refreshedArtifact.sha256;byteSize=$refreshedArtifact.byteSize;mimeType=$refreshedArtifact.mimeType;kind='screenshot';capturedAt=$refreshedArtifact.capturedAt}}
+    $hourly.evidence.reviewedImageSha256 = $refreshedArtifact.sha256
+    $refreshedCandidate = ConvertTo-WeatherCandidateFromDiscovery $discovery $null $hourly $null
+    $refreshedCapture = @{status='captured';sourceUrl=$refreshedCandidate.sourceUrl;evidence=@{sha256=$refreshedArtifact.sha256;byteSize=$refreshedArtifact.byteSize;mimeType=$refreshedArtifact.mimeType;kind='screenshot';capturedAt=$refreshedArtifact.capturedAt}}
+    [IO.File]::WriteAllText($candidatePath,($refreshedCandidate|ConvertTo-Json -Depth 30),[Text.UTF8Encoding]::new($false))
     [IO.File]::WriteAllText($capturePath,($refreshedCapture|ConvertTo-Json -Depth 10),[Text.UTF8Encoding]::new($false))
     Clear-Content -LiteralPath $githubOutput
     $env:WEATHER_POST_KEY='synthetic-post';$env:WEATHER_ADMIN_KEY='synthetic-admin'
