@@ -49,26 +49,28 @@ export function prepareWeeklyPendingPreview({ review, artifactDirectory, downloa
   if (!discovery || discovery.retrievalStatus !== 'confirmed' || !Array.isArray(discovery.retrievalHistory) || discovery.retrievalHistory.length < 1) throw new Error('Confirmed discovery metadata is required.');
   if (!validHttpUrl(String(discovery.sourceUrl || ''))) throw new Error('Discovery source URL is invalid.');
 
-  const selected = normalized.selectedReviewImage;
-  const matches = capture.rawMedia.filter((item) =>
-    String(item.file) === selected.file && String(item.mimeType) === selected.mimeType &&
-    String(item.sha256) === selected.captureSha256 && Number(item.byteSize) > 0 && Number(item.byteSize) <= 524288
-  );
-  if (matches.length !== 1) throw new Error('Selected weekly review image does not exactly match capture raw-media metadata.');
-  const media = matches[0];
-  const evidencePath = path.join(evidenceDir, selected.file);
-  if (!fs.existsSync(evidencePath)) throw new Error('Selected weekly review image is missing from artifact.');
-  const bytes = fs.readFileSync(evidencePath);
-  if (bytes.length !== Number(media.byteSize) || bytes.length > 524288) throw new Error('Selected weekly evidence byte size changed.');
-  const digest = sha256(bytes);
-  if (digest !== selected.captureSha256 || digest !== selected.reviewStoredSha256 || digest !== String(media.sha256)) throw new Error('Selected weekly evidence SHA-256 mismatch.');
-  const mimeType = detectMime(bytes);
-  if (!mimeType || mimeType !== selected.mimeType) throw new Error('Selected weekly evidence MIME signature mismatch.');
+  const selectedMedia = normalized.selectedReviewImages.map((selected) => {
+    const matches = capture.rawMedia.filter((item) =>
+      String(item.file) === selected.file && String(item.mimeType) === selected.mimeType &&
+      String(item.sha256) === selected.captureSha256 && Number(item.byteSize) > 0 && Number(item.byteSize) <= 524288
+    );
+    if (matches.length !== 1) throw new Error(`Selected review image ${selected.file} does not exactly match capture raw-media metadata.`);
+    const media = matches[0];
+    const localPath = path.join(evidenceDir, selected.file);
+    if (!fs.existsSync(localPath)) throw new Error(`Selected review image ${selected.file} is missing from artifact.`);
+    const bytes = fs.readFileSync(localPath);
+    if (bytes.length !== Number(media.byteSize) || bytes.length > 524288) throw new Error(`Selected review image ${selected.file} byte size changed.`);
+    const digest = sha256(bytes);
+    if (digest !== selected.captureSha256 || digest !== selected.reviewStoredSha256 || digest !== String(media.sha256)) throw new Error(`Selected review image ${selected.file} SHA-256 mismatch.`);
+    const mimeType = detectMime(bytes);
+    if (!mimeType || mimeType !== selected.mimeType) throw new Error(`Selected review image ${selected.file} MIME signature mismatch.`);
+    return { ...selected, media, localPath, byteSize: bytes.length, sha256: digest, mimeType };
+  });
 
   const retrieval = discovery.retrievalHistory.at(-1);
-  const sourceImageUrls = [];
-  if (typeof media.url === 'string' && validHttpUrl(media.url)) sourceImageUrls.push(media.url);
-  const weeks = Object.fromEntries(normalized.interpretation.days.map((day, index) => [`week${index + 1}`, [...day.weather]]));
+  const sourceImageUrls = [...new Set(selectedMedia.map((item) => item.media.url).filter((url) => typeof url === 'string' && validHttpUrl(url)))];
+  const weeks = Object.fromEntries(Array.from({length:7}, (_, index) => [`week${index + 1}`, []]));
+  normalized.interpretation.days.forEach((day, index) => { weeks[`week${index + 1}`] = [...day.weather]; });
   const capturedAt = String(capture.capturedAt || capture.evidence?.capturedAt || retrieval.retrievedAt || '');
   if (!/^20\d{2}-\d{2}-\d{2}T/.test(capturedAt)) throw new Error('Capture timestamp is missing.');
   const retrievedAt = String(retrieval.retrievedAt || '');
@@ -76,39 +78,45 @@ export function prepareWeeklyPendingPreview({ review, artifactDirectory, downloa
   const sourceType = String(discovery.sourceType || '').trim();
   if (!sourceType || sourceType.length > 40) throw new Error('Discovery sourceType is missing or invalid.');
 
+  const primary = selectedMedia.find((item) => item.role === 'weekly-forecast');
+  if (!primary) throw new Error('A weekly-forecast evidence image is required.');
+
   return {
     status: 'prepared',
     baseDate: normalized.interpretation.baseDate,
+    visibleWeekCount: normalized.interpretation.days.length,
     weeks,
     summary: normalized.interpretation.summary,
+    baseDateDescription: normalized.interpretation.baseDateDescription,
     sourceUrl: String(discovery.sourceUrl),
     sourceImageUrls,
     sourceType,
     retrievedAt,
     artifact: { ...normalized.artifact },
     evidence: {
-      localPath: evidencePath,
-      mimeType,
-      byteSize: bytes.length,
-      sha256: digest,
+      localPath: primary.localPath,
+      mimeType: primary.mimeType,
+      byteSize: primary.byteSize,
+      sha256: primary.sha256,
       kind: 'original',
       capturedAt
     },
-    reviewScope: 'weekly-private-review-url-visual',
+    reviewScope: 'weekly-multi-image-private-review-url-visual',
     reviewerBinding: {
-      reviewStoredSha256: selected.reviewStoredSha256,
+      reviewStoredSha256: primary.reviewStoredSha256,
+      allReviewedImages: selectedMedia.map((item) => ({
+        role: item.role,
+        file: item.file,
+        sha256: item.sha256,
+        reviewStoredSha256: item.reviewStoredSha256
+      })),
       workDisplayBytesCryptographicallyVerified: false
     }
   };
 }
 
-function argValue(name) {
-  const i = process.argv.indexOf(name);
-  return i >= 0 ? process.argv[i + 1] : '';
-}
-function appendOutput(name, value) {
-  if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`, 'utf8');
-}
+function argValue(name) { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : ''; }
+function appendOutput(name, value) { if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`, 'utf8'); }
 function main() {
   const reviewPath = argValue('--review');
   const artifactDirectory = argValue('--artifact-dir');
@@ -117,9 +125,7 @@ function main() {
   const preview = prepareWeeklyPendingPreview({
     review: readJson(reviewPath),
     artifactDirectory,
-    downloadedArtifact: {
-      runId: argValue('--artifact-run-id'), id: argValue('--artifact-id'), name: argValue('--artifact-name')
-    }
+    downloadedArtifact: { runId: argValue('--artifact-run-id'), id: argValue('--artifact-id'), name: argValue('--artifact-name') }
   });
   fs.mkdirSync(path.dirname(path.resolve(outputPath)), { recursive: true });
   fs.writeFileSync(outputPath, `${JSON.stringify(preview, null, 2)}\n`, 'utf8');
@@ -127,6 +133,7 @@ function main() {
   appendOutput('review_storage_sha256', preview.reviewerBinding.reviewStoredSha256);
   appendOutput('review_scope', preview.reviewScope);
   appendOutput('evidence_path', preview.evidence.localPath);
+  appendOutput('visible_week_count', String(preview.visibleWeekCount));
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try { main(); } catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exit(1); }
