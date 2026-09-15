@@ -1,0 +1,71 @@
+name: Weather Discord notifications
+
+on:
+  issues:
+    types: [closed]
+  workflow_run:
+    workflows:
+      - Weather Issue automation
+      - Weather public discovery
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: read
+
+env:
+  WEATHER_DISCORD_WEBHOOK_URL: ${{ secrets.WEATHER_DISCORD_WEBHOOK_URL }}
+
+jobs:
+  notify_pending_or_empty:
+    if: ${{ github.event_name == 'issues' && github.event.issue.user.login == 'sg-log' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Notify private Discord when attention is needed
+        if: ${{ env.WEATHER_DISCORD_WEBHOOK_URL != '' }}
+        shell: pwsh
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+        run: |
+          $body = [string]$env:ISSUE_BODY
+          $message = ''
+
+          if ($body -match '(?s)<!-- heartopia-weather-pending-v1 -->\s*```json\s*(\{.*?\})\s*```') {
+            try { $record = $Matches[1] | ConvertFrom-Json -ErrorAction Stop } catch { exit 0 }
+            if ([string]$record.status -ceq 'pending' -and -not [bool]$record.duplicate) {
+              $message = "🌤️ Heartopia天気のpendingが届いたよ。`n管理画面で確認してね。`nhttps://sg-log.github.io/heartopia-daily/?admin=1"
+            }
+          }
+          elseif ($body -match '(?s)<!-- heartopia-weather-discovery-v1 -->\s*```json\s*(\{.*?\})\s*```') {
+            try { $record = $Matches[1] | ConvertFrom-Json -ErrorAction Stop } catch { exit 0 }
+            if (@($record.candidates).Count -eq 0) {
+              $message = "⚠️ Heartopia天気の候補が見つからなかったよ。`n自動pendingは作られていません。`n$env:ISSUE_URL"
+            }
+          }
+
+          if ([string]::IsNullOrWhiteSpace($message)) { exit 0 }
+          $payload = @{
+            content = $message
+            allowed_mentions = @{ parse = @() }
+          } | ConvertTo-Json -Depth 5 -Compress
+          Invoke-RestMethod -Method Post -Uri $env:WEATHER_DISCORD_WEBHOOK_URL -ContentType 'application/json' -Body $payload | Out-Null
+
+  notify_workflow_failure:
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Notify private Discord about automation failure
+        if: ${{ env.WEATHER_DISCORD_WEBHOOK_URL != '' }}
+        shell: pwsh
+        env:
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          $payload = @{
+            content = "⚠️ Heartopia天気自動化でエラーが出たよ。`n$env:WORKFLOW_NAME`n$env:RUN_URL"
+            allowed_mentions = @{ parse = @() }
+          } | ConvertTo-Json -Depth 5 -Compress
+          Invoke-RestMethod -Method Post -Uri $env:WEATHER_DISCORD_WEBHOOK_URL -ContentType 'application/json' -Body $payload | Out-Null
