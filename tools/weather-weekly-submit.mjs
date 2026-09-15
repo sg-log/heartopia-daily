@@ -7,8 +7,10 @@ const WEATHER = new Set(['晴','雨','流星群','虹','猛暑','雪','桜']);
 const WEEK_KEYS = Array.from({length:7}, (_, i) => `week${i + 1}`);
 const SLOT_KEYS = Array.from({length:5}, (_, i) => `slot${i}`);
 
-function cleanWeatherArray(value, label) {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 4) throw new Error(`${label} must contain 1-4 weather values.`);
+function cleanWeatherArray(value, label, allowEmpty = false) {
+  if (!Array.isArray(value)) throw new Error(`${label} must be an array.`);
+  if (allowEmpty && value.length === 0) return [];
+  if (value.length < 1 || value.length > 4) throw new Error(`${label} must contain 1-4 weather values.`);
   const values = value.map(String);
   if (new Set(values).size !== values.length || values.some((item) => !WEATHER.has(item))) throw new Error(`${label} contains unsupported or duplicate weather values.`);
   return values;
@@ -29,12 +31,15 @@ export function chooseApprovedBaseline(reports, baseDate) {
 export function buildWeeklySubmitPayload(preview, baseline, evidenceBytes) {
   if (!preview || preview.status !== 'prepared') throw new Error('Prepared weekly preview is required.');
   if (!/^20\d{2}-\d{2}-\d{2}$/.test(String(preview.baseDate || ''))) throw new Error('Prepared baseDate is invalid.');
+  if (!Number.isInteger(preview.visibleWeekCount) || preview.visibleWeekCount < 5 || preview.visibleWeekCount > 7) throw new Error('Prepared weekly preview must contain 5-7 visible days.');
   const weeks = {};
-  for (const key of WEEK_KEYS) weeks[key] = cleanWeatherArray(preview.weeks?.[key], key);
+  for (const key of WEEK_KEYS) weeks[key] = cleanWeatherArray(preview.weeks?.[key] || [], key, true);
+  const populated = WEEK_KEYS.filter((key) => weeks[key].length);
+  if (populated.length !== preview.visibleWeekCount || populated.some((key, index) => key !== `week${index + 1}`)) throw new Error('Weekly values must be consecutive from week1 with only unseen trailing days left empty.');
   for (const key of SLOT_KEYS) cleanWeatherArray(baseline.slots?.[key], key);
   if (!START_SLOTS.has(baseline.startSlot)) throw new Error('Baseline startSlot is invalid.');
   if (!Buffer.isBuffer(evidenceBytes) || evidenceBytes.length !== Number(preview.evidence?.byteSize)) throw new Error('Evidence bytes do not match prepared preview.');
-  const memo = `週間予報自動候補。時間別5枠は${preview.baseDate}の承認済みデータを継承。週間は証拠画像を直接判読: ${String(preview.summary || '').trim()}`;
+  const memo = `週間予報自動候補。時間別5枠は${preview.baseDate}の承認済みデータを継承。画像で確認できた週間${preview.visibleWeekCount}日分のみ登録し、未表示日は空欄。${String(preview.summary || '').trim()}`;
   if (memo.length > 1000) throw new Error('Weekly pending memo exceeds 1000 characters.');
   return {
     action: 'submit',
@@ -61,12 +66,8 @@ export function buildWeeklySubmitPayload(preview, baseline, evidenceBytes) {
 export function reportMatchesPayload(report, payload) {
   if (!report || String(report.date || '') !== payload.date || String(report.startSlot || '') !== payload.startSlot) return false;
   if (String(report.sourceUrl || '') !== String(payload.sourceUrl || '')) return false;
-  for (const key of SLOT_KEYS) {
-    if (JSON.stringify(report.slots?.[key] || []) !== JSON.stringify(payload.slots[key])) return false;
-  }
-  for (const key of WEEK_KEYS) {
-    if (JSON.stringify(report.weeks?.[key] || []) !== JSON.stringify(payload.weeks[key])) return false;
-  }
+  for (const key of SLOT_KEYS) if (JSON.stringify(report.slots?.[key] || []) !== JSON.stringify(payload.slots[key])) return false;
+  for (const key of WEEK_KEYS) if (JSON.stringify(report.weeks?.[key] || []) !== JSON.stringify(payload.weeks[key])) return false;
   return true;
 }
 
@@ -122,7 +123,8 @@ async function main() {
 
   const result = {
     status: 'pending', reportId: String(submitted.id), duplicate: Boolean(submitted.duplicate),
-    baseDate: preview.baseDate, captureSha256: preview.evidence.sha256,
+    baseDate: preview.baseDate, visibleWeekCount: preview.visibleWeekCount,
+    captureSha256: preview.evidence.sha256,
     reviewStorageSha256: preview.reviewerBinding?.reviewStoredSha256 || '',
     pendingEvidenceSource: 'capture-artifact', reviewScope: preview.reviewScope,
     sha256Match: preview.evidence.sha256 === preview.reviewerBinding?.reviewStoredSha256
@@ -132,6 +134,7 @@ async function main() {
   appendOutput('report_id', result.reportId);
   appendOutput('duplicate', String(result.duplicate));
   appendOutput('base_date', result.baseDate);
+  appendOutput('visible_week_count', String(result.visibleWeekCount));
   appendOutput('capture_sha256', result.captureSha256);
   appendOutput('review_storage_sha256', result.reviewStorageSha256);
   appendOutput('pending_evidence_source', result.pendingEvidenceSource);
