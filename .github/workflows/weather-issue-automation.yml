@@ -2,7 +2,7 @@ name: Weather Issue automation
 
 on:
   issues:
-    types: [opened]
+    types: [opened, reopened]
 
 permissions:
   actions: read
