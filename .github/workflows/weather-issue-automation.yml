@@ -94,7 +94,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Return machine-readable artifact binding to Issue
+      - name: Store artifact binding in Issue body and close successful request
         uses: actions/github-script@v7
         env:
           ISSUE_NUMBER: ${{ needs.validate_capture.outputs.issue_number }}
@@ -130,10 +130,12 @@ jobs:
               legacyEvidenceSha256: process.env.EVIDENCE_SHA256,
               reviewImages
             }
-            await github.rest.issues.createComment({
+            await github.rest.issues.update({
               ...context.repo,
               issue_number: record.requestIssue,
-              body: `<!-- heartopia-weather-artifact-v3 -->\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\``
+              body: `<!-- heartopia-weather-artifact-v3 -->\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\``,
+              state: 'closed',
+              state_reason: 'completed'
             })
 
   return_x_artifact_fallback:
@@ -142,7 +144,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Return rendered evidence artifact binding to Issue
+      - name: Store rendered evidence binding in Issue body and close successful request
         uses: actions/github-script@v7
         env:
           ISSUE_NUMBER: ${{ needs.validate_capture.outputs.issue_number }}
@@ -168,10 +170,12 @@ jobs:
                 kind: 'screenshot'
               }]
             }
-            await github.rest.issues.createComment({
+            await github.rest.issues.update({
               ...context.repo,
               issue_number: record.requestIssue,
-              body: `<!-- heartopia-weather-artifact-v4 -->\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\``
+              body: `<!-- heartopia-weather-artifact-v4 -->\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\``,
+              state: 'closed',
+              state_reason: 'completed'
             })
 
   return_url_artifact:
@@ -180,7 +184,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Return machine-readable artifact binding to Issue
+      - name: Store artifact binding in Issue body and close successful request
         uses: actions/github-script@v7
         env:
           ISSUE_NUMBER: ${{ needs.validate_capture.outputs.issue_number }}
@@ -201,10 +205,12 @@ jobs:
               },
               evidenceSha256: process.env.EVIDENCE_SHA256
             }
-            await github.rest.issues.createComment({
+            await github.rest.issues.update({
               ...context.repo,
               issue_number: record.requestIssue,
-              body: `<!-- heartopia-weather-artifact-v1 -->\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\``
+              body: `<!-- heartopia-weather-artifact-v1 -->\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\``,
+              state: 'closed',
+              state_reason: 'completed'
             })
 
   validate_review:
@@ -252,7 +258,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Return machine-readable pending result to Issue
+      - name: Store pending result in Issue body and close successful request
         uses: actions/github-script@v7
         env:
           ISSUE_NUMBER: ${{ needs.validate_review.outputs.issue_number }}
@@ -293,8 +299,10 @@ jobs:
                 workDisplayBytesCryptographicallyVerified: false
               }
             }
-            await github.rest.issues.createComment({
+            await github.rest.issues.update({
               ...context.repo,
               issue_number: record.requestIssue,
-              body: `<!-- heartopia-weather-pending-v1 -->\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\``
+              body: `<!-- heartopia-weather-pending-v1 -->\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\``,
+              state: 'closed',
+              state_reason: 'completed'
             })
