@@ -46,7 +46,7 @@ jobs:
           RESULT_PATH: ${{ runner.temp }}/weather-public-discovery.json
         run: node tools/weather-public-discovery.mjs --target-date "$TARGET_DATE" --out "$RESULT_PATH"
 
-      - name: Return machine-readable discovery result to Issue
+      - name: Store result in Issue body and close successful request
         uses: actions/github-script@v7
         env:
           ISSUE_NUMBER: ${{ steps.validate.outputs.issue_number }}
@@ -60,8 +60,10 @@ jobs:
               core.setFailed('Invalid discovery result.')
               return
             }
-            await github.rest.issues.createComment({
+            await github.rest.issues.update({
               ...context.repo,
               issue_number: Number(process.env.ISSUE_NUMBER),
-              body: `<!-- heartopia-weather-discovery-v1 -->\n\`\`\`json\n${JSON.stringify(result)}\n\`\`\``
+              body: `<!-- heartopia-weather-discovery-v1 -->\n\`\`\`json\n${JSON.stringify(result)}\n\`\`\``,
+              state: 'closed',
+              state_reason: 'completed'
             })
