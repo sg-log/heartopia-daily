@@ -1,0 +1,125 @@
+name: Weather ops patch
+
+on:
+  push:
+    branches: [feature/weather-ops-hardening]
+    paths: [.github/workflows/weather-ops-patch.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/weather-ops-hardening
+      - name: Patch Apps Script weather operations
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('apps-script/weather-api.gs')
+          text = p.read_text(encoding='utf-8-sig')
+
+          old = '''          if (formatDateValue(existing[i][dateColumn]) !== date ||
+              normalizeStartSlot_(existing[i][startSlotColumn]) !== startSlot ||
+              normalizeStatusText_(existing[i][statusColumn]) !== "pending" ||
+              String(existing[i][sourceUrlColumn] || "") !== sourceUrl) continue;
+          receiptId = String(existing[i][idColumn]);
+          duplicate = true;
+          return;'''
+          new = '''          const existingStatus = normalizeStatusText_(existing[i][statusColumn]);
+          if (formatDateValue(existing[i][dateColumn]) !== date ||
+              normalizeStartSlot_(existing[i][startSlotColumn]) !== startSlot ||
+              (existingStatus !== "pending" && existingStatus !== "approved") ||
+              String(existing[i][sourceUrlColumn] || "") !== sourceUrl) continue;
+          receiptId = String(existing[i][idColumn]);
+          duplicate = true;
+          return;'''
+          if text.count(old) != 1:
+              raise SystemExit(f'duplicate block matches={text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          old_return = '''  return json_({ ok: true, id: receiptId, status: "pending", duplicate: duplicate });
+}'''
+          new_return = '''  const notifyResult = duplicate
+    ? { notified: false }
+    : notifyDiscordWeatherPending_({
+        id: receiptId,
+        date: date,
+        startSlot: startSlot,
+        slots: slots,
+        sourceUrl: sourceUrl
+      });
+  const response = {
+    ok: true,
+    id: receiptId,
+    status: "pending",
+    duplicate: duplicate,
+    discordNotified: Boolean(notifyResult.notified)
+  };
+  if (notifyResult.warning) response.discordWarning = notifyResult.warning;
+  return json_(response);
+}'''
+          if text.count(old_return) != 1:
+              raise SystemExit(f'submit return matches={text.count(old_return)}')
+          text = text.replace(old_return, new_return, 1)
+
+          marker = 'function notifyDiscordGiftCode_(item) {'
+          if text.count(marker) != 1:
+              raise SystemExit(f'Discord gift notifier marker matches={text.count(marker)}')
+          weather_notifier = '''function notifyDiscordWeatherPending_(item) {
+  const webhookUrl = PropertiesService.getScriptProperties().getProperty(DISCORD_WEBHOOK_URL_PROPERTY);
+  if (!webhookUrl) return { notified: false };
+
+  try {
+    const weatherSummary = ["slot0", "slot1", "slot2", "slot3", "slot4"].map(function(key) {
+      const values = item.slots && item.slots[key] ? item.slots[key] : [];
+      return values.length ? values.join("・") : "-";
+    }).join(" / ");
+    const lines = [
+      "🌤️ 天気の承認待ちがあります",
+      "",
+      "日付：" + sanitizeDiscordText_(item.date),
+      "開始：" + sanitizeDiscordText_(item.startSlot),
+      "天気：" + sanitizeDiscordText_(weatherSummary)
+    ];
+    if (item.sourceUrl) lines.push("", "元情報：" + sanitizeDiscordUrl_(item.sourceUrl));
+    lines.push("", "管理画面：", HEARTOPIA_DAILY_URL + "?admin=1");
+
+    const response = UrlFetchApp.fetch(webhookUrl, {
+      method: "post",
+      contentType: "application/json",
+      muteHttpExceptions: true,
+      payload: JSON.stringify({
+        content: lines.join("\\n"),
+        allowed_mentions: { parse: [] }
+      })
+    });
+    const code = response.getResponseCode();
+    if (code < 200 || code >= 300) {
+      return { notified: false, warning: "Discord天気通知に失敗しました" };
+    }
+    return { notified: true };
+  } catch (error) {
+    return { notified: false, warning: "Discord天気通知に失敗しました" };
+  }
+}
+
+'''
+          text = text.replace(marker, weather_notifier + marker, 1)
+          p.write_text(text, encoding='utf-8')
+
+          assert '(existingStatus !== "pending" && existingStatus !== "approved")' in text
+          assert 'notifyDiscordWeatherPending_' in text
+          assert '🌤️ 天気の承認待ちがあります' in text
+      - name: Show focused diff
+        run: git diff --check && git diff -- apps-script/weather-api.gs
+      - name: Commit Apps Script patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps-script/weather-api.gs
+          git commit -m "Harden weather pending operations"
+          git push origin HEAD:feature/weather-ops-hardening
