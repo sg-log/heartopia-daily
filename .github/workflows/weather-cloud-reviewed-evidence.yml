@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       review_payload_base64:
-        description: Base64 UTF-8 Work review envelope bound to one evidence artifact
+        description: Base64 UTF-8 review envelope bound to one evidence artifact
         required: true
         type: string
       submit_pending:
@@ -15,7 +15,7 @@ on:
   workflow_call:
     inputs:
       review_payload_base64:
-        description: Validated Base64 UTF-8 Work review envelope
+        description: Validated Base64 UTF-8 review envelope
         required: true
         type: string
       submit_pending:
@@ -51,7 +51,7 @@ on:
       result_artifact_id:
         value: ${{ jobs.validate.outputs.result_artifact_id }}
       result_artifact_name:
-        value: ${{ jobs.validate.outputs.result_artifact_name }}
+        value: weather-reviewed-result-${{ github.run_id }}
 
 permissions:
   actions: read
@@ -94,15 +94,16 @@ jobs:
         shell: pwsh
         run: |
           ./tools/test-weather-work-review.ps1
+          ./tools/test-weather-artifact-review.ps1
           ./tools/test-weather-cloud-submit.ps1
 
-      - name: Validate Work review envelope
+      - name: Validate review envelope
         id: review
         shell: pwsh
         env:
           REVIEW_PAYLOAD_BASE64: ${{ inputs.review_payload_base64 }}
         run: >-
-          ./tools/weather-work-review-request.ps1
+          ./tools/weather-review-request.ps1
           -ReviewPayloadBase64 "$env:REVIEW_PAYLOAD_BASE64"
           -ReviewPath "$env:RUNNER_TEMP/weather-work-review.json"
 
@@ -121,7 +122,7 @@ jobs:
               artifact_id: artifactId
             })
             if (data.expired || data.id !== artifactId || data.name !== process.env.ARTIFACT_NAME || data.workflow_run?.id !== runId) {
-              core.setFailed('Work review artifact identifiers do not resolve to the same immutable artifact.')
+              core.setFailed('Review artifact identifiers do not resolve to the same immutable artifact.')
             }
 
       - name: Download the exact reviewed artifact
@@ -147,7 +148,7 @@ jobs:
         id: bridge
         shell: pwsh
         run: >-
-          ./tools/weather-work-review-bridge.ps1
+          ./tools/weather-review-bridge.ps1
           -ReviewPath "$env:RUNNER_TEMP/weather-work-review.json"
           -ArtifactDirectory "$env:RUNNER_TEMP/weather-reviewed-evidence"
           -DownloadedArtifactId "${{ steps.review.outputs.artifact_id }}"
