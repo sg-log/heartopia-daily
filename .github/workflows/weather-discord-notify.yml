@@ -1,6 +1,10 @@
 name: Weather Discord notifications
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/weather-discord-notify.yml
   issues:
     types: [closed]
   workflow_run:
@@ -17,6 +21,21 @@ env:
   WEATHER_DC_WEBHOOK_URL: ${{ secrets.WEATHER_DC_WEBHOOK_URL }}
 
 jobs:
+  notify_smoke_test:
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[weather-discord-smoke]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Send one-time Discord smoke test
+        if: ${{ env.WEATHER_DC_WEBHOOK_URL != '' }}
+        shell: pwsh
+        run: |
+          $payload = @{
+            content = "✅ Heartopia天気のDiscord通知テストOK"
+            allowed_mentions = @{ parse = @() }
+          } | ConvertTo-Json -Depth 5 -Compress
+          Invoke-RestMethod -Method Post -Uri $env:WEATHER_DC_WEBHOOK_URL -ContentType 'application/json' -Body $payload | Out-Null
+
   notify_pending_or_empty:
     if: ${{ github.event_name == 'issues' && github.event.issue.user.login == 'sg-log' }}
     runs-on: ubuntu-latest
