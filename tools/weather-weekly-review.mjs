@@ -35,7 +35,7 @@ export function validateWeeklyReviewRecord(record) {
     if (typeof record.artifact[key] !== 'string' || !record.artifact[key].trim()) throw new Error(`artifact.${key} is required.`);
   }
   if (!/^\d+$/.test(record.artifact.runId) || !/^\d+$/.test(record.artifact.id)) throw new Error('Artifact identifiers must be numeric strings.');
-  if (!/^heartopia-weather-[A-Za-z0-9._-]+$/.test(record.artifact.name)) throw new Error('Unexpected artifact name.');
+  if (!/^weather-[A-Za-z0-9._-]+-evidence-\d+$/.test(record.artifact.name)) throw new Error('Unexpected artifact name.');
 
   const selected = record.selectedReviewImage;
   exactKeys(selected, ['file','mimeType','captureSha256','reviewStoredSha256','reviewUrl','expiresAt'], 'selectedReviewImage');
@@ -43,7 +43,8 @@ export function validateWeeklyReviewRecord(record) {
   if (!['image/jpeg','image/png'].includes(selected.mimeType)) throw new Error('Unsupported review image MIME type.');
   if (!/^[a-f0-9]{64}$/.test(selected.captureSha256) || selected.reviewStoredSha256 !== selected.captureSha256) throw new Error('Review image SHA-256 binding is invalid.');
   if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/(?:exec|dev)\?reviewToken=[A-Za-z0-9_-]{43}$/.test(selected.reviewUrl)) throw new Error('Private review URL is invalid.');
-  if (!/^20\d{2}-\d{2}-\d{2}T/.test(selected.expiresAt)) throw new Error('Review URL expiry is invalid.');
+  if (!/^20\d{2}-\d{2}-\d{2}T/.test(selected.expiresAt) || !Number.isFinite(Date.parse(selected.expiresAt))) throw new Error('Review URL expiry is invalid.');
+  if (Date.parse(selected.expiresAt) <= Date.now()) throw new Error('Private review URL has expired.');
 
   const interpretation = record.interpretation;
   exactKeys(interpretation, ['ready','baseDate','days','confidence','summary','unresolved'], 'interpretation');
