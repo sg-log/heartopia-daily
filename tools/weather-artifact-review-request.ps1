@@ -1,4 +1,4 @@
-﻿param(
+param(
     [Parameter(Mandatory)] [string] $ReviewPayloadBase64,
     [Parameter(Mandatory)] [string] $ReviewPath
 )
@@ -54,7 +54,7 @@ foreach ($image in @($review.reviewedImages)) {
     $file = [string]$image.file
     $mimeType = [string]$image.mimeType
     $sha256 = [string]$image.captureSha256
-    if ($file -notmatch '^raw-media-[0-3]\.(?:jpg|png)$' -or
+    if ($file -notmatch '^(?:raw-media-[0-3]\.(?:jpg|png)|evidence\.jpg)$' -or
         $mimeType -notin @('image/jpeg','image/png') -or
         ($mimeType -ceq 'image/jpeg' -and $file -notmatch '\.jpg$') -or
         ($mimeType -ceq 'image/png' -and $file -notmatch '\.png$') -or
@@ -64,7 +64,7 @@ foreach ($image in @($review.reviewedImages)) {
     }
     if ($file -ceq [string]$review.pendingEvidenceFile) { $pendingEvidence = $image }
 }
-if ([string]$review.pendingEvidenceFile -notmatch '^raw-media-[0-3]\.(?:jpg|png)$' -or $null -eq $pendingEvidence) {
+if ([string]$review.pendingEvidenceFile -notmatch '^(?:raw-media-[0-3]\.(?:jpg|png)|evidence\.jpg)$' -or $null -eq $pendingEvidence) {
     throw 'Invalid artifact review pending evidence selection.'
 }
 
