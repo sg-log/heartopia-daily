@@ -14,7 +14,7 @@ permissions:
   issues: read
 
 env:
-  WEATHER_DISCORD_WEBHOOK_URL: ${{ secrets.WEATHER_DISCORD_WEBHOOK_URL }}
+  WEATHER_DC_WEBHOOK_URL: ${{ secrets.WEATHER_DC_WEBHOOK_URL }}
 
 jobs:
   notify_pending_or_empty:
@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 2
     steps:
       - name: Notify private Discord when attention is needed
-        if: ${{ env.WEATHER_DISCORD_WEBHOOK_URL != '' }}
+        if: ${{ env.WEATHER_DC_WEBHOOK_URL != '' }}
         shell: pwsh
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
@@ -50,7 +50,7 @@ jobs:
             content = $message
             allowed_mentions = @{ parse = @() }
           } | ConvertTo-Json -Depth 5 -Compress
-          Invoke-RestMethod -Method Post -Uri $env:WEATHER_DISCORD_WEBHOOK_URL -ContentType 'application/json' -Body $payload | Out-Null
+          Invoke-RestMethod -Method Post -Uri $env:WEATHER_DC_WEBHOOK_URL -ContentType 'application/json' -Body $payload | Out-Null
 
   notify_workflow_failure:
     if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure' }}
@@ -58,7 +58,7 @@ jobs:
     timeout-minutes: 2
     steps:
       - name: Notify private Discord about automation failure
-        if: ${{ env.WEATHER_DISCORD_WEBHOOK_URL != '' }}
+        if: ${{ env.WEATHER_DC_WEBHOOK_URL != '' }}
         shell: pwsh
         env:
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
@@ -68,4 +68,4 @@ jobs:
             content = "⚠️ Heartopia天気自動化でエラーが出たよ。`n$env:WORKFLOW_NAME`n$env:RUN_URL"
             allowed_mentions = @{ parse = @() }
           } | ConvertTo-Json -Depth 5 -Compress
-          Invoke-RestMethod -Method Post -Uri $env:WEATHER_DISCORD_WEBHOOK_URL -ContentType 'application/json' -Body $payload | Out-Null
+          Invoke-RestMethod -Method Post -Uri $env:WEATHER_DC_WEBHOOK_URL -ContentType 'application/json' -Body $payload | Out-Null
