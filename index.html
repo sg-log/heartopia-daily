@@ -968,6 +968,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
 }
 
 .pendingWeatherCard{border:1px solid #ddd;border-radius:12px;padding:16px;margin:12px 0}
+.pendingWeatherCard.pendingWeatherTarget{outline:3px solid rgba(124,145,137,.38);outline-offset:3px;background:#f7fbf8;box-shadow:0 0 0 7px rgba(124,145,137,.08)}
 .pendingWeatherSlots{display:flex;flex-wrap:wrap;gap:14px;margin:14px 0}
 .pendingWeatherMemo{white-space:pre-wrap;overflow-wrap:anywhere}
 .pendingWeatherEvidenceStatus{color:var(--muted);margin:10px 0}
@@ -5404,7 +5405,7 @@ function pendingWeatherCard(r){
   const reportDate = normalizeApiDate(r.date);
   const source = pendingWeatherEvidenceUrl(r.sourceUrl);
   const images = Array.isArray(r.sourceImageUrls) ? [...new Set(r.sourceImageUrls.map(url => pendingWeatherEvidenceUrl(url, true)).filter(Boolean))].slice(0, 8) : [];
-  return `<article class="pendingWeatherCard"><strong>${esc(reportDate)} ／ ${esc(startSlot)}時開始</strong>
+  return `<article class="pendingWeatherCard" id="pending-weather-${esc(r.id)}" data-pending-weather-id="${esc(r.id)}"><strong>${esc(reportDate)} ／ ${esc(startSlot)}時開始</strong>
     <div class="pendingWeatherSlots">${WEATHER_SLOT_KEYS.map(key => `<div><strong>${esc(slotLabel(key, startSlot))}</strong><br>${esc(weatherText(slots[key], key, startSlot, "未入力"))}</div>`).join("")}</div>
     ${r.evidenceStatus === 'saved' && r.evidenceImages?.length ? `<div class="pendingWeatherImages" data-weather-evidence="${esc(r.id)}" data-evidence-display><p class="pendingWeatherEvidenceStatus">証拠画像を読み込み待ち…</p></div>` : '<p>保存済み証拠画像なし</p>'}
     ${source ? `<a class="pendingWeatherSourceLink" href="${esc(source)}" target="_blank" rel="noopener noreferrer">元投稿を開く</a>` : "<p>元投稿URLなし</p>"}
@@ -5416,6 +5417,24 @@ function pendingWeatherCard(r){
       <div class="pendingWeatherImages">${images.length ? images.map((url, i) => `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer"><img src="${esc(url)}" alt="元画像 ${i + 1}" loading="lazy" referrerpolicy="no-referrer"><span>元画像${i + 1}を拡大</span></a>`).join("") : "<p>元画像情報なし</p>"}</div>
       ${images.length ? "<small>表示できない画像は、元投稿から確認してください。</small>" : ""}
     </div></details></article>`;
+}
+
+function pendingWeatherDeepLinkId(){
+  const value = new URLSearchParams(window.location.search).get("pending") || "";
+  return /^[A-Za-z0-9-]{1,100}$/.test(value) ? value : "";
+}
+function focusPendingWeatherDeepLink(){
+  const id = pendingWeatherDeepLinkId();
+  const card = id ? document.getElementById(`pending-weather-${id}`) : null;
+  const target = card || (window.location.hash === "#pendingWeatherReports" ? E.pendingWeatherReports : null);
+  if(!target) return;
+  requestAnimationFrame(() => {
+    target.scrollIntoView({behavior:"smooth", block:card ? "center" : "start"});
+    if(card){
+      card.classList.add("pendingWeatherTarget");
+      window.setTimeout(() => card.classList.remove("pendingWeatherTarget"), 5000);
+    }
+  });
 }
 
 async function fetchPendingWeatherReports(){
@@ -5433,6 +5452,7 @@ async function fetchPendingWeatherReports(){
     clearPendingEvidenceImages();
     E.pendingWeatherReports.innerHTML = reports.map(pendingWeatherCard).join("");
     observePendingEvidence();
+    focusPendingWeatherDeepLink();
     return reports;
   }catch(error){
     E.pendingWeatherStatus.textContent = `読み込めませんでした：${error.message}`;
@@ -5855,6 +5875,10 @@ function setAdminUnlocked(unlocked){
     if(E.adminGateStatus) E.adminGateStatus.textContent = "";
     fetchGiftCodes(true);
     fetchAccessStats();
+    if(pendingWeatherDeepLinkId() || window.location.hash === "#pendingWeatherReports"){
+      setAdminSubtab("daily");
+      fetchPendingWeatherReports();
+    }
   }
 }
 function setupAdminVisibility(){
