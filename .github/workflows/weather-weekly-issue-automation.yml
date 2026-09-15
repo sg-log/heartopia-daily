@@ -1,0 +1,129 @@
+name: Weather weekly review automation
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  weekly_review_to_pending:
+    if: ${{ github.event.issue.title == '[weather-weekly-review-result]' && github.event.issue.user.login == 'sg-log' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check out trusted repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Validate weekly visual review Issue
+        id: validate
+        run: node tools/weather-weekly-review.mjs "$GITHUB_EVENT_PATH" "$RUNNER_TEMP/weather-weekly-review.json"
+
+      - name: Verify artifact id, name, and run binding
+        uses: actions/github-script@v7
+        env:
+          ARTIFACT_RUN_ID: ${{ steps.validate.outputs.artifact_run_id }}
+          ARTIFACT_ID: ${{ steps.validate.outputs.artifact_id }}
+          ARTIFACT_NAME: ${{ steps.validate.outputs.artifact_name }}
+        with:
+          script: |
+            const runId = Number(process.env.ARTIFACT_RUN_ID)
+            const artifactId = Number(process.env.ARTIFACT_ID)
+            if (!Number.isSafeInteger(runId) || !Number.isSafeInteger(artifactId)) core.setFailed('Invalid artifact identifiers.')
+            const response = await github.rest.actions.listWorkflowRunArtifacts({ ...context.repo, run_id: runId, per_page: 100 })
+            const matches = response.data.artifacts.filter(a => a.id === artifactId && a.name === process.env.ARTIFACT_NAME && !a.expired)
+            if (matches.length !== 1) core.setFailed('Bound capture artifact is missing, expired, or mismatched.')
+
+      - name: Download bound capture artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.validate.outputs.artifact_name }}
+          path: ${{ runner.temp }}/weather-weekly-artifact
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.validate.outputs.artifact_run_id }}
+
+      - name: Re-verify reviewed image bytes and prepare seven-day candidate
+        id: prepare
+        run: >-
+          node tools/weather-weekly-pending.mjs
+          --review "$RUNNER_TEMP/weather-weekly-review.json"
+          --artifact-dir "$RUNNER_TEMP/weather-weekly-artifact"
+          --artifact-run-id "${{ steps.validate.outputs.artifact_run_id }}"
+          --artifact-id "${{ steps.validate.outputs.artifact_id }}"
+          --artifact-name "${{ steps.validate.outputs.artifact_name }}"
+          --output "$RUNNER_TEMP/weather-weekly-preview.json"
+
+      - name: Run weekly automation unit tests
+        run: node --test tools/test-weather-weekly.mjs
+
+      - name: Inherit approved hourly slots and submit weekly pending
+        id: submit
+        env:
+          WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
+          WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
+        run: >-
+          node tools/weather-weekly-submit.mjs
+          --preview "$RUNNER_TEMP/weather-weekly-preview.json"
+          --result "$RUNNER_TEMP/weather-weekly-result.json"
+          --index "index.html"
+
+      - name: Store pending receipt and close successful review Issue
+        uses: actions/github-script@v7
+        env:
+          ISSUE_NUMBER: ${{ steps.validate.outputs.issue_number }}
+          ARTIFACT_RUN_ID: ${{ steps.validate.outputs.artifact_run_id }}
+          ARTIFACT_ID: ${{ steps.validate.outputs.artifact_id }}
+          ARTIFACT_NAME: ${{ steps.validate.outputs.artifact_name }}
+          EVIDENCE_SHA256: ${{ steps.validate.outputs.evidence_sha256 }}
+          REPORT_ID: ${{ steps.submit.outputs.report_id }}
+          DUPLICATE: ${{ steps.submit.outputs.duplicate }}
+          BASE_DATE: ${{ steps.submit.outputs.base_date }}
+          CAPTURE_SHA256: ${{ steps.submit.outputs.capture_sha256 }}
+          REVIEW_STORAGE_SHA256: ${{ steps.submit.outputs.review_storage_sha256 }}
+          PENDING_EVIDENCE_SOURCE: ${{ steps.submit.outputs.pending_evidence_source }}
+          REVIEW_SCOPE: ${{ steps.submit.outputs.review_scope }}
+          SHA256_MATCH: ${{ steps.submit.outputs.sha256_match }}
+        with:
+          script: |
+            const record = {
+              schemaVersion: 1,
+              responseType: 'weather-pending-result',
+              forecastType: 'weekly',
+              requestIssue: Number(process.env.ISSUE_NUMBER),
+              status: 'pending',
+              reportId: process.env.REPORT_ID,
+              duplicate: process.env.DUPLICATE === 'true',
+              baseDate: process.env.BASE_DATE,
+              artifact: {
+                runId: process.env.ARTIFACT_RUN_ID,
+                id: process.env.ARTIFACT_ID,
+                name: process.env.ARTIFACT_NAME
+              },
+              evidenceSha256: process.env.EVIDENCE_SHA256,
+              verification: {
+                captureArtifactSha256: process.env.CAPTURE_SHA256,
+                reviewStorageSha256: process.env.REVIEW_STORAGE_SHA256,
+                sha256Match: process.env.SHA256_MATCH === 'true',
+                pendingEvidenceSource: process.env.PENDING_EVIDENCE_SOURCE,
+                workVisualReviewScope: process.env.REVIEW_SCOPE,
+                workDisplayBytesCryptographicallyVerified: false
+              }
+            }
+            await github.rest.issues.update({
+              ...context.repo,
+              issue_number: record.requestIssue,
+              body: `<!-- heartopia-weather-pending-v1 -->\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\``,
+              state: 'closed',
+              state_reason: 'completed'
+            })
