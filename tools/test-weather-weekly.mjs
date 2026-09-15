@@ -11,11 +11,11 @@ import { chooseApprovedBaseline, buildWeeklySubmitPayload, reportMatchesPayload 
 function reviewFixture(sha) {
   return {
     schemaVersion:1, responseType:'weather-weekly-review',
-    artifact:{runId:'123',id:'456',name:'heartopia-weather-evidence-123'},
+    artifact:{runId:'123',id:'456',name:'weather-x-embed-evidence-123'},
     selectedReviewImage:{
       file:'raw-media-0.jpg', mimeType:'image/jpeg', captureSha256:sha, reviewStoredSha256:sha,
       reviewUrl:`https://script.google.com/macros/s/${'a'.repeat(43)}/exec?reviewToken=${'b'.repeat(43)}`,
-      expiresAt:'2026-09-16T12:00:00Z'
+      expiresAt:'2099-09-16T12:00:00Z'
     },
     interpretation:{
       ready:true, baseDate:'2026-09-16', confidence:'high', summary:'翌日から7日後まで全枠を画像で確認。', unresolved:[],
