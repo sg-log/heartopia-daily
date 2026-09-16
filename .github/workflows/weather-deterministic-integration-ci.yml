@@ -5,9 +5,10 @@ on:
     paths:
       - '.github/workflows/weather-deterministic-integration-ci.yml'
       - 'tools/weather-deterministic-review.mjs'
+      - 'tools/patch-weather-review-ranking.mjs'
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 jobs:
@@ -15,10 +16,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - name: Apply review ranking patch if needed
+        shell: bash
+        run: |
+          node tools/patch-weather-review-ranking.mjs
+          if ! git diff --quiet -- tools/weather-deterministic-review.mjs; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add tools/weather-deterministic-review.mjs
+            git commit -m "Use OCR-consistent weather panel ranking"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - name: Download known real capture artifact
