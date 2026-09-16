@@ -18,6 +18,11 @@ on:
           - morning
           - evening
         default: auto
+      target_date:
+        description: 'JST target date (YYYY-MM-DD); blank means today'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -58,6 +63,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           EVENT_SCHEDULE: ${{ github.event.schedule }}
           MANUAL_SLOT: ${{ inputs.slot }}
+          MANUAL_TARGET_DATE: ${{ inputs.target_date }}
         run: |
           $now = [DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(9))
           $targetDate = $now.ToString('yyyy-MM-dd')
@@ -78,6 +84,12 @@ jobs:
               $slot = if ($now.Hour -lt 13) { 'morning' } else { 'evening' }
             }
             if ($slot -notin @('morning','evening')) { throw 'Invalid manual slot.' }
+            $manualTargetDate = [string]$env:MANUAL_TARGET_DATE
+            if (-not [string]::IsNullOrWhiteSpace($manualTargetDate)) {
+              try { [void][datetime]::ParseExact($manualTargetDate, 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture) }
+              catch { throw 'Invalid manual target date.' }
+              $targetDate = $manualTargetDate
+            }
           }
 
           "target_date=$targetDate" >> $env:GITHUB_OUTPUT

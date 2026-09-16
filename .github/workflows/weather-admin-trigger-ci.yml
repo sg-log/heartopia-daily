@@ -1,0 +1,24 @@
+name: Weather admin trigger CI
+
+on:
+  pull_request:
+    paths:
+      - 'index.html'
+      - 'apps-script/weather-api.gs'
+      - '.github/workflows/weather-scheduled-run.yml'
+      - 'tools/test-weather-admin-trigger.mjs'
+      - 'tools/README-weather-admin-trigger.md'
+      - '.github/workflows/weather-admin-trigger-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test tools/test-weather-admin-trigger.mjs

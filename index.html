@@ -1237,6 +1237,23 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
 
         <div class="adminTabPanel active" data-admin-panel="daily" role="tabpanel">
           <div class="card s12">
+            <h2>天気自動更新</h2>
+            <p class="small">ネット上の最新候補を探す自動更新を手動で起動します。同じ対象日・同じ便が成功済みなら重複実行しません。</p>
+            <div class="row">
+              <div><label for="weatherAutomationDate">対象日</label><input id="weatherAutomationDate" type="date"></div>
+              <div>
+                <label for="weatherAutomationSlot">便</label>
+                <select id="weatherAutomationSlot">
+                  <option value="morning">朝便</option>
+                  <option value="evening">夜便</option>
+                </select>
+              </div>
+            </div>
+            <div class="buttons"><button type="button" id="runWeatherAutomationBtn">今すぐ実行</button></div>
+            <div id="weatherAutomationStatus" class="status"></div>
+          </div>
+
+          <div class="card s12">
             <h2>天気を登録</h2>
             <div class="quickWeatherTools">
               <div class="quickWeatherDate"><label for="quickWeatherDate">日付</label><input id="quickWeatherDate" type="date"></div>
@@ -2783,6 +2800,7 @@ const ids = [
   "adminWeatherDate","adminStartSlot","adminWeatherMemo","adminWeatherChips","adminWeekChips","adminSaveWeatherAdminKey","saveAdminWeatherBtn","adminWeatherStatus",
   "approvedWeatherDate","loadApprovedWeatherBtn","approvedStartSlot","approvedWeatherMemo","approvedWeatherChips","approvedWeekChips","approvedWeatherAdminKey","saveApprovedWeatherBtn","approvedWeatherStatus",
   "quickWeatherDate","quickWeatherStartSlot","quickWeatherTodayBtn","quickWeatherTomorrowBtn","weatherScreenshotTopInput","weatherScreenshotTopDrop","weatherScreenshotTopPreview","clearWeatherScreenshotTopBtn","weatherScreenshotBottomInput","weatherScreenshotBottomDrop","weatherScreenshotBottomPreview","clearWeatherScreenshotBottomBtn","analyzeWeatherScreenshotBtn","weatherScreenshotStatus","weatherScreenshotConfirm","quickWeatherChips","quickWeekChips","quickWeatherAdminKey","saveQuickWeatherBtn","quickWeatherStatus",
+  "weatherAutomationDate","weatherAutomationSlot","runWeatherAutomationBtn","weatherAutomationStatus",
   "weatherAdminKey","refreshPendingWeatherBtn","pendingWeatherStatus","pendingWeatherReports",
   "quickGiftUrlInput","quickGiftAdminKey","loadQuickGiftUrlBtn","quickGiftTextInput","quickGiftImageInput","quickGiftDrop","quickGiftPreview","draftQuickGiftBtn","ocrQuickGiftBtn","clearQuickGiftBtn","quickGiftStatus","quickGiftOcrText","quickGiftConfirm",
   "quickGiftCodeConfirm","quickGiftCodeCandidateSelect","quickGiftRewardConfirm","quickGiftExpiresConfirm","quickGiftSourceConfirm","quickGiftMemoConfirm","quickGiftStatusConfirm","saveQuickGiftBtn",
@@ -5445,6 +5463,53 @@ function focusPendingWeatherDeepLink(){
   });
 }
 
+function jstHourValue(date = new Date()){
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone:"Asia/Tokyo",
+    hour:"2-digit",
+    hour12:false
+  }).formatToParts(date);
+  return Number(parts.find(part => part.type === "hour")?.value || 0);
+}
+
+async function runWeatherAutomation(){
+  if(!WEATHER_API_URL){
+    E.weatherAutomationStatus.textContent = "天気自動更新APIは未設定です。";
+    return;
+  }
+  if(!adminKeyValue()){
+    E.weatherAutomationStatus.textContent = "管理キーを入力してください。";
+    return;
+  }
+  const targetDate = normalizeApiDate(E.weatherAutomationDate.value);
+  const slot = E.weatherAutomationSlot.value;
+  if(!/^20\d{2}-\d{2}-\d{2}$/.test(targetDate)){
+    E.weatherAutomationStatus.textContent = "対象日を入力してください。";
+    return;
+  }
+  if(!["morning","evening"].includes(slot)){
+    E.weatherAutomationStatus.textContent = "朝便か夜便を選んでください。";
+    return;
+  }
+  E.runWeatherAutomationBtn.disabled = true;
+  E.weatherAutomationStatus.textContent = "自動更新の起動要求を送っています…";
+  try{
+    const result = await apiPost({
+      action:"requestWeatherAutomation",
+      adminKey:adminKeyValue(),
+      targetDate,
+      slot
+    });
+    if(result.ok === false) throw new Error(result.error || "起動できませんでした");
+    E.weatherAutomationStatus.textContent = targetDate + " " + (slot === "morning" ? "朝便" : "夜便") + "を起動しました。結果はDiscordまたは未承認の天気報告で確認できます。";
+    toast("天気自動更新を起動しました");
+  }catch(error){
+    E.weatherAutomationStatus.textContent = "起動できませんでした：" + error.message;
+  }finally{
+    E.runWeatherAutomationBtn.disabled = false;
+  }
+}
+
 async function fetchPendingWeatherReports(){
   if(!WEATHER_API_URL){
     E.pendingWeatherStatus.textContent = "天気報告APIは未設定です。";
@@ -5959,6 +6024,8 @@ function init(){
   E.adminWeatherDate.value = E.targetDate.value;
   E.approvedWeatherDate.value = E.targetDate.value;
   E.quickWeatherDate.value = E.targetDate.value;
+  E.weatherAutomationDate.value = jstDateValue();
+  E.weatherAutomationSlot.value = jstHourValue() < 13 ? "morning" : "evening";
   E.correctionDate.value = E.targetDate.value;
   E.reportStartSlot.value = currentStartSlot();
   E.adminStartSlot.value = currentStartSlot();
@@ -6286,6 +6353,7 @@ function init(){
     markWeatherScreenshotCandidatesStale();
   };
   E.saveQuickWeatherBtn.onclick = saveQuickWeather;
+  E.runWeatherAutomationBtn.onclick = runWeatherAutomation;
 
   E.refreshPendingWeatherBtn.onclick = fetchPendingWeatherReports;
   E.pendingWeatherReports.onclick = event => {
