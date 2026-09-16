@@ -45,14 +45,8 @@ export function isPublicIpAddress(value) {
 
 export function validateSourceUrl(value) {
   let url;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new WeatherCloudError("invalidUrl");
-  }
-  if (url.protocol !== "https:" || url.username || url.password || url.port) {
-    throw new WeatherCloudError("invalidUrl");
-  }
+  try { url = new URL(value); } catch { throw new WeatherCloudError("invalidUrl"); }
+  if (url.protocol !== "https:" || url.username || url.password || url.port) throw new WeatherCloudError("invalidUrl");
   const hostname = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
   if (!hostname.includes(".") || hostname === "localhost" || hostname.endsWith(".localhost") ||
       hostname.endsWith(".local") || hostname.endsWith(".internal") || isIP(hostname)) {
@@ -64,24 +58,15 @@ export function validateSourceUrl(value) {
 
 export async function assertPublicHostname(hostname, resolver = lookup) {
   const clean = String(hostname).replace(/^\[|\]$/g, "").toLowerCase();
-  if (!clean.includes(".") || clean.endsWith(".local") || clean.endsWith(".internal") || isIP(clean)) {
-    throw new WeatherCloudError("nonPublicHost");
-  }
+  if (!clean.includes(".") || clean.endsWith(".local") || clean.endsWith(".internal") || isIP(clean)) throw new WeatherCloudError("nonPublicHost");
   let addresses;
-  try {
-    addresses = await resolver(clean, { all: true, verbatim: true });
-  } catch {
-    throw new WeatherCloudError("dnsLookupFailed");
-  }
-  if (!addresses.length || addresses.some(({ address }) => !isPublicIpAddress(address))) {
-    throw new WeatherCloudError("nonPublicHost");
-  }
+  try { addresses = await resolver(clean, { all: true, verbatim: true }); } catch { throw new WeatherCloudError("dnsLookupFailed"); }
+  if (!addresses.length || addresses.some(({ address }) => !isPublicIpAddress(address))) throw new WeatherCloudError("nonPublicHost");
 }
 
 export function rankEvidenceImages(images) {
   return images
-    .filter((image) => image.visible && image.width >= 280 && image.height >= 160 &&
-      image.naturalWidth >= 300 && image.naturalHeight >= 180)
+    .filter((image) => image.visible && image.width >= 280 && image.height >= 160 && image.naturalWidth >= 300 && image.naturalHeight >= 180)
     .map((image) => {
       const label = String(image.alt || "").toLowerCase();
       const decorativePenalty = /(avatar|profile|emoji|icon|logo|アバター|プロフィール)/.test(label) ? 1_000_000 : 0;
@@ -93,13 +78,9 @@ export function rankEvidenceImages(images) {
 
 export function detectAccessBarrier({ finalUrl = "", title = "", bodyText = "" }) {
   const combined = `${title}\n${bodyText}`.toLowerCase();
-  const pathName = (() => {
-    try { return new URL(finalUrl).pathname.toLowerCase(); } catch { return ""; }
-  })();
+  const pathName = (() => { try { return new URL(finalUrl).pathname.toLowerCase(); } catch { return ""; } })();
   if (/(^|\/)(login|signin|challenge|checkpoint|account)(\/|$)/.test(pathName)) return "loginWall";
-  if (/(captcha|verify you are human|checking your browser|ロボットではない|人間であることを確認)/i.test(combined)) {
-    return "challengeWall";
-  }
+  if (/(captcha|verify you are human|checking your browser|ロボットではない|人間であることを確認)/i.test(combined)) return "challengeWall";
   return "";
 }
 
@@ -125,6 +106,7 @@ async function captureEvidence({ sourceUrl, outputDir }) {
   await mkdir(outputDir, { recursive: true });
   const directPagePath = path.join(outputDir, "direct-page.png");
   const evidencePath = path.join(outputDir, "evidence.jpg");
+  const contentPath = path.join(outputDir, "post-content.txt");
   const reportPath = path.join(outputDir, "capture.json");
   const capturedAt = new Date().toISOString();
   const checkedHosts = new Map();
@@ -181,6 +163,7 @@ async function captureEvidence({ sourceUrl, outputDir }) {
     const barrier = detectAccessBarrier({ finalUrl, title, bodyText: bodyText.slice(0, 12_000) });
     if (barrier) throw new WeatherCloudError(barrier);
 
+    await writeFile(contentPath, `${bodyText.trim()}\n`, { encoding: "utf8", flag: "wx" });
     await page.screenshot({ path: directPagePath, fullPage: false, animations: "disabled" });
     const images = await page.locator("img").evaluateAll((nodes) => nodes.map((node, index) => {
       const rect = node.getBoundingClientRect();
@@ -208,20 +191,31 @@ async function captureEvidence({ sourceUrl, outputDir }) {
       evidenceSize = (await stat(evidencePath)).size;
     }
     if (evidenceSize > MAX_EVIDENCE_BYTES) throw new WeatherCloudError("evidenceTooLarge");
+    const evidenceSha256 = await sha256File(evidencePath);
 
     const report = {
       status: "captured",
+      adapter: "public-url",
       sourceUrl: sourceUrl.href,
       finalUrl,
+      sourceType: "web",
       title,
       httpStatus,
       capturedAt,
+      postContent: { file: "post-content.txt" },
       directPage: { file: "direct-page.png" },
+      rawMedia: [{
+        url: finalUrl,
+        file: "evidence.jpg",
+        mimeType: "image/jpeg",
+        byteSize: evidenceSize,
+        sha256: evidenceSha256
+      }],
       evidence: {
         file: "evidence.jpg",
         mimeType: "image/jpeg",
         byteSize: evidenceSize,
-        sha256: await sha256File(evidencePath),
+        sha256: evidenceSha256,
         kind: "screenshot",
         capturedAt,
         renderedWidth: selected.width,
@@ -235,7 +229,7 @@ async function captureEvidence({ sourceUrl, outputDir }) {
   } catch (error) {
     await page.screenshot({ path: directPagePath, fullPage: false, animations: "disabled" }).catch(() => {});
     const code = error instanceof WeatherCloudError ? error.code : "captureFailed";
-    const report = { status: "failed", sourceUrl: sourceUrl.href, finalUrl, title, httpStatus, capturedAt, failureCode: code };
+    const report = { status: "failed", sourceUrl: sourceUrl.href, finalUrl, sourceType: "web", title, httpStatus, capturedAt, failureCode: code };
     await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8").catch(() => {});
     throw new WeatherCloudError(code);
   } finally {
@@ -244,8 +238,7 @@ async function captureEvidence({ sourceUrl, outputDir }) {
 }
 
 export async function main(argv = process.argv.slice(2)) {
-  const options = parseArguments(argv);
-  await captureEvidence(options);
+  await captureEvidence(parseArguments(argv));
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : "";
