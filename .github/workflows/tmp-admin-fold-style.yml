@@ -20,6 +20,18 @@ jobs:
           node-version: '20'
       - name: Refine admin folding UI
         run: node tools/tmp-admin-fold-style-patch.mjs
+      - name: Repair folding test assertions
+        shell: bash
+        run: |
+          git checkout HEAD -- tools/test-weather-admin-trigger.mjs
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('tools/test-weather-admin-trigger.mjs')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('  assert.match(index, /id=["\']collapseAdminCardsBtn["\']/);\n', '  assert.match(index, /data-admin-collapse-all/);\n')
+          s = s.replace('  assert.match(index, /id=["\']expandAdminCardsBtn["\']/);\n', '  assert.match(index, /data-admin-expand-all/);\n')
+          p.write_text(s, encoding='utf-8')
+          PY
       - name: Validate admin trigger tests
         run: node --test tools/test-weather-admin-trigger.mjs
       - name: Commit refined UI
