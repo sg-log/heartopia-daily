@@ -212,32 +212,22 @@ async function scoreImage(page, imageDataUrl, templates) {
 
 async function readStartSlot(page, imageDataUrl, rect) {
   if (!(await page.evaluate(() => Boolean(window.Tesseract)))) await page.addScriptTag({ url: TESSERACT_URL });
-  return page.evaluate(async ({ imageDataUrl, rect, timeBands, startSlots }) => {
+  return page.evaluate(async ({ imageDataUrl, rect, slotRects, startSlots }) => {
+    const timeLabelCellsV3=true;
     const image = await new Promise((resolve, reject) => { const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=imageDataUrl; });
     const panel=document.createElement('canvas');panel.width=rect.w;panel.height=rect.h;panel.getContext('2d').drawImage(image,rect.x,rect.y,rect.w,rect.h,0,0,rect.w,rect.h);
-    const hourAt=(start,index)=>startSlots[(startSlots.indexOf(start)+index)%startSlots.length];
-    const parseTimes=(value)=>((String(value||'').match(/\d{1,2}/g)||[]).map(v=>String(Number(v)).padStart(2,'0').slice(-2))).filter(v=>startSlots.includes(v));
-    const evaluateTimes=(times)=>{
-      for(let offset=0;offset<times.length;offset++){
-        const sequence=times.slice(offset,offset+5);
-        if(sequence.length===5&&sequence.every((value,index)=>value===hourAt(sequence[0],index)))return{startSlot:sequence[0],valid:sequence,matches:5};
-      }
-      let best={startSlot:'',valid:[],matches:0};
-      for(let offset=0;offset<times.length;offset++){
-        const sequence=times.slice(offset,offset+5);
-        if(!sequence.length||!startSlots.includes(sequence[0]))continue;
-        const matches=sequence.filter((value,index)=>value===hourAt(sequence[0],index)).length;
-        if(matches>best.matches)best={startSlot:matches>=3?sequence[0]:'',valid:sequence,matches};
-      }
-      return best;
-    };
     const worker=await window.Tesseract.createWorker('eng',1,{logger:()=>{}});
-    await worker.setParameters({tessedit_char_whitelist:'0123456789',tessedit_pageseg_mode:'7',preserve_interword_spaces:'1'});
+    await worker.setParameters({tessedit_char_whitelist:'0123456789',tessedit_pageseg_mode:'8'});
+    const allowed=new Set(startSlots);
     const attempts=[];
+    const values=[];
     try {
-      for(const band of timeBands){
-        const x=Math.round(band.x*panel.width),y=Math.round(band.y*panel.height),w=Math.round(band.w*panel.width),h=Math.round(band.h*panel.height);
-        const base=document.createElement('canvas');base.width=Math.max(1,w*6);base.height=Math.max(1,h*6);
+      for(let index=0;index<slotRects.length;index++){
+        const cell=slotRects[index];
+        const center=(cell.x+cell.w/2)*panel.width;
+        const w=Math.round(.135*panel.width),h=Math.round(.090*panel.height);
+        const x=Math.max(0,Math.round(center-w/2)),y=Math.round(.485*panel.height);
+        const base=document.createElement('canvas');base.width=Math.max(1,w*8);base.height=Math.max(1,h*8);
         const bctx=base.getContext('2d',{willReadFrequently:true});bctx.imageSmoothingEnabled=true;bctx.imageSmoothingQuality='high';bctx.drawImage(panel,x,y,w,h,0,0,base.width,base.height);
         const variants=[base];
         const binary=document.createElement('canvas');binary.width=base.width;binary.height=base.height;
@@ -245,24 +235,30 @@ async function readStartSlot(page, imageDataUrl, rect) {
         const imageData=ctx.getImageData(0,0,binary.width,binary.height);
         for(let i=0;i<imageData.data.length;i+=4){
           const lum=.299*imageData.data[i]+.587*imageData.data[i+1]+.114*imageData.data[i+2];
-          const value=lum>=185?0:255;
+          const value=lum>=180?0:255;
           imageData.data[i]=value;imageData.data[i+1]=value;imageData.data[i+2]=value;imageData.data[i+3]=255;
         }
         ctx.putImageData(imageData,0,0);variants.push(binary);
+        let accepted='';
         for(let variantIndex=0;variantIndex<variants.length;variantIndex++){
           const result=await worker.recognize(variants[variantIndex]);
-          const text=String(result?.data?.text||'').trim();
-          const times=parseTimes(text);
-          const evaluated=evaluateTimes(times);
-          attempts.push({band,variantIndex,text,times,matches:evaluated.matches});
-          if(evaluated.matches===5)return{startSlot:evaluated.startSlot,times,valid:evaluated.valid,attempts};
+          const raw=String(result?.data?.text||'').trim();
+          const match=raw.match(/\d{1,2}/);
+          const value=match?String(Number(match[0])).padStart(2,'0').slice(-2):'';
+          attempts.push({index,variantIndex,raw,value});
+          if(allowed.has(value)){accepted=value;break;}
+        }
+        values.push(accepted);
+      }
+      if(values.length===5&&values.every(Boolean)){
+        const firstIndex=startSlots.indexOf(values[0]);
+        if(firstIndex>=0&&values.every((value,index)=>value===startSlots[(firstIndex+index)%startSlots.length])){
+          return{startSlot:values[0],times:values,valid:values,attempts};
         }
       }
-      const bestAttempt=[...attempts].sort((a,b)=>b.matches-a.matches)[0]||null;
-      if(bestAttempt?.matches>=3){const evaluated=evaluateTimes(bestAttempt.times);return{startSlot:evaluated.startSlot,times:bestAttempt.times,valid:evaluated.valid,attempts};}
-      return{startSlot:'',times:bestAttempt?.times||[],valid:[],attempts};
+      return{startSlot:'',times:values,valid:values.filter(Boolean),attempts};
     } finally { await worker.terminate(); }
-  }, { imageDataUrl, rect, timeBands: TIME_BANDS, startSlots: START_SLOTS });
+  }, { imageDataUrl, rect, slotRects: SLOT_RECTS, startSlots: START_SLOTS });
 }
 
 export async function inspectCapture({ captureDir, targetDate, repoRoot = path.resolve('.') }) {
@@ -297,7 +293,7 @@ export async function inspectCapture({ captureDir, targetDate, repoRoot = path.r
     const ocrAttempts = [];
     for (const candidate of panelCandidates.slice(0, 8)) {
       const ocr = await readStartSlot(page, candidate.imageDataUrl, candidate.panel.rect);
-      ocrAttempts.push({file:candidate.media.file,rect:candidate.panel.rect,geometryDistance:candidate.geometryDistance,highCount:candidate.panel.highCount,okCount:candidate.panel.okCount,ocr});
+      ocrAttempts.push({file:candidate.media.file,rect:candidate.panel.rect,geometryDistance:candidate.geometryDistance,highCount:candidate.panel.highCount,okCount:candidate.panel.okCount,slots:candidate.panel.slots,ocr});
       if (!ocr.startSlot) continue;
       if (!best || candidate.panel.highCount > best.panel.highCount ||
           (candidate.panel.highCount === best.panel.highCount && candidate.panel.minMargin > best.panel.minMargin) ||
