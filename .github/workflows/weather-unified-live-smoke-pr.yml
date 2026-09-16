@@ -1,0 +1,39 @@
+name: Weather unified live smoke PR
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unified-live-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Capture known live game weather post
+        env:
+          CAPTURE_DIR: ${{ runner.temp }}/weather-unified-live
+        run: node tools/weather-x-embed-evidence.mjs --url https://x.com/i/status/2099971105733927184 --output-dir "$CAPTURE_DIR"
+      - name: Inspect daily and weekly from the same public evidence
+        env:
+          CAPTURE_DIR: ${{ runner.temp }}/weather-unified-live
+          REVIEW_PATH: ${{ runner.temp }}/weather-unified-review.json
+        run: node tools/weather-unified-review.mjs --mode inspect --capture-dir "$CAPTURE_DIR" --target-date 2026-09-16 --output "$REVIEW_PATH"
+      - name: Upload smoke diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: weather-unified-live-smoke-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/weather-unified-live
+            ${{ runner.temp }}/weather-unified-review.json
+          if-no-files-found: warn
+          retention-days: 2
