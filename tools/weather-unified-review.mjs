@@ -12,7 +12,14 @@ const PANEL_VARIANTS = [
   { height: .92, aspect: .80, top: .04, right: .06 },
   { height: .96, aspect: .80, top: .02, right: .06 },
   { height: .94, aspect: .78, top: .03, right: .05 },
-  { height: .94, aspect: .82, top: .03, right: .07 }
+  { height: .94, aspect: .82, top: .03, right: .07 },
+  { height: .94, aspect: .80, top: .03, right: .50 },
+  { height: .94, aspect: .80, top: .03, right: .54 },
+  { height: .94, aspect: .80, top: .03, right: .58 },
+  { height: .92, aspect: .80, top: .04, right: .54 },
+  { height: .96, aspect: .80, top: .02, right: .54 },
+  { height: .94, aspect: .78, top: .03, right: .52 },
+  { height: .94, aspect: .82, top: .03, right: .56 }
 ];
 const WEEK_Y = [.594, .674, .754, .836, .916];
 const WEEK_X = .846;
@@ -257,7 +264,7 @@ async function inspectUnifiedCapture({ captureDir, targetDate, repoRoot }) {
           targetDate,
           selectedImage: { file: media.file, mimeType: media.mimeType, captureSha256: media.sha256 },
           interpretation,
-          diagnostics: { mode: 'unified-right-panel', selectedOriginal: media.file, selectedCrop: crop.rect, attempts: diagnostics }
+          diagnostics: { mode: 'unified-panel-search', selectedOriginal: media.file, selectedCrop: crop.rect, attempts: diagnostics }
         };
       }
     }
