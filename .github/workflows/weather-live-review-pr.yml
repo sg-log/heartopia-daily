@@ -4,9 +4,11 @@ on:
   pull_request:
     paths:
       - '.github/workflows/weather-live-review-pr.yml'
+      - '.github/workflows/weather-scheduled-run.yml'
       - 'tools/weather-public-discovery.mjs'
       - 'tools/test-weather-public-discovery.mjs'
       - 'tools/weather-x-embed-evidence.mjs'
+      - 'tools/weather-cloud-url-evidence.mjs'
       - 'tools/weather-deterministic-review.mjs'
       - 'assets/weather-templates/**'
 
@@ -29,7 +31,7 @@ jobs:
         env:
           RESULT_PATH: ${{ runner.temp }}/weather-public-discovery.json
         run: node tools/weather-public-discovery.mjs --target-date 2026-09-16 --out "$RESULT_PATH"
-      - name: Capture and inspect ranked X candidates
+      - name: Capture and inspect ranked public candidates
         shell: pwsh
         env:
           RESULT_PATH: ${{ runner.temp }}/weather-public-discovery.json
@@ -37,16 +39,24 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
           $result = Get-Content -LiteralPath $env:RESULT_PATH -Raw -Encoding UTF8 | ConvertFrom-Json
-          $candidates = @($result.candidates | Where-Object { $_.sourceType -eq 'x' } | Select-Object -First 8)
-          Write-Host ("Ranked X candidate count: " + $candidates.Count)
-          if ($candidates.Count -eq 0) { throw 'No relevant X candidates discovered.' }
+          $candidates = @($result.candidates | Select-Object -First 8)
+          Write-Host ("Ranked public candidate count: " + $candidates.Count)
+          if ($candidates.Count -eq 0) { throw 'No relevant public candidates discovered.' }
           $selected = $null
           for ($i = 0; $i -lt $candidates.Count; $i++) {
             $candidate = $candidates[$i]
-            Write-Host ("Candidate #" + $i + " " + [string]$candidate.sourceUrl + " score=" + [string]$candidate.relevanceScore + " dateMatched=" + [string]$candidate.dateMatched)
+            Write-Host ("Candidate #" + $i + " type=" + [string]$candidate.sourceType + " provider=" + [string]$candidate.discoverySource + " " + [string]$candidate.sourceUrl + " score=" + [string]$candidate.relevanceScore + " dateMatched=" + [string]$candidate.dateMatched)
             $dir = Join-Path $env:RUNNER_TEMP ("weather-live-candidate-" + $i)
+            if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
             New-Item -ItemType Directory -Path $dir -Force | Out-Null
-            & node tools/weather-x-embed-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
+            if ([string]$candidate.sourceType -eq 'x') {
+              & node tools/weather-x-embed-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
+            } elseif ([string]$candidate.sourceType -eq 'web') {
+              & node tools/weather-cloud-url-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
+            } else {
+              Write-Host 'Unsupported candidate type.'
+              continue
+            }
             if ($LASTEXITCODE -ne 0) {
               Write-Host 'Capture failed.'
               continue
@@ -65,7 +75,7 @@ jobs:
               break
             }
           }
-          if ($null -eq $selected) { throw 'No ranked candidate produced a complete high-confidence five-slot review.' }
+          if ($null -eq $selected) { throw 'No ranked public candidate produced a complete high-confidence five-slot review.' }
           Write-Host ("Selected source: " + [string]$selected.sourceUrl)
       - name: Upload live diagnostics
         if: ${{ always() }}
