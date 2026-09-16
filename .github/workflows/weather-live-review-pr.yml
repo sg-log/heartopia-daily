@@ -10,6 +10,8 @@ on:
       - 'tools/weather-x-embed-evidence.mjs'
       - 'tools/weather-cloud-url-evidence.mjs'
       - 'tools/weather-deterministic-review.mjs'
+      - 'tools/weather-unified-review.mjs'
+      - 'tools/test-weather-unified-review.mjs'
       - 'assets/weather-templates/**'
 
 permissions:
@@ -27,6 +29,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - name: Validate unified review helpers
+        run: node --test tools/test-weather-unified-review.mjs
       - name: Discover ranked candidates for 2026-09-16
         env:
           RESULT_PATH: ${{ runner.temp }}/weather-public-discovery.json
@@ -39,7 +43,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
           $result = Get-Content -LiteralPath $env:RESULT_PATH -Raw -Encoding UTF8 | ConvertFrom-Json
-          $candidates = @($result.candidates | Select-Object -First 8)
+          $candidates = @($result.candidates | Select-Object -First 16)
           Write-Host ("Ranked public candidate count: " + $candidates.Count)
           if ($candidates.Count -eq 0) { throw 'No relevant public candidates discovered.' }
           $selected = $null
@@ -62,11 +66,11 @@ jobs:
               continue
             }
             $review = Join-Path $dir 'review.json'
-            & node tools/weather-deterministic-review.mjs --mode inspect --capture-dir $dir --target-date 2026-09-16 --output $review
+            & node tools/weather-unified-review.mjs --mode inspect --capture-dir $dir --target-date 2026-09-16 --output $review
             if (Test-Path $review) {
               $reviewObject = Get-Content -LiteralPath $review -Raw -Encoding UTF8 | ConvertFrom-Json
-              Write-Host ("Review ready=" + [string]$reviewObject.ready)
-              Write-Host ("Review diagnostics=" + ($reviewObject.diagnostics | ConvertTo-Json -Depth 8 -Compress))
+              Write-Host ("Review ready=" + [string]$reviewObject.ready + " weeklyCount=" + [string]@($reviewObject.interpretation.weeklyDays).Count)
+              Write-Host ("Review diagnostics=" + ($reviewObject.diagnostics | ConvertTo-Json -Depth 9 -Compress))
             }
             if ($LASTEXITCODE -eq 0) {
               if (Test-Path $env:SELECTED_DIR) { Remove-Item -Recurse -Force $env:SELECTED_DIR }
@@ -75,7 +79,7 @@ jobs:
               break
             }
           }
-          if ($null -eq $selected) { throw 'No ranked public candidate produced a complete high-confidence five-slot review.' }
+          if ($null -eq $selected) { throw 'No ranked public candidate produced complete daily and weekly weather.' }
           Write-Host ("Selected source: " + [string]$selected.sourceUrl)
       - name: Upload live diagnostics
         if: ${{ always() }}
