@@ -202,8 +202,7 @@ jobs:
           ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
           ARTIFACT_NAME: weather-scheduled-evidence-${{ github.run_id }}
         run: >-
-          node tools/weather-unified-review.mjs
-          --mode bind
+          node tools/weather-unified-bind.mjs
           --draft "$env:REVIEW_DRAFT"
           --artifact-run-id "${{ github.run_id }}"
           --artifact-id "$env:ARTIFACT_ID"
@@ -241,13 +240,13 @@ jobs:
           WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
           WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
           RESULT_DIR: ${{ runner.temp }}/weather-reviewed-result
-          REVIEW_PATH: ${{ runner.temp }}/weather-artifact-review.json
+          REVIEW_ENVELOPE: ${{ runner.temp }}/weather-review-envelope.json
         run: >-
           ./tools/weather-cloud-submit-unified.ps1
           -CandidatePath "$env:RESULT_DIR/weather-candidate.json"
           -CapturePath "${{ steps.bridge.outputs.capture_path }}"
           -EvidencePath "${{ steps.bridge.outputs.evidence_path }}"
-          -ReviewPath "$env:REVIEW_PATH"
+          -ReviewPath "$env:REVIEW_ENVELOPE"
           -ResultPath "$env:RESULT_DIR/submit-result.json"
 
       - name: Finalize slot state
