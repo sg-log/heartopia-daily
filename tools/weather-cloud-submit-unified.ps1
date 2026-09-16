@@ -64,6 +64,24 @@ function Test-UnifiedReportMatch {
     (Test-UnifiedWeatherMatch $Report $Payload) -and [string]$Report.sourceUrl -ceq [string]$Payload.sourceUrl
 }
 
+function Invoke-UnifiedPrivateRead {
+    param(
+        [Parameter(Mandatory)] [string] $ApiUrl,
+        [Parameter(Mandatory)] [Security.SecureString] $AdminKey,
+        [Parameter(Mandatory)] [System.Collections.IDictionary] $Payload
+    )
+    $last = $null
+    foreach ($attempt in 1..2) {
+        $copy = [ordered]@{}
+        foreach ($key in $Payload.Keys) { $copy[$key] = $Payload[$key] }
+        $last = Invoke-WeatherPrivateApiRequest -ApiUrl $ApiUrl -AdminKey $AdminKey -Payload $copy
+        if (-not $last.diagnostic.failureCode) { return $last }
+        if ([string]$last.diagnostic.failureCode -cne 'networkError' -or $attempt -eq 2) { return $last }
+        Start-Sleep -Seconds 2
+    }
+    $last
+}
+
 function Confirm-UnifiedStoredEvidence {
     param(
         [Parameter(Mandatory)] [object] $Report,
@@ -73,7 +91,7 @@ function Confirm-UnifiedStoredEvidence {
     )
     if ([string]$Report.evidenceStatus -cne 'saved' -or @($Report.evidenceImages).Count -ne 1 -or
         [string]$Report.evidenceImages[0].sha256 -cne [string]$Artifact.sha256) { return $false }
-    $call = Invoke-WeatherPrivateApiRequest -ApiUrl $ApiUrl -AdminKey $AdminKey `
+    $call = Invoke-UnifiedPrivateRead -ApiUrl $ApiUrl -AdminKey $AdminKey `
         -Payload ([ordered]@{ action='weatherEvidence'; reportId=[string]$Report.id; imageIndex=0 })
     if ($call.diagnostic.failureCode -or $call.data.ok -ne $true -or [string]$call.data.mimeType -cne [string]$Artifact.mimeType) { return $false }
     try { $bytes = [Convert]::FromBase64String([string]$call.data.bodyBase64) } catch { return $false }
@@ -151,7 +169,7 @@ try {
     $adminPlain = $null
 
     $result.stage = 'duplicateCheck'
-    $pendingCall = Invoke-WeatherPrivateApiRequest -ApiUrl $apiUrl -AdminKey $adminKey -Payload ([ordered]@{action='pending'})
+    $pendingCall = Invoke-UnifiedPrivateRead -ApiUrl $apiUrl -AdminKey $adminKey -Payload ([ordered]@{action='pending'})
     if ($pendingCall.diagnostic.failureCode -or $pendingCall.data.ok -ne $true) { throw 'WEATHER_SAFE:pendingLookupFailed' }
     $pendingReports = @($pendingCall.data.reports)
     $sameSource = @($pendingReports | Where-Object {
@@ -168,7 +186,7 @@ try {
         if ($contentPending.Count) {
             $result.duplicate=$true; $result.reportId=[string]$contentPending[0].id; $result.apiSuccess=$true; $result.pendingRegistered=$true; $result.stage='contentDuplicatePending'
         } else {
-            $approvedCall = Invoke-WeatherPrivateApiRequest -ApiUrl $apiUrl -AdminKey $adminKey -Payload ([ordered]@{action='approved'})
+            $approvedCall = Invoke-UnifiedPrivateRead -ApiUrl $apiUrl -AdminKey $adminKey -Payload ([ordered]@{action='approved'})
             if ($approvedCall.diagnostic.failureCode -or $approvedCall.data.ok -ne $true) { throw 'WEATHER_SAFE:approvedLookupFailed' }
             $contentApproved = @($approvedCall.data.reports | Where-Object { Test-UnifiedWeatherMatch $_ $preview.payload })
             if ($contentApproved.Count) {
@@ -179,7 +197,7 @@ try {
                 $receipt = Invoke-UnifiedPendingPost -Payload $preview.payload -ApiUrl $apiUrl -PostKey $postKey
                 $result.apiSuccess=$true; $result.duplicate=$receipt.duplicate; $result.reportId=$receipt.id
                 $result.stage = 'pendingVerification'
-                $verifyCall = Invoke-WeatherPrivateApiRequest -ApiUrl $apiUrl -AdminKey $adminKey -Payload ([ordered]@{action='pending'})
+                $verifyCall = Invoke-UnifiedPrivateRead -ApiUrl $apiUrl -AdminKey $adminKey -Payload ([ordered]@{action='pending'})
                 if ($verifyCall.diagnostic.failureCode -or $verifyCall.data.ok -ne $true) { throw 'WEATHER_SAFE:pendingVerificationFailed' }
                 $stored = @($verifyCall.data.reports | Where-Object { [string]$_.id -ceq [string]$receipt.id })
                 if ($stored.Count -ne 1 -or -not (Test-UnifiedReportMatch $stored[0] $preview.payload)) { throw 'WEATHER_SAFE:pendingVerificationFailed' }
