@@ -1,4 +1,4 @@
-﻿param(
+param(
     [Parameter(Mandatory)] [string] $CandidatePath,
     [Parameter(Mandatory)] [string] $CapturePath,
     [Parameter(Mandatory)] [string] $EvidencePath,
@@ -137,7 +137,7 @@ try {
     $preview.payload.weeks = $weekly.weeks
     $result.weeklyCount = $weekly.count
     $preview.payload.memo = ([string]$preview.payload.memo).Replace('現在・週間:送信対象外', "週間:$($weekly.count)日判読済み")
-    if ([string]$preview.payload.memo.Length -gt 1000) { throw 'WEATHER_SAFE:memoTooLong' }
+    if (([string]$preview.payload.memo).Length -gt 1000) { throw 'WEATHER_SAFE:memoTooLong' }
 
     $apiUrl = Get-WeatherApiUrlFromSiteConfig
     $postPlain = [string]$env:WEATHER_POST_KEY
