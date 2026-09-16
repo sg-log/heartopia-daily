@@ -13,6 +13,7 @@ on:
       - 'tools/weather-deterministic-review.mjs'
       - 'tools/weather-daily-normalized-review.mjs'
       - 'tools/weather-daily-review.mjs'
+      - 'tools/weather-daily-recovery-review.mjs'
       - 'assets/weather-templates/**'
 
 permissions:
@@ -63,7 +64,7 @@ jobs:
             }
             if ($LASTEXITCODE -ne 0) { Write-Host 'Capture failed.'; continue }
             $review = Join-Path $dir 'review.json'
-            & node tools/weather-daily-normalized-review.mjs --mode inspect --capture-dir $dir --target-date 2026-09-16 --output $review
+            & node tools/weather-daily-recovery-review.mjs --mode inspect --capture-dir $dir --target-date 2026-09-16 --output $review
             if (Test-Path $review) {
               $reviewObject = Get-Content -LiteralPath $review -Raw -Encoding UTF8 | ConvertFrom-Json
               Write-Host ("Review ready=" + [string]$reviewObject.ready + " startSlot=" + [string]$reviewObject.interpretation.startSlot)
