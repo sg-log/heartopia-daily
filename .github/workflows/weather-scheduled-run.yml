@@ -26,8 +26,9 @@ permissions:
 env:
   WEATHER_DC_WEBHOOK_URL: ${{ secrets.WEATHER_DC_WEBHOOK_URL }}
 
+# One global queue prevents a delayed primary run and its +10 minute snooze from racing each other.
 concurrency:
-  group: weather-scheduled-${{ github.event_name }}-${{ github.event.schedule || inputs.slot || 'manual' }}
+  group: weather-scheduled-run
   cancel-in-progress: false
 
 jobs:
@@ -89,7 +90,6 @@ jobs:
         uses: actions/github-script@v7
         env:
           RUN_KEY: ${{ steps.slot.outputs.run_key }}
-          IS_SNOOZE: ${{ steps.slot.outputs.is_snooze }}
         with:
           script: |
             const marker = `<!-- heartopia-weather-scheduled-success:${process.env.RUN_KEY} -->`
@@ -105,7 +105,6 @@ jobs:
             if (found) core.notice(`Update slot ${process.env.RUN_KEY} already succeeded; nothing to do.`)
 
       - name: Discover public weather candidates
-        id: discover
         if: ${{ steps.guard.outputs.already_succeeded != 'true' }}
         env:
           TARGET_DATE: ${{ steps.slot.outputs.target_date }}
@@ -124,6 +123,7 @@ jobs:
         with:
           script: |
             const fs = require('fs')
+            const crypto = require('crypto')
             const result = JSON.parse(fs.readFileSync(process.env.RESULT_PATH, 'utf8'))
             if (!result || result.schemaVersion !== 1 || result.responseType !== 'weather-public-discovery' || !Array.isArray(result.candidates) || !Array.isArray(result.attempts)) {
               core.setFailed('Invalid discovery result.')
@@ -131,9 +131,7 @@ jobs:
             }
 
             const candidateKeys = result.candidates.map(c => `${c.sourceType || ''}|${c.sourceId || ''}|${c.sourceUrl || ''}`).sort()
-            const fingerprint = require('crypto').createHash('sha256').update(JSON.stringify(candidateKeys)).digest('hex')
-
-            // Avoid re-sending the exact same discovered source set (for example the evening run only finding the morning posts).
+            const fingerprint = crypto.createHash('sha256').update(JSON.stringify(candidateKeys)).digest('hex')
             const { data: recent } = await github.rest.issues.listForRepo({
               ...context.repo,
               state: 'all',
@@ -146,7 +144,11 @@ jobs:
               !issue.pull_request && typeof issue.body === 'string' && issue.body.includes(duplicateMarker)
             )
 
-            const successMarker = `<!-- heartopia-weather-scheduled-success:${process.env.RUN_KEY} -->`
+            // Candidate discovery itself completed only when at least one candidate exists.
+            // An identical candidate set is still a successful check: it means there was no new source to resend.
+            const successMarker = result.candidates.length > 0
+              ? `<!-- heartopia-weather-scheduled-success:${process.env.RUN_KEY} -->`
+              : ''
             const body = [
               successMarker,
               duplicateMarker,
@@ -155,7 +157,7 @@ jobs:
               '```json',
               JSON.stringify({ ...result, duplicateData, fingerprint }),
               '```'
-            ].join('\n')
+            ].filter(Boolean).join('\n')
 
             const issue = await github.rest.issues.create({
               ...context.repo,
@@ -173,23 +175,33 @@ jobs:
             core.setOutput('duplicate_data', duplicateData ? 'true' : 'false')
             core.setOutput('result_issue_url', issue.data.html_url)
 
-      - name: Notify Discord when the slot completed without a new candidate set
-        if: ${{ steps.guard.outputs.already_succeeded != 'true' && env.WEATHER_DC_WEBHOOK_URL != '' && (steps.publish.outputs.candidate_count == '0' || steps.publish.outputs.duplicate_data == 'true') }}
+            // Zero candidates is retryable. The independent +10 minute cron will try once more.
+            if (result.candidates.length === 0) {
+              core.setFailed(`No weather candidates found for ${process.env.RUN_KEY}.`)
+            }
+
+      - name: Record duplicate discovery without resending
+        if: ${{ success() && steps.guard.outputs.already_succeeded != 'true' && steps.publish.outputs.duplicate_data == 'true' }}
+        run: echo "The same candidate source set was already seen; no duplicate handoff is needed."
+
+      - name: Record new discovery handoff
+        if: ${{ success() && steps.guard.outputs.already_succeeded != 'true' && steps.publish.outputs.duplicate_data != 'true' }}
+        run: echo "New public candidate set discovered and recorded. Downstream capture/review continues through the existing evidence/review flow."
+
+      - name: Notify Discord after snooze or manual run fails
+        if: ${{ failure() && env.WEATHER_DC_WEBHOOK_URL != '' && (steps.slot.outputs.is_snooze == 'true' || github.event_name == 'workflow_dispatch') }}
         shell: pwsh
         env:
-          RESULT_ISSUE_URL: ${{ steps.publish.outputs.result_issue_url }}
-          CANDIDATE_COUNT: ${{ steps.publish.outputs.candidate_count }}
-          DUPLICATE_DATA: ${{ steps.publish.outputs.duplicate_data }}
           RUN_KEY: ${{ steps.slot.outputs.run_key }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/workflows/weather-scheduled-run.yml
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if ($env:DUPLICATE_DATA -eq 'true') {
-            $message = "ℹ️ Heartopia天気 $env:RUN_KEY は検索済み。新しい情報は見つからなかったため、朝と同じデータは再送していません。`n$env:RESULT_ISSUE_URL"
+          if ($env:EVENT_NAME -eq 'workflow_dispatch') {
+            $headline = "⚠️ Heartopia天気の手動更新も失敗しました。"
           } else {
-            $message = "⚠️ Heartopia天気 $env:RUN_KEY の候補が見つかりませんでした。`n$env:RESULT_ISSUE_URL"
+            $headline = "⚠️ Heartopia天気 $env:RUN_KEY は通常便と10分後の保険便でも更新できませんでした。"
           }
+          $message = "$headline`n次の定時更新を待つか、手動で再実行できます。`n手動Run ↓`n$env:WORKFLOW_URL`n今回のRun ↓`n$env:RUN_URL"
           $payload = @{ content = $message; allowed_mentions = @{ parse = @() } } | ConvertTo-Json -Depth 5 -Compress
           Invoke-RestMethod -Method Post -Uri $env:WEATHER_DC_WEBHOOK_URL -ContentType 'application/json' -Body $payload | Out-Null
-
-      - name: Explain successful discovery handoff
-        if: ${{ steps.guard.outputs.already_succeeded != 'true' && steps.publish.outputs.candidate_count != '0' && steps.publish.outputs.duplicate_data != 'true' }}
-        run: echo "New public candidate set discovered and recorded. Downstream capture/review continues through the existing evidence/review flow."
