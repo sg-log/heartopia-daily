@@ -1,0 +1,34 @@
+name: Temporary admin fold glyph polish
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-admin-fold-glyph.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/admin-cards-collapse
+      - name: Match existing summary glyph style
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8').replace('content:"＋"','content:"+"')
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Test
+        run: node --test tools/test-weather-admin-trigger.mjs
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/tmp-admin-fold-glyph.yml
+          git add index.html
+          git commit -m 'Match admin folding glyph style'
+          git push origin HEAD:fix/admin-cards-collapse
