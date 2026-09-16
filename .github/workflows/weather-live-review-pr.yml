@@ -41,7 +41,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
           $result = Get-Content -LiteralPath $env:RESULT_PATH -Raw -Encoding UTF8 | ConvertFrom-Json
-          $candidates = @($result.candidates | Select-Object -First 16)
+          $candidates = @($result.candidates | Select-Object -First 4)
           Write-Host ("Ranked public candidate count: " + $candidates.Count)
           if ($candidates.Count -eq 0) { throw 'No relevant public candidates discovered.' }
           $selected = $null
@@ -115,7 +115,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
           $result = Get-Content -LiteralPath $env:RESULT_PATH -Raw -Encoding UTF8 | ConvertFrom-Json
-          $candidates = @($result.candidates | Select-Object -First 12)
+          $candidates = @($result.candidates | Select-Object -First 8)
           Write-Host ("Weekly candidate count: " + $candidates.Count)
           if ($candidates.Count -eq 0) { throw 'No weekly public candidates discovered.' }
           for ($i = 0; $i -lt $candidates.Count; $i++) {
