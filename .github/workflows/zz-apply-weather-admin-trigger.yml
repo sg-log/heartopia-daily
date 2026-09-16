@@ -1,0 +1,35 @@
+name: Apply weather admin trigger patch
+
+on:
+  push:
+    branches:
+      - fix/weather-scheduler-handoff
+    paths:
+      - '.github/workflows/zz-apply-weather-admin-trigger.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/weather-scheduler-handoff
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply patch
+        run: node tools/apply-weather-admin-trigger-patch.mjs
+      - name: Validate contract
+        run: node --test tools/test-weather-admin-trigger.mjs
+      - name: Commit patched files
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html apps-script/weather-api.gs .github/workflows/weather-scheduled-run.yml .github/workflows/weather-scheduler-ci.yml
+          git diff --cached --check
+          git commit -m "Add admin weather automation trigger"
+          git push origin HEAD:fix/weather-scheduler-handoff
