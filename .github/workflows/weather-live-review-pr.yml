@@ -6,6 +6,7 @@ on:
       - '.github/workflows/weather-live-review-pr.yml'
       - '.github/workflows/weather-scheduled-run.yml'
       - 'tools/weather-public-discovery.mjs'
+      - 'tools/weather-public-weekly-discovery.mjs'
       - 'tools/test-weather-public-discovery.mjs'
       - 'tools/weather-x-embed-evidence.mjs'
       - 'tools/weather-cloud-url-evidence.mjs'
@@ -89,5 +90,54 @@ jobs:
             ${{ runner.temp }}/weather-public-discovery.json
             ${{ runner.temp }}/weather-live-candidate-*
             ${{ runner.temp }}/weather-live-selected
+          if-no-files-found: warn
+          retention-days: 2
+
+  weekly-discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Discover weekly candidates for 2026-09-16
+        env:
+          RESULT_PATH: ${{ runner.temp }}/weather-public-weekly-discovery.json
+        run: node tools/weather-public-weekly-discovery.mjs --target-date 2026-09-16 --out "$RESULT_PATH"
+      - name: Capture top weekly candidates for diagnosis
+        shell: pwsh
+        env:
+          RESULT_PATH: ${{ runner.temp }}/weather-public-weekly-discovery.json
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $result = Get-Content -LiteralPath $env:RESULT_PATH -Raw -Encoding UTF8 | ConvertFrom-Json
+          $candidates = @($result.candidates | Select-Object -First 12)
+          Write-Host ("Weekly candidate count: " + $candidates.Count)
+          if ($candidates.Count -eq 0) { throw 'No weekly public candidates discovered.' }
+          for ($i = 0; $i -lt $candidates.Count; $i++) {
+            $candidate = $candidates[$i]
+            Write-Host ("Weekly #" + $i + " type=" + [string]$candidate.sourceType + " provider=" + [string]$candidate.discoverySource + " " + [string]$candidate.sourceUrl + " score=" + [string]$candidate.relevanceScore + " dateMatched=" + [string]$candidate.dateMatched)
+            $dir = Join-Path $env:RUNNER_TEMP ("weather-weekly-candidate-" + $i)
+            if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            if ([string]$candidate.sourceType -eq 'x') {
+              & node tools/weather-x-embed-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
+            } elseif ([string]$candidate.sourceType -eq 'web') {
+              & node tools/weather-cloud-url-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
+            }
+            if ($LASTEXITCODE -ne 0) { Write-Host 'Weekly capture failed.' }
+          }
+      - name: Upload weekly discovery diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: weather-weekly-discovery-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/weather-public-weekly-discovery.json
+            ${{ runner.temp }}/weather-weekly-candidate-*
           if-no-files-found: warn
           retention-days: 2
