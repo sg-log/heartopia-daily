@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - '.clasp.json'
+      - '.claspignore'
       - 'index.html'
       - 'apps-script/weather-api.gs'
       - 'apps-script/weather-scheduler.gs'
       - '.github/workflows/weather-scheduled-run.yml'
       - 'tools/test-weather-admin-trigger.mjs'
       - 'tools/test-weather-apps-script-scheduler.mjs'
+      - 'tools/test-clasp-scheduler-include.mjs'
       - 'tools/README-weather-admin-trigger.md'
       - '.github/workflows/weather-admin-trigger-ci.yml'
 
@@ -26,3 +28,4 @@ jobs:
           node-version: 22
       - run: node --test tools/test-weather-admin-trigger.mjs
       - run: node tools/test-weather-apps-script-scheduler.mjs
+      - run: node tools/test-clasp-scheduler-include.mjs
