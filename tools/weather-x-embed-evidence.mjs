@@ -228,6 +228,45 @@ async function captureXEmbed({ post, outputDir }) {
       });
     }
 
+    // A few X embeds paint the photo inside a link/background rather than an <img>.
+    // If direct media extraction and <img> ranking both miss it, screenshot the
+    // largest visible photo/video link belonging to this exact status. This keeps
+    // the media itself as the bound evidence instead of forcing the whole tweet UI.
+    if (!rawMedia.length) {
+      const mediaLinks = frame.locator(`a[href*="/status/${post.sourceId}/photo/"], a[href*="/status/${post.sourceId}/video/"]`);
+      const mediaLinkCount = Math.min(await mediaLinks.count(), 12);
+      let bestIndex = -1;
+      let bestArea = 0;
+      for (let index = 0; index < mediaLinkCount; index += 1) {
+        const box = await mediaLinks.nth(index).boundingBox().catch(() => null);
+        if (!box || box.width < 180 || box.height < 120) continue;
+        const area = box.width * box.height;
+        if (area > bestArea) { bestArea = area; bestIndex = index; }
+      }
+      if (bestIndex >= 0) {
+        const fallbackTarget = mediaLinks.nth(bestIndex);
+        await fallbackTarget.scrollIntoViewIfNeeded();
+        const file = "raw-media-0.jpg";
+        const filePath = path.join(outputDir, file);
+        await fallbackTarget.screenshot({ path: filePath, type: "jpeg", quality: 92, animations: "disabled" });
+        let byteSize = (await stat(filePath)).size;
+        if (byteSize > MAX_EVIDENCE_BYTES) {
+          await fallbackTarget.screenshot({ path: filePath, type: "jpeg", quality: 70, animations: "disabled" });
+          byteSize = (await stat(filePath)).size;
+        }
+        if (byteSize > MAX_EVIDENCE_BYTES) throw new WeatherCloudError("evidenceTooLarge");
+        rawMedia.push({
+          url: post.sourceUrl,
+          file,
+          mimeType: "image/jpeg",
+          byteSize,
+          sha256: await sha256File(filePath),
+          renderedFallback: true,
+          renderedFrom: "status-media-link"
+        });
+      }
+    }
+
     let evidenceTarget;
     let evidenceDimensions;
     if (evidenceChoice.selected) {
