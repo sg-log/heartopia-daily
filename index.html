@@ -489,9 +489,11 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 .adminGateBox{max-width:460px}
 .adminShell{
   grid-column:span 12;
-  display:grid;
+  display:flex;
+  flex-direction:column;
   gap:16px;
-  align-items:start;
+  align-items:stretch;
+  width:100%;
 }
 .adminLogoutRow{display:flex;justify-content:flex-end;margin-top:10px}
 .adminSubtabs{
@@ -499,6 +501,7 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
   gap:8px;
   flex-wrap:wrap;
   align-items:center;
+  width:100%;
   padding:6px;
   border:1px solid #e6e0d7;
   border-radius:16px;
@@ -523,9 +526,11 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 .adminTabPanel{
   display:none;
   gap:16px;
-  align-items:start;
+  align-items:stretch;
+  width:100%;
 }
-.adminTabPanel.active{display:grid}
+.adminTabPanel.active{display:grid;grid-template-columns:minmax(0,1fr)}
+.adminTabPanel>.s12,.adminTabPanel>.adminFoldToolbar,.adminTabPanel>.adminSettingsGrid{grid-column:1;width:100%}
 .adminSettingsGrid{
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
@@ -968,8 +973,8 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
 }
 
 
-.adminFoldToolbar{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 2px}
-.adminFoldToolbar button{width:100%;padding:8px 12px;font-size:12px}
+.adminFoldToolbar{display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 -2px;width:100%}
+.adminFoldToolbar button{width:auto;padding:7px 12px;font-size:12px}
 .adminCardFoldable>h2.adminCardFoldTitle{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;cursor:pointer;user-select:none}
 .adminCardFoldable>h2.adminCardFoldTitle::after{content:"−";flex:0 0 auto;font-size:22px;font-weight:500;line-height:1;color:var(--accent2)}
 .adminCardFoldable.adminCardCollapsed>h2.adminCardFoldTitle{margin-bottom:0}
