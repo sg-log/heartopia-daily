@@ -530,7 +530,7 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
   width:100%;
 }
 .adminTabPanel.active{display:grid;grid-template-columns:minmax(0,1fr)}
-.adminTabPanel>.s12,.adminTabPanel>.adminFoldToolbar,.adminTabPanel>.adminSettingsGrid{grid-column:1;width:100%}
+.adminTabPanel>.s12,.adminTabPanel>.adminFoldToolbar,.adminTabPanel>.adminSettingsGrid{grid-column:1;width:min(100%,700px);justify-self:center}
 .adminSettingsGrid{
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
