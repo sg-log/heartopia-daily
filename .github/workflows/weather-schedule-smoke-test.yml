@@ -2,8 +2,8 @@ name: Weather schedule smoke test
 
 on:
   schedule:
-    # Temporary one-shot test: 23:45 UTC = 08:45 JST on 2026-09-17.
-    - cron: '45 23 * * *'
+    # Temporary one-shot test: 23:40 UTC = 08:40 JST on 2026-09-17.
+    - cron: '40 23 * * *'
 
 permissions:
   actions: write
