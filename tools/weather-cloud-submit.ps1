@@ -16,12 +16,24 @@ function Read-WeatherCloudSubmitJson {
     ConvertFrom-Json @options
 }
 
-function Test-WeatherCloudReportMatch {
+function Test-WeatherCloudWeatherMatch {
     param([Parameter(Mandatory)] [object] $Report, [Parameter(Mandatory)] [System.Collections.IDictionary] $Payload)
-    if ($Report.date -ne $Payload.date -or $Report.startSlot -ne $Payload.startSlot -or $Report.sourceUrl -cne $Payload.sourceUrl) { return $false }
+    if ($Report.date -ne $Payload.date -or $Report.startSlot -ne $Payload.startSlot) { return $false }
     foreach ($index in 0..4) {
         if ((@($Report.slots."slot$index") -join ',') -cne (@($Payload.slots["slot$index"]) -join ',')) { return $false }
     }
+    foreach ($index in 1..7) {
+        $reportWeek = if ($null -eq $Report.weeks) { @() } else { @($Report.weeks."week$index") }
+        $payloadWeek = if ($null -eq $Payload.weeks) { @() } else { @($Payload.weeks["week$index"]) }
+        if (($reportWeek -join ',') -cne ($payloadWeek -join ',')) { return $false }
+    }
+    $true
+}
+
+function Test-WeatherCloudReportMatch {
+    param([Parameter(Mandatory)] [object] $Report, [Parameter(Mandatory)] [System.Collections.IDictionary] $Payload)
+    if (-not (Test-WeatherCloudWeatherMatch $Report $Payload)) { return $false }
+    if ($Report.sourceUrl -cne $Payload.sourceUrl) { return $false }
     $true
 }
 
@@ -80,7 +92,8 @@ try {
     if ($pendingCall.diagnostic.failureCode) { throw ('WEATHER_SAFE:' + $pendingCall.diagnostic.failureCode) }
     $pendingFailure = Get-WeatherPendingResponseFailureCode $pendingCall.data
     if ($pendingFailure) { throw ('WEATHER_SAFE:' + $pendingFailure) }
-    $matches = @($pendingCall.data.reports | Where-Object {
+    $pendingReports = @($pendingCall.data.reports)
+    $matches = @($pendingReports | Where-Object {
         $_.date -eq $preview.payload.date -and $_.startSlot -eq $preview.payload.startSlot -and $_.sourceUrl -ceq $preview.payload.sourceUrl
     })
     if ($matches.Count -gt 1) { throw 'WEATHER_SAFE:duplicateConflict' }
@@ -93,25 +106,45 @@ try {
         $result.apiSuccess=$true; $result.driveSaved=$true; $result.pendingRegistered=$true
         $result.sha256Match=$true; $result.imageRetrieved=$true; $result.stage='complete'
     } else {
-        $result.attempted = $true
-        $result.stage = 'submission'
-        $receipt = Invoke-WeatherPendingSubmission -Candidate $candidate -EvidenceImage $artifact -Send -ApiUrl $apiUrl -PostKey $postKey
-        foreach ($name in @('httpStatus','contentType','jsonParsed','ok','apiStage')) { $result[$name] = $receipt.diagnostic.$name }
-        $result.apiSuccess = $true
-        $result.duplicate = $receipt.duplicate
-        $result.reportId = [string]$receipt.id
+        $contentPending = @($pendingReports | Where-Object { Test-WeatherCloudWeatherMatch $_ $preview.payload })
+        if ($contentPending.Count -gt 0) {
+            $result.duplicate = $true
+            $result.reportId = [string]$contentPending[0].id
+            $result.apiSuccess = $true
+            $result.pendingRegistered = $true
+            $result.stage = 'contentDuplicatePending'
+        } else {
+            $approvedCall = Invoke-WeatherPrivateApiRequest -ApiUrl $apiUrl -AdminKey $adminKey -Payload ([ordered]@{action='approved'})
+            if ($approvedCall.diagnostic.failureCode) { throw ('WEATHER_SAFE:' + $approvedCall.diagnostic.failureCode) }
+            if ($approvedCall.data.ok -ne $true) { throw 'WEATHER_SAFE:approvedLookupFailed' }
+            $contentApproved = @($approvedCall.data.reports | Where-Object { Test-WeatherCloudWeatherMatch $_ $preview.payload })
+            if ($contentApproved.Count -gt 0) {
+                $result.duplicate = $true
+                $result.reportId = [string]$contentApproved[0].id
+                $result.apiSuccess = $true
+                $result.stage = 'contentDuplicateApproved'
+            } else {
+                $result.attempted = $true
+                $result.stage = 'submission'
+                $receipt = Invoke-WeatherPendingSubmission -Candidate $candidate -EvidenceImage $artifact -Send -ApiUrl $apiUrl -PostKey $postKey
+                foreach ($name in @('httpStatus','contentType','jsonParsed','ok','apiStage')) { $result[$name] = $receipt.diagnostic.$name }
+                $result.apiSuccess = $true
+                $result.duplicate = $receipt.duplicate
+                $result.reportId = [string]$receipt.id
 
-        $result.stage = 'pendingVerification'
-        $pendingCall = Invoke-WeatherPrivateApiRequest -ApiUrl $apiUrl -AdminKey $adminKey -Payload ([ordered]@{action='pending'})
-        if ($pendingCall.diagnostic.failureCode) { throw ('WEATHER_SAFE:' + $pendingCall.diagnostic.failureCode) }
-        $reports = @($pendingCall.data.reports | Where-Object { $_.id -ceq $receipt.id })
-        if ($pendingCall.data.ok -ne $true -or $reports.Count -ne 1 -or
-            -not (Test-WeatherCloudReportMatch $reports[0] $preview.payload)) { throw 'WEATHER_SAFE:pendingVerificationFailed' }
-        if (($reports[0] | ConvertTo-Json -Depth 20) -match '"fileId"') { throw 'WEATHER_SAFE:driveIdExposed' }
-        $result.pendingRegistered = $true
-        $result.stage = 'imageVerification'
-        if (-not (Confirm-WeatherCloudStoredEvidence $reports[0] $artifact $apiUrl $adminKey)) { throw 'WEATHER_SAFE:evidenceVerificationFailed' }
-        $result.driveSaved=$true; $result.sha256Match=$true; $result.imageRetrieved=$true; $result.stage='complete'
+                $result.stage = 'pendingVerification'
+                $pendingCall = Invoke-WeatherPrivateApiRequest -ApiUrl $apiUrl -AdminKey $adminKey -Payload ([ordered]@{action='pending'})
+                if ($pendingCall.diagnostic.failureCode) { throw ('WEATHER_SAFE:' + $pendingCall.diagnostic.failureCode) }
+                $reports = @($pendingCall.data.reports | Where-Object { $_.id -ceq $receipt.id })
+                if ($pendingCall.data.ok -ne $true -or $reports.Count -ne 1 -or
+                    -not (Test-WeatherCloudReportMatch $reports[0] $preview.payload)) { throw 'WEATHER_SAFE:pendingVerificationFailed' }
+                if (($reports[0] | ConvertTo-Json -Depth 20) -match '"fileId"') { throw 'WEATHER_SAFE:driveIdExposed' }
+                $result.pendingRegistered = $true
+                $result.stage = 'imageVerification'
+                if (-not (Confirm-WeatherCloudStoredEvidence $reports[0] $artifact $apiUrl $adminKey)) { throw 'WEATHER_SAFE:evidenceVerificationFailed' }
+                $result.driveSaved=$true; $result.sha256Match=$true; $result.imageRetrieved=$true; $result.stage='complete'
+            }
+        }
     }
 } catch {
     $failure = $true
