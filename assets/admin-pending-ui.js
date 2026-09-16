@@ -95,7 +95,7 @@
       <div class="pendingWeatherImageModalPanel"><img alt="証拠画像の拡大"></div>
     `;
     modal.addEventListener("click", event => {
-      if(event.target === modal || event.target.closest(".pendingWeatherImageModalClose")) closeImage();
+      if(event.target === modal || event.target.classList.contains("pendingWeatherImageModalPanel") || event.target.closest(".pendingWeatherImageModalClose")) closeImage();
     });
     document.body.appendChild(modal);
     return modal;
