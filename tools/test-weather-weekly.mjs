@@ -6,7 +6,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { validateWeeklyReviewRecord, parseWeeklyReviewIssue, WEEKLY_REVIEW_MARKER } from './weather-weekly-review.mjs';
 import { prepareWeeklyPendingPreview } from './weather-weekly-pending.mjs';
-import { chooseApprovedBaseline, buildWeeklySubmitPayload, reportMatchesPayload } from './weather-weekly-submit.mjs';
+import { chooseApprovedBaseline, buildWeeklySubmitPayload, reportMatchesPayload, weatherContentMatchesPayload } from './weather-weekly-submit.mjs';
 
 function reviewFixture(baseSha, forecastSha, dayCount = 5) {
   return {
@@ -96,6 +96,20 @@ test('inherits approved hourly baseline and saves only visible consecutive weekl
   assert.deepEqual(payload.weeks.week5,['雨']);
   assert.deepEqual(payload.weeks.week6,[]);
   assert.equal(reportMatchesPayload({...payload,id:'p1'},payload),true);
+});
+
+test('treats identical weather as duplicate even when the source URL differs', () => {
+  const payload={
+    date:'2026-09-16',startSlot:'06',
+    slots:{slot0:['晴'],slot1:['雨'],slot2:['晴'],slot3:['晴'],slot4:['雨']},
+    weeks:{week1:['晴'],week2:['雨'],week3:['晴'],week4:['晴'],week5:['雨'],week6:[],week7:[]},
+    sourceUrl:'https://x.com/example/status/new'
+  };
+  const existing={...payload,sourceUrl:'https://x.com/example/status/old'};
+  assert.equal(weatherContentMatchesPayload(existing,payload),true);
+  assert.equal(reportMatchesPayload(existing,payload),false);
+  existing.weeks={...existing.weeks,week5:['晴']};
+  assert.equal(weatherContentMatchesPayload(existing,payload),false);
 });
 
 test('refuses weekly pending when the same-date approved hourly baseline is absent', () => {
