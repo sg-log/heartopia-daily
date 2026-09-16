@@ -46,19 +46,4 @@ const publicReplacement = `function requestWeatherAutomation_(body) {\n  require
 apps = replaceOnce(apps, publicNeedle, publicReplacement, 'Apps Script dispatch implementation');
 fs.writeFileSync(appsPath, apps, 'utf8');
 
-const workflowPath = '.github/workflows/weather-scheduled-run.yml';
-let workflow = fs.readFileSync(workflowPath, 'utf8');
-const workflowInputNeedle = `        default: auto\n`;
-const workflowInputReplacement = `        default: auto\n      target_date:\n        description: 'JST target date (YYYY-MM-DD); blank means today'\n        required: false\n        type: string\n        default: ''\n`;
-workflow = replaceOnce(workflow, workflowInputNeedle, workflowInputReplacement, 'workflow target date input');
-
-const manualEnvNeedle = '          MANUAL_SLOT: ${{ inputs.slot }}';
-const manualEnvReplacement = '          MANUAL_SLOT: ${{ inputs.slot }}\n          MANUAL_TARGET_DATE: ${{ inputs.target_date }}';
-workflow = replaceOnce(workflow, manualEnvNeedle, manualEnvReplacement, 'workflow manual date env');
-
-const manualValidationNeedle = `            if ($slot -notin @('morning','evening')) { throw 'Invalid manual slot.' }\n          }`;
-const manualValidationReplacement = `            if ($slot -notin @('morning','evening')) { throw 'Invalid manual slot.' }\n            $manualTargetDate = [string]$env:MANUAL_TARGET_DATE\n            if (-not [string]::IsNullOrWhiteSpace($manualTargetDate)) {\n              try { [void][datetime]::ParseExact($manualTargetDate, 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture) }\n              catch { throw 'Invalid manual target date.' }\n              $targetDate = $manualTargetDate\n            }\n          }`;
-workflow = replaceOnce(workflow, manualValidationNeedle, manualValidationReplacement, 'workflow manual target date validation');
-fs.writeFileSync(workflowPath, workflow, 'utf8');
-
 console.log('Applied weather admin trigger patch.');
