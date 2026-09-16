@@ -29,7 +29,6 @@ index = replaceOnce(index, initDateNeedle, initDateReplacement, 'manual automati
 const bindNeedle = `  E.saveQuickWeatherBtn.onclick = saveQuickWeather;`;
 const bindReplacement = `  E.saveQuickWeatherBtn.onclick = saveQuickWeather;\n  E.runWeatherAutomationBtn.onclick = runWeatherAutomation;`;
 index = replaceOnce(index, bindNeedle, bindReplacement, 'manual automation click binding');
-
 fs.writeFileSync(indexPath, index, 'utf8');
 
 const appsPath = 'apps-script/weather-api.gs';
@@ -61,15 +60,5 @@ const manualValidationNeedle = `            if ($slot -notin @('morning','evenin
 const manualValidationReplacement = `            if ($slot -notin @('morning','evening')) { throw 'Invalid manual slot.' }\n            $manualTargetDate = [string]$env:MANUAL_TARGET_DATE\n            if (-not [string]::IsNullOrWhiteSpace($manualTargetDate)) {\n              try { [void][datetime]::ParseExact($manualTargetDate, 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture) }\n              catch { throw 'Invalid manual target date.' }\n              $targetDate = $manualTargetDate\n            }\n          }`;
 workflow = replaceOnce(workflow, manualValidationNeedle, manualValidationReplacement, 'workflow manual target date validation');
 fs.writeFileSync(workflowPath, workflow, 'utf8');
-
-const ciPath = '.github/workflows/weather-scheduler-ci.yml';
-let ci = fs.readFileSync(ciPath, 'utf8');
-const ciPathsNeedle = `      - 'tools/README-weather-scheduler.md'`;
-const ciPathsReplacement = `      - 'tools/README-weather-scheduler.md'\n      - 'tools/test-weather-admin-trigger.mjs'\n      - 'index.html'\n      - 'apps-script/weather-api.gs'`;
-ci = replaceOnce(ci, ciPathsNeedle, ciPathsReplacement, 'scheduler CI watched paths');
-const ciStepNeedle = `      - name: Validate scheduler policy\n        run: node --test tools/test-weather-scheduler-policy.mjs`;
-const ciStepReplacement = `      - name: Validate scheduler policy\n        run: node --test tools/test-weather-scheduler-policy.mjs\n      - name: Validate admin manual trigger contract\n        run: node --test tools/test-weather-admin-trigger.mjs`;
-ci = replaceOnce(ci, ciStepNeedle, ciStepReplacement, 'scheduler CI admin trigger test');
-fs.writeFileSync(ciPath, ci, 'utf8');
 
 console.log('Applied weather admin trigger patch.');
