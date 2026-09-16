@@ -201,9 +201,33 @@ async function captureXEmbed({ post, outputDir }) {
         sha256: downloaded.sha256
       });
     }
-    const evidenceChoice = rawMediaCandidates.length
-      ? chooseEmbedEvidence(images)
-      : { kind: "embed-screenshot", selected: null };
+
+    // Some official X embeds render the post image correctly but do not expose a
+    // downloadable pbs.twimg.com URL. Keep that public rendered media as an exact
+    // screenshot-backed raw candidate instead of falling back to the whole tweet.
+    const evidenceChoice = chooseEmbedEvidence(images);
+    if (!rawMedia.length && evidenceChoice.selected) {
+      const fallbackTarget = imageLocator.nth(evidenceChoice.selected.index);
+      await fallbackTarget.scrollIntoViewIfNeeded();
+      const file = "raw-media-0.jpg";
+      const filePath = path.join(outputDir, file);
+      await fallbackTarget.screenshot({ path: filePath, type: "jpeg", quality: 92, animations: "disabled" });
+      let byteSize = (await stat(filePath)).size;
+      if (byteSize > MAX_EVIDENCE_BYTES) {
+        await fallbackTarget.screenshot({ path: filePath, type: "jpeg", quality: 70, animations: "disabled" });
+        byteSize = (await stat(filePath)).size;
+      }
+      if (byteSize > MAX_EVIDENCE_BYTES) throw new WeatherCloudError("evidenceTooLarge");
+      rawMedia.push({
+        url: post.sourceUrl,
+        file,
+        mimeType: "image/jpeg",
+        byteSize,
+        sha256: await sha256File(filePath),
+        renderedFallback: true
+      });
+    }
+
     let evidenceTarget;
     let evidenceDimensions;
     if (evidenceChoice.selected) {
