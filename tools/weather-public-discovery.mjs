@@ -95,7 +95,7 @@ function providerUrl(provider, query) {
   throw new Error(`Unknown provider ${provider}`);
 }
 
-async function collectFromPage(page, provider, query, targetDate, limit = 25) {
+async function collectFromPage(page, provider, query, targetDate, limit = 40) {
   const url = providerUrl(provider, query);
   const result = { provider, query, url, status: 'ok', error: null, linksSeen: 0, candidates: [] };
   try {
@@ -157,14 +157,14 @@ function rankCandidates(candidates) {
   );
 }
 
-export function selectDiversifiedCandidates(candidates, limit = 12) {
+export function selectDiversifiedCandidates(candidates, limit = 24) {
   const ranked = rankCandidates(candidates);
   const selected = [];
   const selectedUrls = new Set();
   const providerCounts = new Map();
   const typeCounts = new Map();
-  const providerCap = Math.max(2, Math.ceil(limit / 3));
-  const typeCap = Math.max(3, Math.ceil(limit * 0.6));
+  const providerCap = Math.max(3, Math.ceil(limit / 3));
+  const typeCap = Math.max(6, Math.ceil(limit * 0.65));
   const add = (candidate) => {
     if (selectedUrls.has(candidate.sourceUrl)) return false;
     selected.push(candidate);
@@ -174,17 +174,14 @@ export function selectDiversifiedCandidates(candidates, limit = 12) {
     return true;
   };
 
-  // First pass keeps a single search provider or source type from crowding out
-  // equally relevant public Web/SNS candidates. Provider/type are diversity
-  // controls only; neither receives a ranking bonus.
+  // Provider and source type only diversify the candidate pool. They never
+  // receive a relevance bonus: date/game/weather evidence stays the ranking key.
   for (const candidate of ranked) {
     if (selected.length >= limit) break;
     if ((providerCounts.get(candidate.discoverySource) || 0) >= providerCap) continue;
     if ((typeCounts.get(candidate.sourceType) || 0) >= typeCap) continue;
     add(candidate);
   }
-  // If the public web only yields one provider/type, fill the remaining slots
-  // rather than discarding valid evidence candidates.
   for (const candidate of ranked) {
     if (selected.length >= limit) break;
     add(candidate);
@@ -192,7 +189,7 @@ export function selectDiversifiedCandidates(candidates, limit = 12) {
   return selected;
 }
 
-export function mergeAndRankCandidates(attempts, targetDate, limit = 12) {
+export function mergeAndRankCandidates(attempts, targetDate, limit = 24) {
   const merged = new Map();
   for (const attempt of attempts || []) {
     for (const c of attempt.candidates || []) {
@@ -229,7 +226,7 @@ export async function discover(targetDate) {
     await browser.close();
   }
 
-  const candidates = mergeAndRankCandidates(attempts, targetDate, 12);
+  const candidates = mergeAndRankCandidates(attempts, targetDate, 24);
   return {
     schemaVersion: 1,
     responseType: 'weather-public-discovery',
