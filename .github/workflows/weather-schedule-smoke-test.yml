@@ -1,0 +1,30 @@
+name: Weather schedule smoke test
+
+on:
+  schedule:
+    # Temporary one-shot test: 23:45 UTC = 08:45 JST on 2026-09-17.
+    - cron: '45 23 * * *'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch real weather workflow for the morning slot
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'weather-scheduled-run.yml',
+              ref: 'main',
+              inputs: {
+                slot: 'morning',
+                target_date: '2026-09-17'
+              }
+            })
+            core.notice('Dispatched weather-scheduled-run.yml for 2026-09-17 morning.')
