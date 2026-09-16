@@ -32,8 +32,8 @@ test('manual workflow supports an explicit target date without changing schedule
 
 
 test('admin cards can be collapsed to reduce long management pages', () => {
-  assert.match(index, /id=["']collapseAdminCardsBtn["']/);
-  assert.match(index, /id=["']expandAdminCardsBtn["']/);
+  assert.match(index, /data-admin-collapse-all/);
+  assert.match(index, /data-admin-expand-all/);
   assert.match(index, /function setupAdminCardFolding\(\)/);
   assert.match(index, /adminCardCollapsed/);
   assert.match(index, /setupAdminCardFolding\(\)/);
