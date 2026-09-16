@@ -7,17 +7,22 @@ import { inspectDailyCapture, parseSpecialWeather, weatherForSlot } from './weat
 
 const START_SLOTS = ['00', '06', '12', '18'];
 const SLOT_RECTS = [
-  { x: .080, y: .675, w: .120, h: .165 },
-  { x: .245, y: .675, w: .120, h: .165 },
-  { x: .425, y: .675, w: .120, h: .165 },
-  { x: .625, y: .675, w: .120, h: .165 },
-  { x: .800, y: .675, w: .120, h: .165 }
+  { x: .095, y: .720, w: .090, h: .110 },
+  { x: .260, y: .720, w: .090, h: .110 },
+  { x: .440, y: .720, w: .090, h: .110 },
+  { x: .640, y: .720, w: .090, h: .110 },
+  { x: .815, y: .720, w: .090, h: .110 }
 ];
 
 function inferUniqueStart(attempts) {
   let best = null;
   for (const item of attempts || []) {
-    const mapped = Array.isArray(item?.mapped) ? item.mapped.map(value => String(value || '').padStart(2, '0').slice(-2)) : [];
+    const mapped = Array.isArray(item?.mapped) ? item.mapped.map(value => {
+      const text = String(value ?? '').trim();
+      if (!text) return '';
+      const numeric = Number(text);
+      return Number.isFinite(numeric) ? String(numeric).padStart(2, '0').slice(-2) : '';
+    }) : [];
     const observed = mapped.filter(value => START_SLOTS.includes(value)).length;
     if (observed < 2) continue;
     const matches = [];
