@@ -26,10 +26,13 @@ export function normalizeCandidateUrl(raw) {
     }
     if (!u) continue;
     const host = u.hostname.toLowerCase();
+    const isXHost = host === 'x.com' || host === 'www.x.com' || host === 'twitter.com' || host === 'www.twitter.com';
     const status = u.pathname.match(/^\/(?:i\/status|[A-Za-z0-9_]+\/status)\/(\d+)(?:\/(?:photo|video)\/[1-4])?\/?$/);
-    if ((host === 'x.com' || host === 'www.x.com' || host === 'twitter.com' || host === 'www.twitter.com') && status) {
-      return { url: `https://x.com/i/status/${status[1]}`, sourceType: 'x', sourceId: status[1] };
+    if (isXHost) {
+      if (status) return { url: `https://x.com/i/status/${status[1]}`, sourceType: 'x', sourceId: status[1] };
+      return null;
     }
+    if (host === 't.co' || host === 'pic.x.com') return null;
     if (host.endsWith('bing.com') || host.endsWith('duckduckgo.com') || host.endsWith('search.yahoo.co.jp')) return null;
     u.hash = '';
     return { url: u.toString(), sourceType: 'web', sourceId: null };
@@ -46,9 +49,41 @@ export function buildQueries(targetDate) {
   ];
 }
 
-function looksRelevant(text) {
-  const s = (text || '').replace(/\s+/g, ' ').toLowerCase();
-  return (s.includes('ハートピア') || s.includes('heartopia')) && (s.includes('天気') || s.includes('weather') || s.includes('予報'));
+function normalizeSearchText(text) {
+  return String(text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+export function targetDateTokens(targetDate) {
+  const match = String(targetDate || '').match(/^(20\d{2})-(\d{2})-(\d{2})$/);
+  if (!match) return [];
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const mm = String(month).padStart(2, '0');
+  const dd = String(day).padStart(2, '0');
+  return [
+    `${year}-${mm}-${dd}`,
+    `${year}/${mm}/${dd}`,
+    `${year}.${mm}.${dd}`,
+    `${year}年${month}月${day}日`,
+    `${month}月${day}日`,
+    `${month}/${day}`,
+    `${mm}/${dd}`
+  ].map((value) => value.toLowerCase());
+}
+
+export function candidateRelevance(text, targetDate) {
+  const s = normalizeSearchText(text);
+  const hasGame = s.includes('ハートピア') || s.includes('heartopia');
+  const hasWeather = s.includes('天気') || s.includes('weather') || s.includes('予報') || s.includes('forecast');
+  const dateMatched = targetDateTokens(targetDate).some((token) => s.includes(token));
+  const forecastMatched = s.includes('天気予報') || s.includes('今日の天気') || s.includes('weather forecast');
+  let score = 0;
+  if (hasGame) score += 4;
+  if (hasWeather) score += 4;
+  if (dateMatched) score += 5;
+  if (forecastMatched) score += 2;
+  return { relevant: hasGame && hasWeather, dateMatched, forecastMatched, score };
 }
 
 function providerUrl(provider, query) {
@@ -60,22 +95,37 @@ function providerUrl(provider, query) {
   throw new Error(`Unknown provider ${provider}`);
 }
 
-async function collectFromPage(page, provider, query, limit = 25) {
+async function collectFromPage(page, provider, query, targetDate, limit = 40) {
   const url = providerUrl(provider, query);
   const result = { provider, query, url, status: 'ok', error: null, linksSeen: 0, candidates: [] };
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(1500);
-    const rows = await page.locator('a[href]').evaluateAll((els) => els.slice(0, 300).map((a) => ({
-      href: a.href || '',
-      text: (a.innerText || a.textContent || '').trim(),
-      parentText: (a.parentElement?.innerText || '').trim().slice(0, 600)
-    })));
+    const rows = await page.locator('a[href]').evaluateAll((els) => els.slice(0, 300).map((a) => {
+      const anchorText = (a.innerText || a.textContent || '').trim();
+      let node = a.parentElement;
+      let bestText = (node?.innerText || '').trim();
+      for (let depth = 0; depth < 8 && node; depth += 1) {
+        const candidateText = (node.innerText || '').trim();
+        const normalized = candidateText.replace(/\s+/g, ' ').toLowerCase();
+        const hasGame = normalized.includes('ハートピア') || normalized.includes('heartopia');
+        const hasWeather = normalized.includes('天気') || normalized.includes('weather') || normalized.includes('予報') || normalized.includes('forecast');
+        if (candidateText.length > bestText.length && candidateText.length <= 1600) bestText = candidateText;
+        if (candidateText.length >= 40 && candidateText.length <= 1600 && hasGame && hasWeather) {
+          bestText = candidateText;
+          break;
+        }
+        node = node.parentElement;
+      }
+      return { href: a.href || '', text: anchorText, parentText: bestText.slice(0, 1200) };
+    }));
     result.linksSeen = rows.length;
     for (const row of rows) {
       const normalized = normalizeCandidateUrl(row.href);
       if (!normalized) continue;
-      if (normalized.sourceType !== 'x' && !looksRelevant(`${row.text} ${row.parentText}`)) continue;
+      const contextText = `${row.text} ${row.parentText}`;
+      const relevance = candidateRelevance(contextText, targetDate);
+      if (!relevance.relevant) continue;
       result.candidates.push({
         sourceUrl: normalized.url,
         sourceType: normalized.sourceType,
@@ -83,7 +133,10 @@ async function collectFromPage(page, provider, query, limit = 25) {
         discoverySource: provider,
         searchQuery: query,
         anchorText: row.text.slice(0, 300),
-        context: row.parentText.slice(0, 500)
+        context: row.parentText.slice(0, 1000),
+        relevanceScore: relevance.score,
+        dateMatched: relevance.dateMatched,
+        forecastMatched: relevance.forecastMatched
       });
       if (result.candidates.length >= limit) break;
     }
@@ -92,6 +145,69 @@ async function collectFromPage(page, provider, query, limit = 25) {
     result.error = String(err?.message || err).slice(0, 500);
   }
   return result;
+}
+
+function rankCandidates(candidates) {
+  return [...candidates].sort((a, b) =>
+    Number(Boolean(b.dateMatched)) - Number(Boolean(a.dateMatched)) ||
+    Number(Boolean(b.forecastMatched)) - Number(Boolean(a.forecastMatched)) ||
+    Number(b.relevanceScore || 0) - Number(a.relevanceScore || 0) ||
+    b.discoveries.length - a.discoveries.length ||
+    String(a.sourceUrl).localeCompare(String(b.sourceUrl))
+  );
+}
+
+export function selectDiversifiedCandidates(candidates, limit = 24) {
+  const ranked = rankCandidates(candidates);
+  const selected = [];
+  const selectedUrls = new Set();
+  const providerCounts = new Map();
+  const typeCounts = new Map();
+  const providerCap = Math.max(3, Math.ceil(limit / 3));
+  const typeCap = Math.max(6, Math.ceil(limit * 0.65));
+  const add = (candidate) => {
+    if (selectedUrls.has(candidate.sourceUrl)) return false;
+    selected.push(candidate);
+    selectedUrls.add(candidate.sourceUrl);
+    providerCounts.set(candidate.discoverySource, (providerCounts.get(candidate.discoverySource) || 0) + 1);
+    typeCounts.set(candidate.sourceType, (typeCounts.get(candidate.sourceType) || 0) + 1);
+    return true;
+  };
+
+  // Provider and source type only diversify the candidate pool. They never
+  // receive a relevance bonus: date/game/weather evidence stays the ranking key.
+  for (const candidate of ranked) {
+    if (selected.length >= limit) break;
+    if ((providerCounts.get(candidate.discoverySource) || 0) >= providerCap) continue;
+    if ((typeCounts.get(candidate.sourceType) || 0) >= typeCap) continue;
+    add(candidate);
+  }
+  for (const candidate of ranked) {
+    if (selected.length >= limit) break;
+    add(candidate);
+  }
+  return selected;
+}
+
+export function mergeAndRankCandidates(attempts, targetDate, limit = 24) {
+  const merged = new Map();
+  for (const attempt of attempts || []) {
+    for (const c of attempt.candidates || []) {
+      const key = c.sourceUrl;
+      if (!key) continue;
+      if (!merged.has(key)) merged.set(key, { ...c, discoveries: [] });
+      const record = merged.get(key);
+      record.discoveries.push({ discoverySource: c.discoverySource, searchQuery: c.searchQuery });
+      const relevance = candidateRelevance(`${record.anchorText || ''} ${record.context || ''}`, targetDate);
+      record.relevanceScore = Math.max(Number(record.relevanceScore || 0), relevance.score);
+      record.dateMatched = Boolean(record.dateMatched || relevance.dateMatched);
+      record.forecastMatched = Boolean(record.forecastMatched || relevance.forecastMatched);
+    }
+  }
+  const relevant = [...merged.values()].filter((candidate) =>
+    candidateRelevance(`${candidate.anchorText || ''} ${candidate.context || ''}`, targetDate).relevant
+  );
+  return selectDiversifiedCandidates(relevant, limit);
 }
 
 export async function discover(targetDate) {
@@ -104,24 +220,13 @@ export async function discover(targetDate) {
   try {
     for (const provider of providers) {
       const providerQueries = provider === 'yahoo-realtime' ? [queries[0], queries[2]] : queries.slice(0, 2);
-      for (const query of providerQueries) attempts.push(await collectFromPage(page, provider, query));
+      for (const query of providerQueries) attempts.push(await collectFromPage(page, provider, query, targetDate));
     }
   } finally {
     await browser.close();
   }
 
-  const merged = new Map();
-  for (const attempt of attempts) {
-    for (const c of attempt.candidates) {
-      const key = c.sourceUrl;
-      if (!merged.has(key)) merged.set(key, { ...c, discoveries: [] });
-      merged.get(key).discoveries.push({ discoverySource: c.discoverySource, searchQuery: c.searchQuery });
-    }
-  }
-  const candidates = [...merged.values()]
-    .sort((a, b) => (b.sourceType === 'x') - (a.sourceType === 'x') || b.discoveries.length - a.discoveries.length)
-    .slice(0, 12);
-
+  const candidates = mergeAndRankCandidates(attempts, targetDate, 24);
   return {
     schemaVersion: 1,
     responseType: 'weather-public-discovery',
@@ -136,5 +241,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const { targetDate, out } = parseArgs(process.argv.slice(2));
   const result = await discover(targetDate);
   await fs.writeFile(out, `${JSON.stringify(result)}\n`, 'utf8');
-  console.log(JSON.stringify({ candidateCount: result.candidates.length, attempts: result.attempts }));
+  console.log(JSON.stringify({
+    candidateCount: result.candidates.length,
+    candidates: result.candidates.map((candidate) => ({
+      sourceUrl: candidate.sourceUrl,
+      sourceType: candidate.sourceType,
+      relevanceScore: candidate.relevanceScore,
+      dateMatched: candidate.dateMatched,
+      discoverySource: candidate.discoverySource,
+      discoveryCount: candidate.discoveries?.length || 0
+    })),
+    attempts: result.attempts
+  }));
 }

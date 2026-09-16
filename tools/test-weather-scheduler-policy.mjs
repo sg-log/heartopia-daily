@@ -12,23 +12,28 @@ test('scheduler has primary, snooze, and manual triggers', () => {
   assert.match(workflow, /group: weather-scheduled-run/)
 })
 
-test('scheduler guards successful slots and only reuses successfully processed source fingerprints', () => {
+test('scheduler guards only a fully successful date-slot and does not short-circuit on source URLs', () => {
   assert.match(workflow, /heartopia-weather-scheduled-success:/)
-  assert.match(workflow, /heartopia-weather-source-success:/)
   assert.match(workflow, /already_succeeded/)
+  assert.doesNotMatch(workflow, /heartopia-weather-source-success:/)
 })
 
-test('scheduler connects discovery through capture, deterministic review, and pending submit', () => {
+test('scheduler connects public Web and X through unified daily plus weekly review and one pending submit', () => {
   assert.match(workflow, /weather-x-embed-evidence\.mjs/)
-  assert.match(workflow, /weather-deterministic-review\.mjs/)
+  assert.match(workflow, /weather-cloud-url-evidence\.mjs/)
+  assert.match(workflow, /sourceType -eq 'x'/)
+  assert.match(workflow, /sourceType -eq 'web'/)
+  assert.match(workflow, /weather-unified-review\.mjs/)
+  assert.match(workflow, /weeklyCount/)
   assert.match(workflow, /weather-artifact-review-bridge\.ps1/)
-  assert.match(workflow, /weather-cloud-submit\.ps1/)
+  assert.match(workflow, /weather-cloud-submit-unified\.ps1/)
+  assert.match(workflow, /デイリー＋週間天気pending/)
   assert.doesNotMatch(workflow, /OPENAI_API_KEY/)
 })
 
-test('no usable candidates fail so the independent snooze can retry', () => {
+test('no usable public candidates fail so the independent snooze can retry', () => {
   assert.match(workflow, /No public weather candidates found/)
-  assert.match(workflow, /No supported X evidence candidate found/)
+  assert.match(workflow, /No supported public evidence candidate found/)
   assert.match(workflow, /core\.setFailed/)
   assert.match(workflow, /steps\.slot\.outputs\.is_snooze == 'true'/)
 })
