@@ -3092,11 +3092,14 @@ function weatherData(dateStr){
     const targetDate = weatherSlotDateFor(date, "00", index);
     return [key, slotIndexMap.get(weatherDateTimeKey(targetDate, hour)) || []];
   }));
-  const weeks = Object.fromEntries(WEATHER_WEEK_KEYS.map((key, index) => [
-    key,
-    weekIndexMap.get(weekDate(date, index)) || []
-  ]));
   const raw = rawWeatherData(date);
+  const weeks = Object.fromEntries(WEATHER_WEEK_KEYS.map((key, index) => {
+    const direct = weatherValues(raw?.weeks?.[key]);
+    return [
+      key,
+      direct.length ? direct : (weekIndexMap.get(weekDate(date, index)) || [])
+    ];
+  }));
   const hasData = WEATHER_SLOT_KEYS.some(key => slots[key].length) || WEATHER_WEEK_KEYS.some(key => weeks[key].length);
   return hasData ? {date, startSlot:"00", slots, weeks, memo:raw?.memo || ""} : null;
 }
