@@ -138,9 +138,11 @@ jobs:
               return
             }
 
-            // The fully automatic image path currently accepts public X posts because the
-            // repository already has a hardened official-embed capture adapter for them.
-            const usable = result.candidates.filter(c => c && c.sourceType === 'x' && /^https:\/\/x\.com\/i\/status\/\d+$/.test(c.sourceUrl || '')).slice(0, 3)
+            const usable = result.candidates.filter(c => {
+              if (!c || !['x','web'].includes(c.sourceType)) return false
+              if (c.sourceType === 'x') return /^https:\/\/x\.com\/i\/status\/\d+$/.test(c.sourceUrl || '')
+              return /^https:\/\//.test(c.sourceUrl || '')
+            }).slice(0, 8)
             fs.writeFileSync(process.env.CANDIDATE_PATH, JSON.stringify(usable), 'utf8')
             const candidateKeys = usable.map(c => `${c.sourceType}|${c.sourceId || ''}|${c.sourceUrl}`).sort()
             const fingerprint = crypto.createHash('sha256').update(JSON.stringify(candidateKeys)).digest('hex')
@@ -153,7 +155,7 @@ jobs:
             core.setOutput('duplicate_data', duplicateData ? 'true' : 'false')
             core.setOutput('fingerprint', fingerprint)
             if (result.candidates.length === 0) core.setFailed('No public weather candidates found.')
-            else if (usable.length === 0) core.setFailed('No supported X evidence candidate found.')
+            else if (usable.length === 0) core.setFailed('No supported public evidence candidate found.')
 
       - name: Capture candidates and directly inspect saved images
         id: capture
@@ -174,8 +176,15 @@ jobs:
             if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
             New-Item -ItemType Directory -Path $dir -Force | Out-Null
 
-            & node tools/weather-x-embed-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
+            if ([string]$candidate.sourceType -eq 'x') {
+              & node tools/weather-x-embed-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
+            } elseif ([string]$candidate.sourceType -eq 'web') {
+              & node tools/weather-cloud-url-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
+            } else {
+              continue
+            }
             if ($LASTEXITCODE -ne 0) { continue }
+
             try {
               ./tools/weather-cloud-discovery.ps1 `
                 -CapturePath (Join-Path $dir 'capture.json') `
@@ -196,7 +205,7 @@ jobs:
               break
             }
           }
-          if ($null -eq $selected) { throw 'No captured candidate produced a complete high-confidence five-slot review.' }
+          if ($null -eq $selected) { throw 'No captured public candidate produced a complete high-confidence five-slot review.' }
           "selected_dir=$env:SELECTED_DIR" >> $env:GITHUB_OUTPUT
           "selected_source_url=$([string]$selected.sourceUrl)" >> $env:GITHUB_OUTPUT
 
