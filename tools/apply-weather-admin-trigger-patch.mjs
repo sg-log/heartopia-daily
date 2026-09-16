@@ -52,8 +52,8 @@ const workflowInputNeedle = `        default: auto\n`;
 const workflowInputReplacement = `        default: auto\n      target_date:\n        description: 'JST target date (YYYY-MM-DD); blank means today'\n        required: false\n        type: string\n        default: ''\n`;
 workflow = replaceOnce(workflow, workflowInputNeedle, workflowInputReplacement, 'workflow target date input');
 
-const manualEnvNeedle = `          MANUAL_SLOT: ${{ inputs.slot }}`;
-const manualEnvReplacement = `          MANUAL_SLOT: ${{ inputs.slot }}\n          MANUAL_TARGET_DATE: ${{ inputs.target_date }}`;
+const manualEnvNeedle = '          MANUAL_SLOT: ${{ inputs.slot }}';
+const manualEnvReplacement = '          MANUAL_SLOT: ${{ inputs.slot }}\n          MANUAL_TARGET_DATE: ${{ inputs.target_date }}';
 workflow = replaceOnce(workflow, manualEnvNeedle, manualEnvReplacement, 'workflow manual date env');
 
 const manualValidationNeedle = `            if ($slot -notin @('morning','evening')) { throw 'Invalid manual slot.' }\n          }`;
