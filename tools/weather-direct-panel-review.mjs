@@ -7,10 +7,10 @@ import { extractPostDates, normalizeTargetDate } from './weather-deterministic-r
 
 const START_SLOTS = ['00', '06', '12', '18'];
 const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
-const DAILY_X = [.18, .355, .53, .705, .88];
+const DAILY_X = [.18, .325, .47, .655, .81];
 const DAILY_Y = .455;
-const WEEK_X = .855;
-const WEEK_Y = [.59, .685, .78, .87, .955];
+const WEEK_X = .815;
+const WEEK_Y = [.594, .674, .754, .836, .916];
 const TEMPLATE_FILES = [
   ['晴', 'sun-day.png'],
   ['晴', 'sun-night-slot0.png'],
