@@ -984,6 +984,23 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
 .pendingWeatherImages{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0}
 .pendingWeatherImages a{display:flex;flex-direction:column;max-width:100%}
 .pendingWeatherImages img{width:360px;max-width:100%;height:auto;max-height:360px;object-fit:contain;background:#f4f4f4;border-radius:8px}
+.pendingWeatherCard>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none;font-weight:800}
+.pendingWeatherCard>summary::-webkit-details-marker{display:none}
+.pendingWeatherCard>summary::after{content:"開く";flex:0 0 auto;font-size:12px;color:var(--accent2);background:var(--soft);border:1px solid #d7e2dc;border-radius:999px;padding:4px 9px}
+.pendingWeatherCard[open]>summary::after{content:"閉じる"}
+.pendingWeatherCardBody{padding-top:8px}
+.pendingWeatherImageButton{display:flex;flex-direction:column;align-items:flex-start;gap:5px;max-width:100%;padding:0;border:0;border-radius:8px;background:transparent;color:var(--accent2);font-weight:800;text-align:left;box-shadow:none}
+.pendingWeatherImageButton:hover{background:transparent}
+.pendingWeatherImageButton img{cursor:zoom-in}
+.pendingWeatherEvidenceLabel{font-size:12px;font-weight:900;color:var(--accent2);margin:0 0 4px}
+.pendingWeatherSourceImagesLabel{font-size:12px;font-weight:900;color:var(--muted);margin:10px 0 4px}
+.pendingWeatherImageDialog{width:min(94vw,980px);max-width:980px;max-height:92vh;border:0;border-radius:18px;padding:12px;background:#171716;color:#fff;box-shadow:0 20px 70px rgba(0,0,0,.45)}
+.pendingWeatherImageDialog::backdrop{background:rgba(0,0,0,.72)}
+.pendingWeatherImageDialogInner{display:grid;gap:8px}
+.pendingWeatherImageDialogBar{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.pendingWeatherImageDialogCaption{font-size:13px;font-weight:800;color:#f6f1e8}
+.pendingWeatherImageDialogClose{padding:7px 11px;background:#fff;color:#3f3a36}
+.pendingWeatherImageDialog img{display:block;max-width:100%;max-height:80vh;width:auto;height:auto;margin:auto;object-fit:contain;border-radius:10px;background:#fff}
 @media(max-width:640px){.pendingWeatherCard{padding:12px}.pendingWeatherSlots{gap:6px}.pendingWeatherCard .quickWeatherSlot{grid-template-columns:44px minmax(0,1fr)}.pendingWeatherCard .quickWeatherSlot .weatherChip{min-width:42px;padding:6px 7px}.pendingWeatherImages img{width:100%;max-height:none}}
 </style>
 </head>
@@ -5371,8 +5388,40 @@ let pendingEvidenceObserver = null;
 function clearPendingEvidenceImages(){
   pendingEvidenceObserver?.disconnect();
   pendingEvidenceObserver = null;
+  const dialog = document.getElementById('pendingWeatherImageDialog');
+  if(dialog?.open) dialog.close();
   pendingEvidenceObjectUrls.forEach(url => URL.revokeObjectURL(url));
   pendingEvidenceObjectUrls.clear();
+}
+
+function ensurePendingWeatherImageDialog(){
+  let dialog = document.getElementById('pendingWeatherImageDialog');
+  if(dialog) return dialog;
+  dialog = document.createElement('dialog');
+  dialog.id = 'pendingWeatherImageDialog';
+  dialog.className = 'pendingWeatherImageDialog';
+  dialog.innerHTML = '<div class="pendingWeatherImageDialogInner"><div class="pendingWeatherImageDialogBar"><div class="pendingWeatherImageDialogCaption" data-weather-image-dialog-caption></div><button type="button" class="pendingWeatherImageDialogClose" data-weather-image-dialog-close>閉じる</button></div><img data-weather-image-dialog-img alt=""></div>';
+  dialog.querySelector('[data-weather-image-dialog-close]').onclick = () => dialog.close();
+  dialog.addEventListener('click', event => { if(event.target === dialog) dialog.close(); });
+  dialog.addEventListener('close', () => {
+    const img = dialog.querySelector('[data-weather-image-dialog-img]');
+    img.removeAttribute('src');
+    img.alt = '';
+  });
+  document.body.append(dialog);
+  return dialog;
+}
+
+function openPendingWeatherImage(url, alt='天気画像', caption='画像を拡大'){
+  if(!url) return;
+  const dialog = ensurePendingWeatherImageDialog();
+  const img = dialog.querySelector('[data-weather-image-dialog-img]');
+  const captionEl = dialog.querySelector('[data-weather-image-dialog-caption]');
+  img.src = url;
+  img.alt = alt;
+  captionEl.textContent = caption;
+  if(typeof dialog.showModal === 'function') dialog.showModal();
+  else dialog.setAttribute('open', '');
 }
 async function loadPendingEvidence(target){
   if(!target || ['loading','loaded'].includes(target.dataset.evidenceState)) return;
@@ -5388,12 +5437,21 @@ async function loadPendingEvidence(target){
     if(!target.isConnected || adminKeyValue() !== requestKey) return;
     const url = URL.createObjectURL(new Blob([bytes], {type:result.mimeType}));
     pendingEvidenceObjectUrls.add(url);
-    const link = document.createElement('a');
-    link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+    const label = document.createElement('p');
+    label.className = 'pendingWeatherEvidenceLabel';
+    label.textContent = '保存済み証拠画像（自動判定に実際に使用）';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'pendingWeatherImageButton';
+    button.dataset.weatherImageOpen = url;
+    button.dataset.weatherImageAlt = '自動判定に使用した保存済み証拠画像';
+    button.dataset.weatherImageCaption = '保存済み証拠画像（自動判定に使用）';
     const img = document.createElement('img');
-    img.src = url; img.alt = 'AI判定に使用した保存済み証拠画像'; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
-    link.append(img, document.createTextNode('証拠画像を拡大'));
-    target.replaceChildren(link);
+    img.src = url; img.alt = '自動判定に使用した保存済み証拠画像'; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
+    const text = document.createElement('span');
+    text.textContent = 'タップして拡大';
+    button.append(img, text);
+    target.replaceChildren(label, button);
     target.dataset.evidenceState = 'loaded';
   }catch(_){
     target.dataset.evidenceState = 'failed';
@@ -5430,7 +5488,7 @@ function pendingWeatherCard(r){
   const source = pendingWeatherEvidenceUrl(r.sourceUrl);
   const images = Array.isArray(r.sourceImageUrls) ? [...new Set(r.sourceImageUrls.map(url => pendingWeatherEvidenceUrl(url, true)).filter(Boolean))].slice(0, 8) : [];
   const editPrefix = `pending-edit-${r.id}`;
-  return `<article class="pendingWeatherCard" id="pending-weather-${esc(r.id)}" data-pending-weather-id="${esc(r.id)}"><strong>${esc(reportDate)} ／ ${esc(startSlot)}時開始</strong>
+  return `<details class="pendingWeatherCard" id="pending-weather-${esc(r.id)}" data-pending-weather-id="${esc(r.id)}" open><summary class="pendingWeatherSummary"><strong>${esc(reportDate)} ／ ${esc(startSlot)}時開始</strong></summary><div class="pendingWeatherCardBody">
     <p class="pendingWeatherEditNote">違っていたら、天気アイコンをタップして直してから承認できます。</p>
     <div class="pendingWeatherSlots" data-pending-weather-editor="${esc(r.id)}">${quickWeatherGroupHtml(editPrefix, startSlot)}</div>
     ${r.evidenceStatus === 'saved' && r.evidenceImages?.length ? `<div class="pendingWeatherImages" data-weather-evidence="${esc(r.id)}" data-evidence-display><p class="pendingWeatherEvidenceStatus">証拠画像を読み込み待ち…</p></div>` : '<p>保存済み証拠画像なし</p>'}
@@ -5440,9 +5498,10 @@ function pendingWeatherCard(r){
       <p>取得元：${esc(r.sourceType || '未記録')}<br>取得日時：${esc(r.retrievedAt || '未記録')}</p>
       ${WEATHER_WEEK_KEYS.some(key => weeks[key]?.length) ? `<div><strong>週間の報告</strong>${WEATHER_WEEK_KEYS.map((key, i) => `<div>${esc(weekDateLabel(reportDate, i))}：${esc(simpleWeatherText(weeks[key], "未入力"))}</div>`).join("")}</div>` : ""}
       ${r.memo ? `<p class="pendingWeatherMemo">${esc(r.memo)}</p>` : ""}
-      <div class="pendingWeatherImages">${images.length ? images.map((url, i) => `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer"><img src="${esc(url)}" alt="元画像 ${i + 1}" loading="lazy" referrerpolicy="no-referrer"><span>元画像${i + 1}を拡大</span></a>`).join("") : "<p>元画像情報なし</p>"}</div>
-      ${images.length ? "<small>表示できない画像は、元投稿から確認してください。</small>" : ""}
-    </div></details></article>`;
+      <p class="pendingWeatherSourceImagesLabel">元投稿画像（参考用・保存済み証拠画像とは別）</p>
+      <div class="pendingWeatherImages">${images.length ? images.map((url, i) => `<button type="button" class="pendingWeatherImageButton" data-weather-image-open="${esc(url)}" data-weather-image-alt="元投稿画像 ${i + 1}" data-weather-image-caption="元投稿画像（参考） ${i + 1}"><img src="${esc(url)}" alt="元画像 ${i + 1}" loading="lazy" referrerpolicy="no-referrer"><span>元画像${i + 1}を拡大</span></button>`).join("") : "<p>元画像情報なし</p>"}</div>
+      ${images.length ? "<small>ここは元投稿側の参考画像です。自動判定に使った証拠画像はカード上部に表示されます。</small>" : ""}
+    </div></details></div></details>`;
 }
 
 function pendingWeatherDeepLinkId(){
@@ -6357,6 +6416,12 @@ function init(){
 
   E.refreshPendingWeatherBtn.onclick = fetchPendingWeatherReports;
   E.pendingWeatherReports.onclick = event => {
+    const imageOpen = event.target.closest('[data-weather-image-open]');
+    if(imageOpen){
+      event.preventDefault();
+      openPendingWeatherImage(imageOpen.dataset.weatherImageOpen || '', imageOpen.dataset.weatherImageAlt || '天気画像', imageOpen.dataset.weatherImageCaption || '画像を拡大');
+      return;
+    }
     const retry = event.target.closest('[data-retry-weather-evidence]');
     if(retry){ const target=retry.closest('[data-weather-evidence]');delete target.dataset.evidenceState;loadPendingEvidence(target);return; }
     const clear = event.target.closest(".pendingWeatherCard [data-weather-clear]");
