@@ -74,10 +74,10 @@ export function buildPanelCandidates(width, height) {
   };
   const aspect = width / height;
   if (Math.abs(aspect - TARGET_ASPECT) <= .18) add(0, 0, width, height, 'whole-image');
-  for (const heightFraction of [.72, .76, .80, .84]) {
+  for (const heightFraction of [.72, .75, .78, .81]) {
     const h = height * heightFraction;
     const w = h * TARGET_ASPECT;
-    for (const topFraction of [.04, .07, .10, .13]) {
+    for (const topFraction of [.07, .10, .12, .14]) {
       const y = height * topFraction;
       for (const rightFraction of [.03, .055, .08, .105]) {
         const x = width - width * rightFraction - w;
@@ -182,7 +182,7 @@ async function scoreImage(page, imageDataUrl, templates) {
       const width=sourceImage.naturalWidth,height=sourceImage.naturalHeight,out=[],seen=new Set();
       const add=(x,y,w,h,source)=>{x=Math.round(x);y=Math.round(y);w=Math.round(w);h=Math.round(h);if(w<120||h<160||x<0||y<0||x+w>width||y+h>height)return;const k=`${x},${y},${w},${h}`;if(seen.has(k))return;seen.add(k);out.push({x,y,w,h,source});};
       if(Math.abs(width/height-targetAspect)<=.18)add(0,0,width,height,'whole-image');
-      for(const hf of [.72,.76,.80,.84]){const h=height*hf,w=h*targetAspect;for(const tf of [.04,.07,.10,.13])for(const rf of [.03,.055,.08,.105])add(width-width*rf-w,height*tf,w,h,'right-panel-search');}
+      for(const hf of [.72,.75,.78,.81]){const h=height*hf,w=h*targetAspect;for(const tf of [.07,.10,.12,.14])for(const rf of [.03,.055,.08,.105])add(width-width*rf-w,height*tf,w,h,'right-panel-search');}
       return out;
     };
     const panelCanvas=(r)=>{const c=document.createElement('canvas');c.width=r.w;c.height=r.h;c.getContext('2d').drawImage(sourceImage,r.x,r.y,r.w,r.h,0,0,r.w,r.h);return c;};
@@ -190,8 +190,11 @@ async function scoreImage(page, imageDataUrl, templates) {
     let coarse=buildCandidates().map(classifyPanel).sort((a,b)=>b.highCount-a.highCount||b.okCount-a.okCount||b.avg-a.avg).slice(0,6);
     const refined=[];
     for(const base of coarse){for(let dy=-6;dy<=6;dy+=3)for(let dx=-6;dx<=6;dx+=3){const r={...base.rect,x:Math.max(0,Math.min(sourceImage.naturalWidth-base.rect.w,base.rect.x+dx)),y:Math.max(0,Math.min(sourceImage.naturalHeight-base.rect.h,base.rect.y+dy)),source:'refined'};refined.push(classifyPanel(r));}}
-    const best=[...coarse,...refined].sort((a,b)=>b.highCount-a.highCount||b.okCount-a.okCount||b.minMargin-a.minMargin||b.avg-a.avg)[0]||null;
-    return {width:sourceImage.naturalWidth,height:sourceImage.naturalHeight,best};
+    const rankedPanels=[...coarse,...refined]
+      .sort((a,b)=>b.highCount-a.highCount||b.okCount-a.okCount||b.minMargin-a.minMargin||b.avg-a.avg)
+      .slice(0,16);
+    const best=rankedPanels[0]||null;
+    return {width:sourceImage.naturalWidth,height:sourceImage.naturalHeight,best,ranked:rankedPanels};
   }, { imageDataUrl, templates, targetAspect: TARGET_ASPECT, slotRects: SLOT_RECTS, thresholds: { confidence: CONFIDENCE_THRESHOLD, high: HIGH_THRESHOLD, margin: MARGIN_THRESHOLD } });
 }
 
@@ -226,6 +229,7 @@ export async function inspectCapture({ captureDir, targetDate, repoRoot = path.r
   let best = null;
   try {
     const page = await browser.newPage();
+    const panelCandidates = [];
     for (const media of capture.rawMedia.slice(0, 4)) {
       const filePath = path.join(captureDir, String(media.file || ''));
       let descriptor;
@@ -233,22 +237,30 @@ export async function inspectCapture({ captureDir, targetDate, repoRoot = path.r
       if (descriptor.sha256 !== media.sha256 || descriptor.mimeType !== media.mimeType) continue;
       const imageDataUrl = `data:${descriptor.mimeType};base64,${descriptor.bytes.toString('base64')}`;
       const scored = await scoreImage(page, imageDataUrl, templates);
-      const candidate = scored.best ? { media, descriptor, imageDataUrl, scored } : null;
-      if (!candidate) continue;
-      const rank = [candidate.scored.best.highCount, candidate.scored.best.okCount, candidate.scored.best.minMargin, candidate.scored.best.avg];
-      const prior = best ? [best.scored.best.highCount,best.scored.best.okCount,best.scored.best.minMargin,best.scored.best.avg] : null;
-      if (!prior || rank.some((value,index)=>value>prior[index] && rank.slice(0,index).every((v,i)=>v===prior[i]))) best = candidate;
+      for (const panel of scored.ranked || []) {
+        if (panel.okCount < 5 || panel.highCount < 3) continue;
+        panelCandidates.push({ media, descriptor, imageDataUrl, panel });
+      }
     }
-    if (!best || best.scored.best.highCount !== 5 || best.scored.best.okCount !== 5) {
-      return { schemaVersion:1, ready:false, targetDate, selectedImage:null, interpretation:{ready:false,observedDate:targetDate,startSlot:null,slots:Array.from({length:5},(_,i)=>({slot:`slot${i}`,visible:false,weather:[],confidence:'low',description:''})),confidence:'low',summary:'天気5枠を高確信度で判読できませんでした。',unresolved:['時間別5枠の画像判定が高確信度に達しませんでした']}, diagnostics:{postDates:dates,best:best?.scored?.best||null} };
+    panelCandidates.sort((a,b)=>b.panel.highCount-a.panel.highCount||b.panel.okCount-a.panel.okCount||b.panel.minMargin-a.panel.minMargin||b.panel.avg-a.panel.avg);
+    const ocrAttempts = [];
+    for (const candidate of panelCandidates.slice(0, 12)) {
+      const ocr = await readStartSlot(page, candidate.imageDataUrl, candidate.panel.rect);
+      ocrAttempts.push({file:candidate.media.file,rect:candidate.panel.rect,highCount:candidate.panel.highCount,okCount:candidate.panel.okCount,ocr});
+      if (!ocr.startSlot) continue;
+      if (!best || candidate.panel.highCount > best.panel.highCount ||
+          (candidate.panel.highCount === best.panel.highCount && candidate.panel.minMargin > best.panel.minMargin) ||
+          (candidate.panel.highCount === best.panel.highCount && candidate.panel.minMargin === best.panel.minMargin && candidate.panel.avg > best.panel.avg)) {
+        best = { ...candidate, ocr };
+      }
     }
-    const ocr = await readStartSlot(page, best.imageDataUrl, best.scored.best.rect);
-    if (!ocr.startSlot) {
-      return { schemaVersion:1, ready:false, targetDate, selectedImage:{file:best.media.file,mimeType:best.media.mimeType,captureSha256:best.media.sha256}, interpretation:{ready:false,observedDate:targetDate,startSlot:null,slots:best.scored.best.slots.map((s,i)=>({slot:`slot${i}`,visible:true,weather:s.value?[s.value]:[],confidence:s.confidence,description:`画像テンプレート判定 score=${s.bestScore.toFixed(3)} margin=${s.margin.toFixed(3)}`})),confidence:'low',summary:'時刻ラベルを確定できませんでした。',unresolved:['開始時刻を画像内の時刻ラベルから確定できませんでした']}, diagnostics:{postDates:dates,panel:best.scored.best.rect,ocr} };
+    if (!best || best.panel.highCount !== 5 || best.panel.okCount !== 5 || !best.ocr.startSlot) {
+      const fallback = panelCandidates[0] || null;
+      return { schemaVersion:1, ready:false, targetDate, selectedImage:null, interpretation:{ready:false,observedDate:targetDate,startSlot:null,slots:Array.from({length:5},(_,i)=>({slot:`slot${i}`,visible:false,weather:[],confidence:'low',description:''})),confidence:'low',summary:'時刻ラベルで整合する天気5枠を高確信度で判読できませんでした。',unresolved:['時間別5枠と開始時刻の両方を高確信度で確定できませんでした']}, diagnostics:{postDates:dates,best:fallback?.panel||null,ocrAttempts} };
     }
-    const slots=best.scored.best.slots.map((s,i)=>({slot:`slot${i}`,visible:true,weather:[s.value],confidence:'high',description:`画像テンプレート判定 score=${s.bestScore.toFixed(3)} margin=${s.margin.toFixed(3)}`}));
-    const interpretation={ready:true,observedDate:targetDate,startSlot:ocr.startSlot,slots,confidence:'high',summary:`投稿本文で${targetDate}を確認し、元画像の天気パネルをテンプレート照合、時刻ラベルをOCRして5枠を判読。`,unresolved:[]};
-    return { schemaVersion:1, ready:true, targetDate, selectedImage:{file:best.media.file,mimeType:best.media.mimeType,captureSha256:best.media.sha256}, interpretation, diagnostics:{postDates:dates,panel:best.scored.best.rect,ocr,slotScores:best.scored.best.slots.map(s=>({bestValue:s.bestValue,bestScore:s.bestScore,secondValue:s.secondValue,secondScore:s.secondScore,margin:s.margin}))} };
+    const slots=best.panel.slots.map((s,i)=>({slot:`slot${i}`,visible:true,weather:[s.value],confidence:'high',description:`画像テンプレート判定 score=${s.bestScore.toFixed(3)} margin=${s.margin.toFixed(3)}`}));
+    const interpretation={ready:true,observedDate:targetDate,startSlot:best.ocr.startSlot,slots,confidence:'high',summary:`投稿本文で${targetDate}を確認し、元画像の天気パネルをテンプレート照合、時刻ラベルをOCRして5枠を判読。`,unresolved:[]};
+    return { schemaVersion:1, ready:true, targetDate, selectedImage:{file:best.media.file,mimeType:best.media.mimeType,captureSha256:best.media.sha256}, interpretation, diagnostics:{postDates:dates,panel:best.panel.rect,ocr:best.ocr,ocrAttempts,slotScores:best.panel.slots.map(s=>({bestValue:s.bestValue,bestScore:s.bestScore,secondValue:s.secondValue,secondScore:s.secondScore,margin:s.margin}))} };
   } finally { await browser.close(); }
 }
 
