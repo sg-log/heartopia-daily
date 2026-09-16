@@ -7,6 +7,8 @@ on:
       - '.github/workflows/weather-scheduler-ci.yml'
       - 'tools/test-weather-scheduler-policy.mjs'
       - 'tools/test-weather-admin-trigger.mjs'
+      - 'tools/weather-deterministic-review.mjs'
+      - 'tools/test-weather-deterministic-review.mjs'
       - 'tools/README-weather-admin-trigger.md'
       - 'tools/README-weather-scheduler.md'
       - 'tools/weather-cloud-submit.ps1'
@@ -35,6 +37,8 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Validate scheduler policy
         run: node --test tools/test-weather-scheduler-policy.mjs
+      - name: Validate deterministic image review helpers
+        run: node --test tools/test-weather-deterministic-review.mjs
       - name: Validate admin manual trigger contract
         run: node --test tools/test-weather-admin-trigger.mjs
       - name: Validate daily content dedupe
