@@ -1,0 +1,20 @@
+name: Weather Apps Script scheduler CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps-script/weather-scheduler.gs'
+      - 'tools/test-weather-apps-script-scheduler.mjs'
+      - '.github/workflows/weather-apps-script-scheduler-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test resilient scheduler
+        run: node tools/test-weather-apps-script-scheduler.mjs
