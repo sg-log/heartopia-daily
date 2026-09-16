@@ -29,3 +29,13 @@ test('manual workflow supports an explicit target date without changing schedule
   assert.match(workflow, /ParseExact/);
   assert.match(workflow, /target_date=\$targetDate/);
 });
+
+
+test('admin cards can be collapsed to reduce long management pages', () => {
+  assert.match(index, /id=["']collapseAdminCardsBtn["']/);
+  assert.match(index, /id=["']expandAdminCardsBtn["']/);
+  assert.match(index, /function setupAdminCardFolding\(\)/);
+  assert.match(index, /adminCardCollapsed/);
+  assert.match(index, /setupAdminCardFolding\(\)/);
+  assert.match(index, /target\.closest\("\.adminCardFoldable"\)/);
+});
