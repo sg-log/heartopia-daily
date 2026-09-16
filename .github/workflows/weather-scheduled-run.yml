@@ -27,11 +27,11 @@ on:
 permissions:
   contents: read
   issues: write
+  actions: read
 
 env:
   WEATHER_DC_WEBHOOK_URL: ${{ secrets.WEATHER_DC_WEBHOOK_URL }}
 
-# One global queue prevents a delayed primary run and its +10 minute snooze from racing each other.
 concurrency:
   group: weather-scheduled-run
   cancel-in-progress: false
@@ -39,23 +39,8 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
-      - name: Check out trusted repository code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
-
       - name: Resolve JST update slot
         id: slot
         shell: pwsh
@@ -105,16 +90,29 @@ jobs:
         with:
           script: |
             const marker = `<!-- heartopia-weather-scheduled-success:${process.env.RUN_KEY} -->`
-            const { data } = await github.rest.issues.listForRepo({
-              ...context.repo,
-              state: 'all',
-              per_page: 100,
-              sort: 'created',
-              direction: 'desc'
-            })
+            const { data } = await github.rest.issues.listForRepo({ ...context.repo, state:'all', per_page:100, sort:'created', direction:'desc' })
             const found = data.some(issue => !issue.pull_request && typeof issue.body === 'string' && issue.body.includes(marker))
             core.setOutput('already_succeeded', found ? 'true' : 'false')
             if (found) core.notice(`Update slot ${process.env.RUN_KEY} already succeeded; nothing to do.`)
+
+      - name: Check out trusted repository code
+        if: ${{ steps.guard.outputs.already_succeeded != 'true' }}
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        if: ${{ steps.guard.outputs.already_succeeded != 'true' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: ${{ steps.guard.outputs.already_succeeded != 'true' }}
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        if: ${{ steps.guard.outputs.already_succeeded != 'true' }}
+        run: npx playwright install --with-deps chromium
 
       - name: Discover public weather candidates
         if: ${{ steps.guard.outputs.already_succeeded != 'true' }}
@@ -123,15 +121,13 @@ jobs:
           RESULT_PATH: ${{ runner.temp }}/weather-public-discovery.json
         run: node tools/weather-public-discovery.mjs --target-date "$TARGET_DATE" --out "$RESULT_PATH"
 
-      - name: Validate and publish discovery result
+      - name: Validate discovery and prepare evidence candidates
         id: publish
         if: ${{ steps.guard.outputs.already_succeeded != 'true' }}
         uses: actions/github-script@v7
         env:
           RESULT_PATH: ${{ runner.temp }}/weather-public-discovery.json
-          RUN_KEY: ${{ steps.slot.outputs.run_key }}
-          SLOT: ${{ steps.slot.outputs.slot }}
-          IS_SNOOZE: ${{ steps.slot.outputs.is_snooze }}
+          CANDIDATE_PATH: ${{ runner.temp }}/weather-scheduled-candidates.json
         with:
           script: |
             const fs = require('fs')
@@ -142,66 +138,202 @@ jobs:
               return
             }
 
-            const candidateKeys = result.candidates.map(c => `${c.sourceType || ''}|${c.sourceId || ''}|${c.sourceUrl || ''}`).sort()
+            // The fully automatic image path currently accepts public X posts because the
+            // repository already has a hardened official-embed capture adapter for them.
+            const usable = result.candidates.filter(c => c && c.sourceType === 'x' && /^https:\/\/x\.com\/i\/status\/\d+$/.test(c.sourceUrl || '')).slice(0, 3)
+            fs.writeFileSync(process.env.CANDIDATE_PATH, JSON.stringify(usable), 'utf8')
+            const candidateKeys = usable.map(c => `${c.sourceType}|${c.sourceId || ''}|${c.sourceUrl}`).sort()
             const fingerprint = crypto.createHash('sha256').update(JSON.stringify(candidateKeys)).digest('hex')
-            const { data: recent } = await github.rest.issues.listForRepo({
-              ...context.repo,
-              state: 'all',
-              per_page: 100,
-              sort: 'created',
-              direction: 'desc'
-            })
-            const duplicateMarker = `<!-- heartopia-weather-discovery-fingerprint:${fingerprint} -->`
-            const duplicateData = candidateKeys.length > 0 && recent.some(issue =>
-              !issue.pull_request && typeof issue.body === 'string' && issue.body.includes(duplicateMarker)
-            )
-
-            // Candidate discovery itself completed only when at least one candidate exists.
-            // An identical candidate set is still a successful check: it means there was no new source to resend.
-            const successMarker = result.candidates.length > 0
-              ? `<!-- heartopia-weather-scheduled-success:${process.env.RUN_KEY} -->`
-              : ''
-            const body = [
-              successMarker,
-              duplicateMarker,
-              `<!-- heartopia-weather-scheduled-meta:${process.env.SLOT}:${process.env.IS_SNOOZE === 'true' ? 'snooze' : 'normal'} -->`,
-              '<!-- heartopia-weather-discovery-v1 -->',
-              '```json',
-              JSON.stringify({ ...result, duplicateData, fingerprint }),
-              '```'
-            ].filter(Boolean).join('\n')
-
-            const issue = await github.rest.issues.create({
-              ...context.repo,
-              title: `[weather-scheduled-result] ${process.env.RUN_KEY}`,
-              body
-            })
-            await github.rest.issues.update({
-              ...context.repo,
-              issue_number: issue.data.number,
-              state: 'closed',
-              state_reason: 'completed'
-            })
+            const successFingerprintMarker = `<!-- heartopia-weather-source-success:${fingerprint} -->`
+            const { data: recent } = await github.rest.issues.listForRepo({ ...context.repo, state:'all', per_page:100, sort:'created', direction:'desc' })
+            const duplicateData = candidateKeys.length > 0 && recent.some(issue => !issue.pull_request && typeof issue.body === 'string' && issue.body.includes(successFingerprintMarker))
 
             core.setOutput('candidate_count', String(result.candidates.length))
+            core.setOutput('usable_candidate_count', String(usable.length))
             core.setOutput('duplicate_data', duplicateData ? 'true' : 'false')
-            core.setOutput('result_issue_url', issue.data.html_url)
+            core.setOutput('fingerprint', fingerprint)
+            if (result.candidates.length === 0) core.setFailed('No public weather candidates found.')
+            else if (usable.length === 0) core.setFailed('No supported X evidence candidate found.')
 
-            // Zero candidates is retryable. The independent +10 minute cron will try once more.
-            if (result.candidates.length === 0) {
-              core.setFailed(`No weather candidates found for ${process.env.RUN_KEY}.`)
-            }
-
-      - name: Record duplicate discovery without resending
-        if: ${{ success() && steps.guard.outputs.already_succeeded != 'true' && steps.publish.outputs.duplicate_data == 'true' }}
-        run: echo "The same candidate source set was already seen; no duplicate handoff is needed."
-
-      - name: Record new discovery handoff
+      - name: Capture candidates and directly inspect saved images
+        id: capture
         if: ${{ success() && steps.guard.outputs.already_succeeded != 'true' && steps.publish.outputs.duplicate_data != 'true' }}
-        run: echo "New public candidate set discovered and recorded. Downstream capture/review continues through the existing evidence/review flow."
+        shell: pwsh
+        env:
+          CANDIDATE_PATH: ${{ runner.temp }}/weather-scheduled-candidates.json
+          TARGET_DATE: ${{ steps.slot.outputs.target_date }}
+          SELECTED_DIR: ${{ runner.temp }}/weather-selected-evidence
+          REVIEW_DRAFT: ${{ runner.temp }}/weather-deterministic-review.json
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidates = @(Get-Content -LiteralPath $env:CANDIDATE_PATH -Raw -Encoding UTF8 | ConvertFrom-Json)
+          $selected = $null
+          for ($i = 0; $i -lt $candidates.Count; $i++) {
+            $candidate = $candidates[$i]
+            $dir = Join-Path $env:RUNNER_TEMP ("weather-candidate-" + $i)
+            if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+
+            & node tools/weather-x-embed-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
+            if ($LASTEXITCODE -ne 0) { continue }
+            try {
+              ./tools/weather-cloud-discovery.ps1 `
+                -CapturePath (Join-Path $dir 'capture.json') `
+                -OutputPath (Join-Path $dir 'discovery-candidate.json') `
+                -DiscoverySource ([string]$candidate.discoverySource) `
+                -SearchQuery ([string]$candidate.searchQuery)
+            } catch { continue }
+
+            & node tools/weather-deterministic-review.mjs `
+              --mode inspect `
+              --capture-dir $dir `
+              --target-date $env:TARGET_DATE `
+              --output $env:REVIEW_DRAFT
+            if ($LASTEXITCODE -eq 0) {
+              if (Test-Path $env:SELECTED_DIR) { Remove-Item -Recurse -Force $env:SELECTED_DIR }
+              Move-Item -LiteralPath $dir -Destination $env:SELECTED_DIR
+              $selected = $candidate
+              break
+            }
+          }
+          if ($null -eq $selected) { throw 'No captured candidate produced a complete high-confidence five-slot review.' }
+          "selected_dir=$env:SELECTED_DIR" >> $env:GITHUB_OUTPUT
+          "selected_source_url=$([string]$selected.sourceUrl)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload exact captured evidence artifact
+        id: upload
+        if: ${{ success() && steps.capture.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: weather-scheduled-evidence-${{ github.run_id }}
+          path: ${{ steps.capture.outputs.selected_dir }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Bind deterministic review to immutable artifact
+        id: bind
+        if: ${{ success() && steps.upload.outcome == 'success' }}
+        shell: pwsh
+        env:
+          REVIEW_DRAFT: ${{ runner.temp }}/weather-deterministic-review.json
+          REVIEW_ENVELOPE: ${{ runner.temp }}/weather-review-envelope.json
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_NAME: weather-scheduled-evidence-${{ github.run_id }}
+        run: >-
+          node tools/weather-deterministic-review.mjs
+          --mode bind
+          --draft "$env:REVIEW_DRAFT"
+          --artifact-run-id "${{ github.run_id }}"
+          --artifact-id "$env:ARTIFACT_ID"
+          --artifact-name "$env:ARTIFACT_NAME"
+          --output "$env:REVIEW_ENVELOPE"
+
+      - name: Verify artifact hashes and build pending candidate
+        id: bridge
+        if: ${{ success() && steps.bind.outcome == 'success' }}
+        shell: pwsh
+        env:
+          REVIEW_PAYLOAD_BASE64: ${{ steps.bind.outputs.review_payload_base64 }}
+          REVIEW_PATH: ${{ runner.temp }}/weather-artifact-review.json
+          RESULT_DIR: ${{ runner.temp }}/weather-reviewed-result
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_NAME: weather-scheduled-evidence-${{ github.run_id }}
+        run: |
+          ./tools/weather-artifact-review-request.ps1 `
+            -ReviewPayloadBase64 "$env:REVIEW_PAYLOAD_BASE64" `
+            -ReviewPath "$env:REVIEW_PATH"
+          ./tools/weather-artifact-review-bridge.ps1 `
+            -ReviewPath "$env:REVIEW_PATH" `
+            -ArtifactDirectory "${{ steps.capture.outputs.selected_dir }}" `
+            -DownloadedArtifactId "$env:ARTIFACT_ID" `
+            -DownloadedArtifactName "$env:ARTIFACT_NAME" `
+            -DownloadedArtifactRunId "${{ github.run_id }}" `
+            -CandidatePath "$env:RESULT_DIR/weather-candidate.json" `
+            -DryRunPath "$env:RESULT_DIR/weather-dry-run.json" `
+            -PendingPreviewPath "$env:RESULT_DIR/pending-preview.json"
+          if ("${{ steps.bridge.outputs.pending_prepared }}" -eq 'false') { throw 'Pending preview was not prepared.' }
+
+      - name: Register verified weather as pending
+        id: submit
+        if: ${{ success() && steps.bridge.outcome == 'success' }}
+        shell: pwsh
+        env:
+          WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
+          WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
+          RESULT_DIR: ${{ runner.temp }}/weather-reviewed-result
+        run: >-
+          ./tools/weather-cloud-submit.ps1
+          -CandidatePath "$env:RESULT_DIR/weather-candidate.json"
+          -CapturePath "${{ steps.bridge.outputs.capture_path }}"
+          -EvidencePath "${{ steps.bridge.outputs.evidence_path }}"
+          -ResultPath "$env:RESULT_DIR/submit-result.json"
+
+      - name: Finalize slot state
+        id: finalize
+        if: ${{ always() }}
+        uses: actions/github-script@v7
+        env:
+          ALREADY_SUCCEEDED: ${{ steps.guard.outputs.already_succeeded }}
+          RUN_KEY: ${{ steps.slot.outputs.run_key }}
+          SLOT: ${{ steps.slot.outputs.slot }}
+          IS_SNOOZE: ${{ steps.slot.outputs.is_snooze }}
+          FINGERPRINT: ${{ steps.publish.outputs.fingerprint }}
+          DUPLICATE_SOURCE: ${{ steps.publish.outputs.duplicate_data }}
+          CANDIDATE_COUNT: ${{ steps.publish.outputs.candidate_count }}
+          USABLE_COUNT: ${{ steps.publish.outputs.usable_candidate_count }}
+          CAPTURE_OUTCOME: ${{ steps.capture.outcome }}
+          SUBMIT_OUTCOME: ${{ steps.submit.outcome }}
+          REPORT_ID: ${{ steps.submit.outputs.report_id }}
+          CONTENT_DUPLICATE: ${{ steps.submit.outputs.duplicate }}
+          PENDING_REGISTERED: ${{ steps.submit.outputs.pending_registered }}
+          SOURCE_URL: ${{ steps.capture.outputs.selected_source_url }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            if (process.env.ALREADY_SUCCEEDED === 'true') {
+              core.setOutput('terminal_success', 'true')
+              core.setOutput('new_pending', 'false')
+              return
+            }
+            const sourceDuplicate = process.env.DUPLICATE_SOURCE === 'true'
+            const submitSucceeded = process.env.SUBMIT_OUTCOME === 'success' && (process.env.PENDING_REGISTERED === 'true' || process.env.CONTENT_DUPLICATE === 'true')
+            const terminalSuccess = sourceDuplicate || submitSucceeded
+            const fingerprintMarker = process.env.FINGERPRINT ? `<!-- heartopia-weather-source-success:${process.env.FINGERPRINT} -->` : ''
+            const successMarker = terminalSuccess ? `<!-- heartopia-weather-scheduled-success:${process.env.RUN_KEY} -->` : ''
+            const record = {
+              schemaVersion: 2,
+              responseType: 'weather-scheduled-result',
+              runKey: process.env.RUN_KEY,
+              slot: process.env.SLOT,
+              snooze: process.env.IS_SNOOZE === 'true',
+              status: terminalSuccess ? (sourceDuplicate ? 'no-new-source' : (process.env.CONTENT_DUPLICATE === 'true' ? 'content-duplicate' : 'pending')) : 'failed',
+              candidateCount: Number(process.env.CANDIDATE_COUNT || 0),
+              usableCandidateCount: Number(process.env.USABLE_COUNT || 0),
+              sourceUrl: process.env.SOURCE_URL || '',
+              reportId: process.env.REPORT_ID || '',
+              duplicate: process.env.CONTENT_DUPLICATE === 'true',
+              runUrl: process.env.RUN_URL
+            }
+            const body = [successMarker, terminalSuccess ? fingerprintMarker : '', '<!-- heartopia-weather-scheduled-v2 -->', '```json', JSON.stringify(record), '```'].filter(Boolean).join('\n')
+            const issue = await github.rest.issues.create({ ...context.repo, title:`[weather-scheduled-result] ${process.env.RUN_KEY}`, body })
+            await github.rest.issues.update({ ...context.repo, issue_number:issue.data.number, state:'closed', state_reason:'completed' })
+            core.setOutput('terminal_success', terminalSuccess ? 'true' : 'false')
+            core.setOutput('new_pending', submitSucceeded && process.env.CONTENT_DUPLICATE !== 'true' ? 'true' : 'false')
+            core.setOutput('report_id', process.env.REPORT_ID || '')
+            if (!terminalSuccess) core.setFailed('Scheduled weather run did not reach a verified pending or a known duplicate terminal state.')
+
+      - name: Notify Discord about a new pending
+        if: ${{ always() && steps.finalize.outputs.new_pending == 'true' && env.WEATHER_DC_WEBHOOK_URL != '' }}
+        shell: pwsh
+        env:
+          REPORT_ID: ${{ steps.finalize.outputs.report_id }}
+        run: |
+          $adminUrl = "https://sg-log.github.io/heartopia-daily/?admin=1&pending=$env:REPORT_ID#pendingWeatherReports"
+          $payload = @{ content = "🌤️ Heartopia天気のpendingが届いたよ。`n確認・承認する ↓`n$adminUrl"; allowed_mentions = @{ parse = @() } } | ConvertTo-Json -Depth 5 -Compress
+          Invoke-RestMethod -Method Post -Uri $env:WEATHER_DC_WEBHOOK_URL -ContentType 'application/json' -Body $payload | Out-Null
 
       - name: Notify Discord after snooze or manual run fails
-        if: ${{ failure() && env.WEATHER_DC_WEBHOOK_URL != '' && (steps.slot.outputs.is_snooze == 'true' || github.event_name == 'workflow_dispatch') }}
+        if: ${{ always() && steps.finalize.outputs.terminal_success != 'true' && env.WEATHER_DC_WEBHOOK_URL != '' && (steps.slot.outputs.is_snooze == 'true' || github.event_name == 'workflow_dispatch') }}
         shell: pwsh
         env:
           RUN_KEY: ${{ steps.slot.outputs.run_key }}
@@ -209,11 +341,8 @@ jobs:
           WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/workflows/weather-scheduled-run.yml
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if ($env:EVENT_NAME -eq 'workflow_dispatch') {
-            $headline = "⚠️ Heartopia天気の手動更新も失敗しました。"
-          } else {
-            $headline = "⚠️ Heartopia天気 $env:RUN_KEY は通常便と10分後の保険便でも更新できませんでした。"
-          }
+          if ($env:EVENT_NAME -eq 'workflow_dispatch') { $headline = "⚠️ Heartopia天気の手動更新も失敗しました。" }
+          else { $headline = "⚠️ Heartopia天気 $env:RUN_KEY は通常便と10分後の保険便でも更新できませんでした。" }
           $message = "$headline`n次の定時更新を待つか、手動で再実行できます。`n手動Run ↓`n$env:WORKFLOW_URL`n今回のRun ↓`n$env:RUN_URL"
           $payload = @{ content = $message; allowed_mentions = @{ parse = @() } } | ConvertTo-Json -Depth 5 -Compress
           Invoke-RestMethod -Method Post -Uri $env:WEATHER_DC_WEBHOOK_URL -ContentType 'application/json' -Body $payload | Out-Null
