@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { bindReviewEnvelope, buildPanelCandidates, extractPostDates, postConfirmsTargetDate } from './weather-deterministic-review.mjs';
 
+// Geometry regression coverage for the 16:9 game screenshot evidence shape.
 test('extracts Heartopia post dates in Japanese and numeric forms', () => {
   const text = 'ハートピア 2026年9月14日 / 午前10:10 · 2026/09/14';
   assert.deepEqual(extractPostDates(text), ['2026-09-14']);
