@@ -182,7 +182,7 @@ async function scoreImage(page, imageDataUrl, templates) {
     const featureSimilarity=(a,b)=>{const hist=a.bins.reduce((sum,v,i)=>sum+Math.min(v,b.bins[i]||0),0);const scalar=1-Math.min(1,(Math.abs(a.sat-b.sat)+Math.abs(a.bright-b.bright)+Math.abs(a.dark-b.dark)+Math.abs(a.edge-b.edge))/4);return hist*.72+scalar*.28;};
     const pixelSimilarity=(a,b)=>{let union=0,intersection=0,color=0,colorCount=0;for(let i=0;i<a.mask.length;i++){const am=a.mask[i],bm=b.mask[i];if(am||bm)union++;if(am&&bm){intersection++;const pa=a.pixels[i],pb=b.pixels[i],diff=(Math.abs(pa[0]-pb[0])+Math.abs(pa[1]-pb[1])+Math.abs(pa[2]-pb[2]))/(255*3);color+=1-diff;colorCount++;}}const maskScore=union?intersection/union:0,colorScore=colorCount?color/colorCount:0;return maskScore*.38+colorScore*.62;};
     const templateFeatures=templateRecords.map(t=>{const c=document.createElement('canvas');c.width=c.height=56;c.getContext('2d',{willReadFrequently:true}).drawImage(t.image,0,0,56,56);return{weather:t.weather,feature:feature(c),signature:signature(c)}});
-    const classifyCanvas=(canvas)=>{const f=feature(canvas),sig=signature(canvas),scores=heuristic(f);for(const t of templateFeatures){const fs=featureSimilarity(f,t.feature),ps=pixelSimilarity(sig,t.signature),score=ps*.58+fs*.32+(scores[t.weather]||0)*.10;scores[t.weather]=Math.max(scores[t.weather]||0,score);}const ranked=Object.entries(scores).sort((a,b)=>b[1]-a[1]);const [bestValue,bestScore]=ranked[0]||['',0],[secondValue,secondScore]=ranked[1]||['',0],margin=bestScore-secondScore,ok=bestScore>=thresholds.confidence&&margin>=thresholds.margin;return{value:ok?bestValue:'',bestValue,bestScore,secondValue,secondScore,margin,confidence:ok?(bestScore>=thresholds.high?'high':'medium'):'low'};};
+    const classifyCanvas=(canvas)=>{const clearVsRainChromaticBoostV4=true,f=feature(canvas),sig=signature(canvas),scores=heuristic(f);for(const t of templateFeatures){const fs=featureSimilarity(f,t.feature),ps=pixelSimilarity(sig,t.signature),score=ps*.58+fs*.32+(scores[t.weather]||0)*.10;scores[t.weather]=Math.max(scores[t.weather]||0,score);}let ranked=Object.entries(scores).sort((a,b)=>b[1]-a[1]);const topTwo=new Set(ranked.slice(0,2).map(item=>item[0]));if(topTwo.has('晴')&&topTwo.has('雨')&&(f.orange+f.yellow)>=.045&&f.bright>=.85){scores['晴']=Math.max(scores['晴']||0,(scores['雨']||0)+.12);ranked=Object.entries(scores).sort((a,b)=>b[1]-a[1]);}const [bestValue,bestScore]=ranked[0]||['',0],[secondValue,secondScore]=ranked[1]||['',0],margin=bestScore-secondScore,ok=bestScore>=thresholds.confidence&&margin>=thresholds.margin;return{value:ok?bestValue:'',bestValue,bestScore,secondValue,secondScore,margin,confidence:ok?(bestScore>=thresholds.high?'high':'medium'):'low'};};
     const buildCandidates=()=>{
       const width=sourceImage.naturalWidth,height=sourceImage.naturalHeight,out=[],seen=new Set();
       const add=(x,y,w,h,source)=>{x=Math.round(x);y=Math.round(y);w=Math.round(w);h=Math.round(h);if(w<120||h<160||x<0||y<0||x+w>width||y+h>height)return;const k=`${x},${y},${w},${h}`;if(seen.has(k))return;seen.add(k);out.push({x,y,w,h,source});};
@@ -213,50 +213,79 @@ async function scoreImage(page, imageDataUrl, templates) {
 async function readStartSlot(page, imageDataUrl, rect) {
   if (!(await page.evaluate(() => Boolean(window.Tesseract)))) await page.addScriptTag({ url: TESSERACT_URL });
   return page.evaluate(async ({ imageDataUrl, rect, slotRects, startSlots }) => {
-    const timeLabelCellsV3=true;
+    const timeLabelRowV4=true;
     const image = await new Promise((resolve, reject) => { const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=imageDataUrl; });
     const panel=document.createElement('canvas');panel.width=rect.w;panel.height=rect.h;panel.getContext('2d').drawImage(image,rect.x,rect.y,rect.w,rect.h,0,0,rect.w,rect.h);
     const worker=await window.Tesseract.createWorker('eng',1,{logger:()=>{}});
-    await worker.setParameters({tessedit_char_whitelist:'0123456789',tessedit_pageseg_mode:'8'});
+    await worker.setParameters({tessedit_char_whitelist:'0123456789',tessedit_pageseg_mode:'7',preserve_interword_spaces:'1'});
     const allowed=new Set(startSlots);
+    const slotCenters=slotRects.map(cell=>(cell.x+cell.w/2)*panel.width);
     const attempts=[];
-    const values=[];
+    const evaluateMapped=(mapped)=>{
+      let best={startSlot:'',matches:0,mismatches:99,expected:[]};
+      for(const startSlot of startSlots){
+        const startIndex=startSlots.indexOf(startSlot);
+        const expected=Array.from({length:5},(_,index)=>startSlots[(startIndex+index)%startSlots.length]);
+        let matches=0,mismatches=0,observed=0;
+        for(let index=0;index<5;index++){
+          if(!mapped[index])continue;
+          observed++;
+          if(mapped[index]===expected[index])matches++;else mismatches++;
+        }
+        const candidate={startSlot,matches,mismatches,observed,expected};
+        if(mismatches===0&&matches>=4)return candidate;
+        if(matches>best.matches||(matches===best.matches&&mismatches<best.mismatches))best=candidate;
+      }
+      return best;
+    };
     try {
-      for(let index=0;index<slotRects.length;index++){
-        const cell=slotRects[index];
-        const center=(cell.x+cell.w/2)*panel.width;
-        const w=Math.round(.135*panel.width),h=Math.round(.090*panel.height);
-        const x=Math.max(0,Math.round(center-w/2)),y=Math.round(.485*panel.height);
-        const base=document.createElement('canvas');base.width=Math.max(1,w*8);base.height=Math.max(1,h*8);
-        const bctx=base.getContext('2d',{willReadFrequently:true});bctx.imageSmoothingEnabled=true;bctx.imageSmoothingQuality='high';bctx.drawImage(panel,x,y,w,h,0,0,base.width,base.height);
-        const variants=[base];
-        const binary=document.createElement('canvas');binary.width=base.width;binary.height=base.height;
-        const ctx=binary.getContext('2d',{willReadFrequently:true});ctx.drawImage(base,0,0);
-        const imageData=ctx.getImageData(0,0,binary.width,binary.height);
-        for(let i=0;i<imageData.data.length;i+=4){
-          const lum=.299*imageData.data[i]+.587*imageData.data[i+1]+.114*imageData.data[i+2];
-          const value=lum>=180?0:255;
-          imageData.data[i]=value;imageData.data[i+1]=value;imageData.data[i+2]=value;imageData.data[i+3]=255;
-        }
-        ctx.putImageData(imageData,0,0);variants.push(binary);
-        let accepted='';
-        for(let variantIndex=0;variantIndex<variants.length;variantIndex++){
-          const result=await worker.recognize(variants[variantIndex]);
-          const raw=String(result?.data?.text||'').trim();
-          const match=raw.match(/\d{1,2}/);
-          const value=match?String(Number(match[0])).padStart(2,'0').slice(-2):'';
-          attempts.push({index,variantIndex,raw,value});
-          if(allowed.has(value)){accepted=value;break;}
-        }
-        values.push(accepted);
+      const band={x:.055,y:.490,w:.900,h:.080};
+      const x=Math.round(band.x*panel.width),y=Math.round(band.y*panel.height),w=Math.round(band.w*panel.width),h=Math.round(band.h*panel.height),scale=6;
+      const base=document.createElement('canvas');base.width=Math.max(1,w*scale);base.height=Math.max(1,h*scale);
+      const bctx=base.getContext('2d',{willReadFrequently:true});bctx.imageSmoothingEnabled=true;bctx.imageSmoothingQuality='high';bctx.drawImage(panel,x,y,w,h,0,0,base.width,base.height);
+      const variants=[base];
+      const binary=document.createElement('canvas');binary.width=base.width;binary.height=base.height;
+      const ctx=binary.getContext('2d',{willReadFrequently:true});ctx.drawImage(base,0,0);
+      const imageData=ctx.getImageData(0,0,binary.width,binary.height);
+      for(let i=0;i<imageData.data.length;i+=4){
+        const lum=.299*imageData.data[i]+.587*imageData.data[i+1]+.114*imageData.data[i+2];
+        const value=lum>=185?0:255;
+        imageData.data[i]=value;imageData.data[i+1]=value;imageData.data[i+2]=value;imageData.data[i+3]=255;
       }
-      if(values.length===5&&values.every(Boolean)){
-        const firstIndex=startSlots.indexOf(values[0]);
-        if(firstIndex>=0&&values.every((value,index)=>value===startSlots[(firstIndex+index)%startSlots.length])){
-          return{startSlot:values[0],times:values,valid:values,attempts};
+      ctx.putImageData(imageData,0,0);variants.push(binary);
+      for(let variantIndex=0;variantIndex<variants.length;variantIndex++){
+        const result=await worker.recognize(variants[variantIndex],{}, {tsv:true});
+        const raw=String(result?.data?.text||'').trim();
+        const tsv=String(result?.data?.tsv||'');
+        const words=[];
+        for(const line of tsv.split(/\r?\n/).slice(1)){
+          const cols=line.split('\t');
+          if(cols.length<12||cols[0]!=='5')continue;
+          const token=String(cols.slice(11).join('\t')||'').trim();
+          const match=token.match(/\d{1,2}/);
+          if(!match)continue;
+          const value=String(Number(match[0])).padStart(2,'0').slice(-2);
+          if(!allowed.has(value))continue;
+          const left=Number(cols[6]),width=Number(cols[8]);
+          if(!Number.isFinite(left)||!Number.isFinite(width))continue;
+          const centerPanel=x+(left+width/2)/scale;
+          let nearest=0,nearestDistance=Infinity;
+          for(let index=0;index<slotCenters.length;index++){
+            const distance=Math.abs(slotCenters[index]-centerPanel);
+            if(distance<nearestDistance){nearest=index;nearestDistance=distance;}
+          }
+          if(nearestDistance<=panel.width*.10)words.push({value,index:nearest,centerPanel,token});
+        }
+        const mapped=Array(5).fill('');
+        for(const word of words){if(!mapped[word.index])mapped[word.index]=word.value;}
+        const evaluated=evaluateMapped(mapped);
+        attempts.push({variantIndex,raw,mapped,words,matches:evaluated.matches,mismatches:evaluated.mismatches});
+        if(evaluated.mismatches===0&&evaluated.matches>=4){
+          return{startSlot:evaluated.startSlot,times:evaluated.expected,valid:mapped.filter(Boolean),attempts,inferred:true};
         }
       }
-      return{startSlot:'',times:values,valid:values.filter(Boolean),attempts};
+      const fallback=[...attempts].sort((a,b)=>b.matches-a.matches||a.mismatches-b.mismatches)[0]||null;
+      return{startSlot:'',times:fallback?.mapped||[],valid:(fallback?.mapped||[]).filter(Boolean),attempts,inferred:false};
     } finally { await worker.terminate(); }
   }, { imageDataUrl, rect, slotRects: SLOT_RECTS, startSlots: START_SLOTS });
 }
