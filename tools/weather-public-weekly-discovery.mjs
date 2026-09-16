@@ -16,8 +16,10 @@ export function buildWeeklyQueries(targetDate) {
     `ハートピアスローライフ 週間予報 ${month}月${day}日`,
     `ハートピア 週間天気 ${month}月${day}日`,
     `Heartopia weekly weather forecast ${targetDate}`,
-    'ハートピアスローライフ 週間予報',
-    'Heartopia 7 day weather forecast'
+    `ハートピア 天気 ${month}月${day}日`,
+    `Heartopia weather ${targetDate}`,
+    'ハートピア 天気',
+    'Heartopia weather'
   ];
 }
 
@@ -48,7 +50,7 @@ export function weeklyRelevance(text, targetDate) {
   if (hasWeather) score += 4;
   if (hasWeekly) score += 7;
   if (dateMatched) score += 6;
-  return { relevant: hasGame && hasWeather && hasWeekly, dateMatched, weeklyMatched: hasWeekly, score };
+  return { relevant: hasGame && hasWeather, dateMatched, weeklyMatched: hasWeekly, score };
 }
 
 function providerUrl(provider, query) {
@@ -141,6 +143,7 @@ export function mergeWeeklyCandidates(attempts, targetDate, limit = 24) {
   const ranked = [...merged.values()]
     .filter(candidate => weeklyRelevance(`${candidate.anchorText || ''} ${candidate.context || ''}`, targetDate).relevant)
     .sort((a, b) =>
+      Number(Boolean(b.weeklyMatched)) - Number(Boolean(a.weeklyMatched)) ||
       Number(Boolean(b.dateMatched)) - Number(Boolean(a.dateMatched)) ||
       Number(b.relevanceScore || 0) - Number(a.relevanceScore || 0) ||
       b.discoveries.length - a.discoveries.length ||
@@ -158,7 +161,7 @@ export async function discoverWeekly(targetDate) {
   const attempts = [];
   try {
     for (const provider of providers) {
-      const providerQueries = provider === 'yahoo-realtime' ? [queries[0], queries[1], queries[3]] : queries.slice(0, 3);
+      const providerQueries = provider === 'yahoo-realtime' ? [queries[0], queries[1], queries[3], queries[5]] : queries.slice(0, 5);
       for (const query of providerQueries) attempts.push(await collectFromPage(page, provider, query, targetDate));
     }
   } finally {
@@ -186,6 +189,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       sourceType: candidate.sourceType,
       relevanceScore: candidate.relevanceScore,
       dateMatched: candidate.dateMatched,
+      weeklyMatched: candidate.weeklyMatched,
       discoverySource: candidate.discoverySource,
       discoveryCount: candidate.discoveries?.length || 0
     })),
