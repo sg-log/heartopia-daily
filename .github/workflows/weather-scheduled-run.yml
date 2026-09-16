@@ -1,0 +1,207 @@
+name: Weather scheduled run
+
+on:
+  schedule:
+    # GitHub cron is UTC. 22:00/22:10 = 07:00/07:10 JST, 10:00/10:10 = 19:00/19:10 JST.
+    - cron: '0 22 * * *'
+    - cron: '10 22 * * *'
+    - cron: '0 10 * * *'
+    - cron: '10 10 * * *'
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: 'Update slot to retry manually'
+        required: true
+        type: choice
+        options:
+          - auto
+          - morning
+          - evening
+        default: auto
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  WEATHER_DC_WEBHOOK_URL: ${{ secrets.WEATHER_DC_WEBHOOK_URL }}
+
+# One global queue prevents a delayed primary run and its +10 minute snooze from racing each other.
+concurrency:
+  group: weather-scheduled-run
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out trusted repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Resolve JST update slot
+        id: slot
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          MANUAL_SLOT: ${{ inputs.slot }}
+        run: |
+          $now = [DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(9))
+          $targetDate = $now.ToString('yyyy-MM-dd')
+          $slot = ''
+          $isSnooze = 'false'
+
+          if ($env:EVENT_NAME -eq 'schedule') {
+            switch ($env:EVENT_SCHEDULE) {
+              '0 22 * * *'  { $slot = 'morning' }
+              '10 22 * * *' { $slot = 'morning'; $isSnooze = 'true' }
+              '0 10 * * *'  { $slot = 'evening' }
+              '10 10 * * *' { $slot = 'evening'; $isSnooze = 'true' }
+              default { throw "Unknown schedule: $env:EVENT_SCHEDULE" }
+            }
+          } else {
+            $slot = [string]$env:MANUAL_SLOT
+            if ([string]::IsNullOrWhiteSpace($slot) -or $slot -eq 'auto') {
+              $slot = if ($now.Hour -lt 13) { 'morning' } else { 'evening' }
+            }
+            if ($slot -notin @('morning','evening')) { throw 'Invalid manual slot.' }
+          }
+
+          "target_date=$targetDate" >> $env:GITHUB_OUTPUT
+          "slot=$slot" >> $env:GITHUB_OUTPUT
+          "is_snooze=$isSnooze" >> $env:GITHUB_OUTPUT
+          "run_key=$targetDate-$slot" >> $env:GITHUB_OUTPUT
+
+      - name: Check whether this update slot already succeeded
+        id: guard
+        uses: actions/github-script@v7
+        env:
+          RUN_KEY: ${{ steps.slot.outputs.run_key }}
+        with:
+          script: |
+            const marker = `<!-- heartopia-weather-scheduled-success:${process.env.RUN_KEY} -->`
+            const { data } = await github.rest.issues.listForRepo({
+              ...context.repo,
+              state: 'all',
+              per_page: 100,
+              sort: 'created',
+              direction: 'desc'
+            })
+            const found = data.some(issue => !issue.pull_request && typeof issue.body === 'string' && issue.body.includes(marker))
+            core.setOutput('already_succeeded', found ? 'true' : 'false')
+            if (found) core.notice(`Update slot ${process.env.RUN_KEY} already succeeded; nothing to do.`)
+
+      - name: Discover public weather candidates
+        if: ${{ steps.guard.outputs.already_succeeded != 'true' }}
+        env:
+          TARGET_DATE: ${{ steps.slot.outputs.target_date }}
+          RESULT_PATH: ${{ runner.temp }}/weather-public-discovery.json
+        run: node tools/weather-public-discovery.mjs --target-date "$TARGET_DATE" --out "$RESULT_PATH"
+
+      - name: Validate and publish discovery result
+        id: publish
+        if: ${{ steps.guard.outputs.already_succeeded != 'true' }}
+        uses: actions/github-script@v7
+        env:
+          RESULT_PATH: ${{ runner.temp }}/weather-public-discovery.json
+          RUN_KEY: ${{ steps.slot.outputs.run_key }}
+          SLOT: ${{ steps.slot.outputs.slot }}
+          IS_SNOOZE: ${{ steps.slot.outputs.is_snooze }}
+        with:
+          script: |
+            const fs = require('fs')
+            const crypto = require('crypto')
+            const result = JSON.parse(fs.readFileSync(process.env.RESULT_PATH, 'utf8'))
+            if (!result || result.schemaVersion !== 1 || result.responseType !== 'weather-public-discovery' || !Array.isArray(result.candidates) || !Array.isArray(result.attempts)) {
+              core.setFailed('Invalid discovery result.')
+              return
+            }
+
+            const candidateKeys = result.candidates.map(c => `${c.sourceType || ''}|${c.sourceId || ''}|${c.sourceUrl || ''}`).sort()
+            const fingerprint = crypto.createHash('sha256').update(JSON.stringify(candidateKeys)).digest('hex')
+            const { data: recent } = await github.rest.issues.listForRepo({
+              ...context.repo,
+              state: 'all',
+              per_page: 100,
+              sort: 'created',
+              direction: 'desc'
+            })
+            const duplicateMarker = `<!-- heartopia-weather-discovery-fingerprint:${fingerprint} -->`
+            const duplicateData = candidateKeys.length > 0 && recent.some(issue =>
+              !issue.pull_request && typeof issue.body === 'string' && issue.body.includes(duplicateMarker)
+            )
+
+            // Candidate discovery itself completed only when at least one candidate exists.
+            // An identical candidate set is still a successful check: it means there was no new source to resend.
+            const successMarker = result.candidates.length > 0
+              ? `<!-- heartopia-weather-scheduled-success:${process.env.RUN_KEY} -->`
+              : ''
+            const body = [
+              successMarker,
+              duplicateMarker,
+              `<!-- heartopia-weather-scheduled-meta:${process.env.SLOT}:${process.env.IS_SNOOZE === 'true' ? 'snooze' : 'normal'} -->`,
+              '<!-- heartopia-weather-discovery-v1 -->',
+              '```json',
+              JSON.stringify({ ...result, duplicateData, fingerprint }),
+              '```'
+            ].filter(Boolean).join('\n')
+
+            const issue = await github.rest.issues.create({
+              ...context.repo,
+              title: `[weather-scheduled-result] ${process.env.RUN_KEY}`,
+              body
+            })
+            await github.rest.issues.update({
+              ...context.repo,
+              issue_number: issue.data.number,
+              state: 'closed',
+              state_reason: 'completed'
+            })
+
+            core.setOutput('candidate_count', String(result.candidates.length))
+            core.setOutput('duplicate_data', duplicateData ? 'true' : 'false')
+            core.setOutput('result_issue_url', issue.data.html_url)
+
+            // Zero candidates is retryable. The independent +10 minute cron will try once more.
+            if (result.candidates.length === 0) {
+              core.setFailed(`No weather candidates found for ${process.env.RUN_KEY}.`)
+            }
+
+      - name: Record duplicate discovery without resending
+        if: ${{ success() && steps.guard.outputs.already_succeeded != 'true' && steps.publish.outputs.duplicate_data == 'true' }}
+        run: echo "The same candidate source set was already seen; no duplicate handoff is needed."
+
+      - name: Record new discovery handoff
+        if: ${{ success() && steps.guard.outputs.already_succeeded != 'true' && steps.publish.outputs.duplicate_data != 'true' }}
+        run: echo "New public candidate set discovered and recorded. Downstream capture/review continues through the existing evidence/review flow."
+
+      - name: Notify Discord after snooze or manual run fails
+        if: ${{ failure() && env.WEATHER_DC_WEBHOOK_URL != '' && (steps.slot.outputs.is_snooze == 'true' || github.event_name == 'workflow_dispatch') }}
+        shell: pwsh
+        env:
+          RUN_KEY: ${{ steps.slot.outputs.run_key }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/workflows/weather-scheduled-run.yml
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if ($env:EVENT_NAME -eq 'workflow_dispatch') {
+            $headline = "⚠️ Heartopia天気の手動更新も失敗しました。"
+          } else {
+            $headline = "⚠️ Heartopia天気 $env:RUN_KEY は通常便と10分後の保険便でも更新できませんでした。"
+          }
+          $message = "$headline`n次の定時更新を待つか、手動で再実行できます。`n手動Run ↓`n$env:WORKFLOW_URL`n今回のRun ↓`n$env:RUN_URL"
+          $payload = @{ content = $message; allowed_mentions = @{ parse = @() } } | ConvertTo-Json -Depth 5 -Compress
+          Invoke-RestMethod -Method Post -Uri $env:WEATHER_DC_WEBHOOK_URL -ContentType 'application/json' -Body $payload | Out-Null

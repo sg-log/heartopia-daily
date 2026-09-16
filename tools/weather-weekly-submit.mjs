@@ -63,11 +63,16 @@ export function buildWeeklySubmitPayload(preview, baseline, evidenceBytes) {
   };
 }
 
-export function reportMatchesPayload(report, payload) {
+export function weatherContentMatchesPayload(report, payload) {
   if (!report || String(report.date || '') !== payload.date || String(report.startSlot || '') !== payload.startSlot) return false;
+  for (const key of SLOT_KEYS) if (JSON.stringify(report.slots?.[key] || []) !== JSON.stringify(payload.slots[key] || [])) return false;
+  for (const key of WEEK_KEYS) if (JSON.stringify(report.weeks?.[key] || []) !== JSON.stringify(payload.weeks[key] || [])) return false;
+  return true;
+}
+
+export function reportMatchesPayload(report, payload) {
+  if (!weatherContentMatchesPayload(report, payload)) return false;
   if (String(report.sourceUrl || '') !== String(payload.sourceUrl || '')) return false;
-  for (const key of SLOT_KEYS) if (JSON.stringify(report.slots?.[key] || []) !== JSON.stringify(payload.slots[key])) return false;
-  for (const key of WEEK_KEYS) if (JSON.stringify(report.weeks?.[key] || []) !== JSON.stringify(payload.weeks[key])) return false;
   return true;
 }
 
@@ -114,15 +119,32 @@ async function main() {
   const baseline = chooseApprovedBaseline(approved.reports, preview.baseDate);
   const evidenceBytes = fs.readFileSync(preview.evidence.localPath);
   const payload = buildWeeklySubmitPayload(preview, baseline, evidenceBytes);
-  const submitted = await postJson(apiUrl, { ...payload, postKey });
-  if (submitted.status !== 'pending' || !submitted.id) throw new Error('Weekly submit did not return a pending receipt.');
 
-  const pending = await postJson(apiUrl, { action:'pending', adminKey });
-  const matches = (pending.reports || []).filter((report) => String(report.id || '') === String(submitted.id));
-  if (matches.length !== 1 || !reportMatchesPayload(matches[0], payload)) throw new Error('Saved weekly pending does not match the reviewed weekly payload.');
+  const pendingBefore = await postJson(apiUrl, { action:'pending', adminKey });
+  const duplicateReport = [
+    ...(Array.isArray(pendingBefore.reports) ? pendingBefore.reports : []),
+    ...(Array.isArray(approved.reports) ? approved.reports : [])
+  ].find((report) => weatherContentMatchesPayload(report, payload));
+
+  let reportId = '';
+  let duplicate = false;
+  if (duplicateReport) {
+    reportId = String(duplicateReport.id || '');
+    if (!reportId) throw new Error('Duplicate weather content was found without a report id.');
+    duplicate = true;
+  } else {
+    const submitted = await postJson(apiUrl, { ...payload, postKey });
+    if (submitted.status !== 'pending' || !submitted.id) throw new Error('Weekly submit did not return a pending receipt.');
+    reportId = String(submitted.id);
+    duplicate = Boolean(submitted.duplicate);
+
+    const pending = await postJson(apiUrl, { action:'pending', adminKey });
+    const matches = (pending.reports || []).filter((report) => String(report.id || '') === reportId);
+    if (matches.length !== 1 || !reportMatchesPayload(matches[0], payload)) throw new Error('Saved weekly pending does not match the reviewed weekly payload.');
+  }
 
   const result = {
-    status: 'pending', reportId: String(submitted.id), duplicate: Boolean(submitted.duplicate),
+    status: 'pending', reportId, duplicate,
     baseDate: preview.baseDate, visibleWeekCount: preview.visibleWeekCount,
     captureSha256: preview.evidence.sha256,
     reviewStorageSha256: preview.reviewerBinding?.reviewStoredSha256 || '',
