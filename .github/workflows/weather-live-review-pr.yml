@@ -30,6 +30,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - name: Install local OCR
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng
       - name: Discover ranked candidates for 2026-09-16
         env:
           RESULT_PATH: ${{ runner.temp }}/weather-public-discovery.json
@@ -42,7 +44,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
           $result = Get-Content -LiteralPath $env:RESULT_PATH -Raw -Encoding UTF8 | ConvertFrom-Json
-          $candidates = @($result.candidates | Select-Object -First 6)
+          $candidates = @($result.candidates | Select-Object -First 4)
           Write-Host ("Ranked public candidate count: " + $candidates.Count)
           if ($candidates.Count -eq 0) { throw 'No relevant public candidates discovered.' }
           $selected = $null
@@ -57,15 +59,11 @@ jobs:
             } elseif ([string]$candidate.sourceType -eq 'web') {
               & node tools/weather-cloud-url-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
             } else {
-              Write-Host 'Unsupported candidate type.'
               continue
             }
-            if ($LASTEXITCODE -ne 0) {
-              Write-Host 'Capture failed.'
-              continue
-            }
+            if ($LASTEXITCODE -ne 0) { Write-Host 'Capture failed.'; continue }
             $review = Join-Path $dir 'review.json'
-            & node tools/weather-daily-review.mjs --mode inspect --capture-dir $dir --target-date 2026-09-16 --output $review
+            & node tools/weather-daily-normalized-review.mjs --mode inspect --capture-dir $dir --target-date 2026-09-16 --output $review
             if (Test-Path $review) {
               $reviewObject = Get-Content -LiteralPath $review -Raw -Encoding UTF8 | ConvertFrom-Json
               Write-Host ("Review ready=" + [string]$reviewObject.ready + " startSlot=" + [string]$reviewObject.interpretation.startSlot)
