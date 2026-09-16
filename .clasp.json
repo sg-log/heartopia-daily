@@ -12,7 +12,8 @@
   ],
   "filePushOrder": [
     "apps-script/weather-api.gs",
-    "apps-script/weather-review-image.gs"
+    "apps-script/weather-review-image.gs",
+    "apps-script/weather-scheduler.gs"
   ],
   "skipSubdirectories": true
 }
