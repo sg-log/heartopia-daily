@@ -46,9 +46,45 @@ export function buildQueries(targetDate) {
   ];
 }
 
+function normalizeSearchText(text) {
+  return String(text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+export function targetDateTokens(targetDate) {
+  const match = String(targetDate || '').match(/^(20\d{2})-(\d{2})-(\d{2})$/);
+  if (!match) return [];
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const mm = String(month).padStart(2, '0');
+  const dd = String(day).padStart(2, '0');
+  return [
+    `${year}-${mm}-${dd}`,
+    `${year}/${mm}/${dd}`,
+    `${year}.${mm}.${dd}`,
+    `${year}年${month}月${day}日`,
+    `${month}月${day}日`,
+    `${month}/${day}`,
+    `${mm}/${dd}`
+  ].map((value) => value.toLowerCase());
+}
+
+export function candidateRelevance(text, targetDate) {
+  const s = normalizeSearchText(text);
+  const hasGame = s.includes('ハートピア') || s.includes('heartopia');
+  const hasWeather = s.includes('天気') || s.includes('weather') || s.includes('予報') || s.includes('forecast');
+  const dateMatched = targetDateTokens(targetDate).some((token) => s.includes(token));
+  const forecastMatched = s.includes('天気予報') || s.includes('今日の天気') || s.includes('weather forecast');
+  let score = 0;
+  if (hasGame) score += 4;
+  if (hasWeather) score += 4;
+  if (dateMatched) score += 5;
+  if (forecastMatched) score += 2;
+  return { relevant: hasGame && hasWeather, dateMatched, forecastMatched, score };
+}
+
 function looksRelevant(text) {
-  const s = (text || '').replace(/\s+/g, ' ').toLowerCase();
-  return (s.includes('ハートピア') || s.includes('heartopia')) && (s.includes('天気') || s.includes('weather') || s.includes('予報'));
+  return candidateRelevance(text, '').relevant;
 }
 
 function providerUrl(provider, query) {
@@ -60,7 +96,7 @@ function providerUrl(provider, query) {
   throw new Error(`Unknown provider ${provider}`);
 }
 
-async function collectFromPage(page, provider, query, limit = 25) {
+async function collectFromPage(page, provider, query, targetDate, limit = 25) {
   const url = providerUrl(provider, query);
   const result = { provider, query, url, status: 'ok', error: null, linksSeen: 0, candidates: [] };
   try {
@@ -75,7 +111,11 @@ async function collectFromPage(page, provider, query, limit = 25) {
     for (const row of rows) {
       const normalized = normalizeCandidateUrl(row.href);
       if (!normalized) continue;
-      if (normalized.sourceType !== 'x' && !looksRelevant(`${row.text} ${row.parentText}`)) continue;
+      const contextText = `${row.text} ${row.parentText}`;
+      const relevance = candidateRelevance(contextText, targetDate);
+      // X links used to bypass relevance checks entirely, which allowed unrelated
+      // status links from a search page to consume all capture attempts.
+      if (!relevance.relevant) continue;
       result.candidates.push({
         sourceUrl: normalized.url,
         sourceType: normalized.sourceType,
@@ -83,7 +123,10 @@ async function collectFromPage(page, provider, query, limit = 25) {
         discoverySource: provider,
         searchQuery: query,
         anchorText: row.text.slice(0, 300),
-        context: row.parentText.slice(0, 500)
+        context: row.parentText.slice(0, 500),
+        relevanceScore: relevance.score,
+        dateMatched: relevance.dateMatched,
+        forecastMatched: relevance.forecastMatched
       });
       if (result.candidates.length >= limit) break;
     }
@@ -92,6 +135,33 @@ async function collectFromPage(page, provider, query, limit = 25) {
     result.error = String(err?.message || err).slice(0, 500);
   }
   return result;
+}
+
+export function mergeAndRankCandidates(attempts, targetDate, limit = 12) {
+  const merged = new Map();
+  for (const attempt of attempts || []) {
+    for (const c of attempt.candidates || []) {
+      const key = c.sourceUrl;
+      if (!key) continue;
+      if (!merged.has(key)) merged.set(key, { ...c, discoveries: [] });
+      const record = merged.get(key);
+      record.discoveries.push({ discoverySource: c.discoverySource, searchQuery: c.searchQuery });
+      const relevance = candidateRelevance(`${record.anchorText || ''} ${record.context || ''}`, targetDate);
+      record.relevanceScore = Math.max(Number(record.relevanceScore || 0), relevance.score);
+      record.dateMatched = Boolean(record.dateMatched || relevance.dateMatched);
+      record.forecastMatched = Boolean(record.forecastMatched || relevance.forecastMatched);
+    }
+  }
+  return [...merged.values()]
+    .filter((candidate) => candidateRelevance(`${candidate.anchorText || ''} ${candidate.context || ''}`, targetDate).relevant)
+    .sort((a, b) =>
+      Number(Boolean(b.dateMatched)) - Number(Boolean(a.dateMatched)) ||
+      Number(Boolean(b.forecastMatched)) - Number(Boolean(a.forecastMatched)) ||
+      Number(b.relevanceScore || 0) - Number(a.relevanceScore || 0) ||
+      (b.sourceType === 'x') - (a.sourceType === 'x') ||
+      b.discoveries.length - a.discoveries.length
+    )
+    .slice(0, limit);
 }
 
 export async function discover(targetDate) {
@@ -104,23 +174,13 @@ export async function discover(targetDate) {
   try {
     for (const provider of providers) {
       const providerQueries = provider === 'yahoo-realtime' ? [queries[0], queries[2]] : queries.slice(0, 2);
-      for (const query of providerQueries) attempts.push(await collectFromPage(page, provider, query));
+      for (const query of providerQueries) attempts.push(await collectFromPage(page, provider, query, targetDate));
     }
   } finally {
     await browser.close();
   }
 
-  const merged = new Map();
-  for (const attempt of attempts) {
-    for (const c of attempt.candidates) {
-      const key = c.sourceUrl;
-      if (!merged.has(key)) merged.set(key, { ...c, discoveries: [] });
-      merged.get(key).discoveries.push({ discoverySource: c.discoverySource, searchQuery: c.searchQuery });
-    }
-  }
-  const candidates = [...merged.values()]
-    .sort((a, b) => (b.sourceType === 'x') - (a.sourceType === 'x') || b.discoveries.length - a.discoveries.length)
-    .slice(0, 12);
+  const candidates = mergeAndRankCandidates(attempts, targetDate, 12);
 
   return {
     schemaVersion: 1,
@@ -136,5 +196,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const { targetDate, out } = parseArgs(process.argv.slice(2));
   const result = await discover(targetDate);
   await fs.writeFile(out, `${JSON.stringify(result)}\n`, 'utf8');
-  console.log(JSON.stringify({ candidateCount: result.candidates.length, attempts: result.attempts }));
+  console.log(JSON.stringify({
+    candidateCount: result.candidates.length,
+    candidates: result.candidates.map((candidate) => ({
+      sourceUrl: candidate.sourceUrl,
+      sourceType: candidate.sourceType,
+      relevanceScore: candidate.relevanceScore,
+      dateMatched: candidate.dateMatched,
+      discoverySource: candidate.discoverySource
+    })),
+    attempts: result.attempts
+  }));
 }
