@@ -46,8 +46,64 @@ export function inferStartSlotFromMappings(mappings) {
   return best;
 }
 
+export function extractTimedMeteorIntervals(text) {
+  const out = [];
+  const lines = String(text || '').replace(/\r/g, '').split('\n');
+  for (const rawLine of lines) {
+    const line = rawLine.trim().replace(/：/g, ':').replace(/[〜～]/g, '~');
+    if (!/(?:流星雨|流星群|meteor\s*shower)/i.test(line)) continue;
+    const match = line.match(/^(翌\s*)?(\d{1,2}):(\d{2})\s*[~\-]\s*(翌\s*)?(\d{1,2}):(\d{2})/i);
+    if (!match) continue;
+    const startHour = Number(match[2]), startMinutePart = Number(match[3]);
+    const endHour = Number(match[5]), endMinutePart = Number(match[6]);
+    if (startHour > 23 || endHour > 23 || startMinutePart > 59 || endMinutePart > 59) continue;
+    let startDay = match[1] ? 1 : 0;
+    let endDay = match[4] ? 1 : startDay;
+    const startClock = startHour * 60 + startMinutePart;
+    const endClock = endHour * 60 + endMinutePart;
+    if (endDay === startDay && endClock < startClock) endDay += 1;
+    out.push({
+      startMinute: startDay * 1440 + startClock,
+      endMinute: endDay * 1440 + endClock,
+      weather: '流星群',
+      sourceLine: rawLine.trim()
+    });
+  }
+  return out;
+}
+
+export function applyTimedSpecialWeatherHints(result, postText) {
+  if (!result?.ready || result.interpretation?.ready !== true) return result;
+  const startSlot = String(result.interpretation.startSlot || '');
+  if (!START_SLOTS.includes(startSlot)) return result;
+  const hints = extractTimedMeteorIntervals(postText);
+  if (!hints.length) return result;
+  const clone = typeof structuredClone === 'function' ? structuredClone(result) : JSON.parse(JSON.stringify(result));
+  const baseMinutes = Number(startSlot) * 60;
+  const corrections = [];
+  for (let index = 0; index < clone.interpretation.slots.length; index += 1) {
+    const absoluteMinute = baseMinutes + index * 360;
+    const hint = hints.find(item => absoluteMinute >= item.startMinute && absoluteMinute <= item.endMinute);
+    if (!hint) continue;
+    const slot = clone.interpretation.slots[index];
+    const previous = Array.isArray(slot.weather) ? [...slot.weather] : [];
+    slot.weather = [hint.weather];
+    slot.confidence = 'high';
+    slot.description = ((slot.description || '') + ' 投稿本文の時刻付き「流星雨/流星群」と照合。').trim();
+    corrections.push({ slot: slot.slot, previous, weather: hint.weather, sourceLine: hint.sourceLine });
+  }
+  if (!corrections.length) return result;
+  clone.interpretation.summary = ((clone.interpretation.summary || '') + ' 投稿本文の時刻付き特殊天気を照合。').trim();
+  clone.diagnostics = { ...(clone.diagnostics || {}), textWeatherHints: hints, textWeatherCorrections: corrections };
+  return clone;
+}
+
 export async function inspectUnifiedCapture({ captureDir, targetDate, repoRoot = path.resolve('.') }) {
-  return inspectDirectPanelCapture({ captureDir, targetDate, repoRoot });
+  const result = await inspectDirectPanelCapture({ captureDir, targetDate, repoRoot });
+  if (!result?.ready) return result;
+  let postText = '';
+  try { postText = await readFile(path.join(captureDir, 'post-content.txt'), 'utf8'); } catch {}
+  return applyTimedSpecialWeatherHints(result, postText);
 }
 
 export function bindUnifiedReviewEnvelope(draft, artifact) {

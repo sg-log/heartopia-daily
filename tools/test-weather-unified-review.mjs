@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { inferStartSlotFromMappings } from './weather-unified-review.mjs';
+import { inferStartSlotFromMappings, extractTimedMeteorIntervals, applyTimedSpecialWeatherHints } from './weather-unified-review.mjs';
 
 test('recovers a unique 06 start from two positioned labels without guessing weather', () => {
   const result = inferStartSlotFromMappings([
@@ -22,4 +22,33 @@ test('rejects conflicting positioned labels rather than forcing a sequence', () 
     ['', '12', '', '', '']
   ]);
   assert.equal(result, null);
+});
+
+
+test('uses an explicit timed 流星雨 line to correct the visually ambiguous 18 slot', () => {
+  const postText = '09/16(水)\nお天気予報\n00:00～17:59　晴れ\n18:00～23:59　流星雨\n翌00:00～05:59　雨';
+  assert.deepEqual(extractTimedMeteorIntervals(postText).map(item => [item.startMinute, item.endMinute, item.weather]), [[1080, 1439, '流星群']]);
+  const result = {
+    ready: true,
+    interpretation: {
+      ready: true, startSlot: '06', summary: 'visual',
+      slots: [
+        {slot:'slot0',weather:['晴'],confidence:'high',description:'visual'},
+        {slot:'slot1',weather:['晴'],confidence:'high',description:'visual'},
+        {slot:'slot2',weather:['晴'],confidence:'high',description:'visual'},
+        {slot:'slot3',weather:['雨'],confidence:'high',description:'visual'},
+        {slot:'slot4',weather:['晴'],confidence:'high',description:'visual'}
+      ]
+    },
+    diagnostics: {}
+  };
+  const corrected = applyTimedSpecialWeatherHints(result, postText);
+  assert.deepEqual(corrected.interpretation.slots.map(slot => slot.weather), [['晴'],['晴'],['流星群'],['雨'],['晴']]);
+  assert.equal(corrected.diagnostics.textWeatherCorrections.length, 1);
+  assert.deepEqual(result.interpretation.slots[2].weather, ['晴']);
+});
+
+test('does not override a slot from an untimed meteor mention', () => {
+  const result = {ready:true,interpretation:{ready:true,startSlot:'06',slots:[{slot:'slot0',weather:['晴']}]} };
+  assert.equal(applyTimedSpecialWeatherHints(result, '今日は流星群が見たい').interpretation.slots[0].weather[0], '晴');
 });
