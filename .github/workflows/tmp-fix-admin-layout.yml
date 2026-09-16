@@ -1,0 +1,60 @@
+name: Temporary admin layout fix
+
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-fix-admin-layout.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/admin-fold-toolbar-layout
+      - name: Fix admin layout
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+
+          replacements = [
+            (
+              ".adminShell{\n  grid-column:span 12;\n  display:grid;\n  gap:16px;\n  align-items:start;\n}",
+              ".adminShell{\n  grid-column:span 12;\n  display:flex;\n  flex-direction:column;\n  gap:16px;\n  align-items:stretch;\n  width:100%;\n}"
+            ),
+            (
+              ".adminSubtabs{\n  display:flex;\n  gap:8px;\n  flex-wrap:wrap;\n  align-items:center;\n  padding:6px;",
+              ".adminSubtabs{\n  display:flex;\n  gap:8px;\n  flex-wrap:wrap;\n  align-items:center;\n  width:100%;\n  padding:6px;"
+            ),
+            (
+              ".adminTabPanel{\n  display:none;\n  gap:16px;\n  align-items:start;\n}\n.adminTabPanel.active{display:grid}",
+              ".adminTabPanel{\n  display:none;\n  gap:16px;\n  align-items:stretch;\n  width:100%;\n}\n.adminTabPanel.active{display:grid;grid-template-columns:minmax(0,1fr)}\n.adminTabPanel>.s12,.adminTabPanel>.adminFoldToolbar,.adminTabPanel>.adminSettingsGrid{grid-column:1;width:100%}"
+            ),
+            (
+              ".adminFoldToolbar{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 2px}\n.adminFoldToolbar button{width:100%;padding:8px 12px;font-size:12px}",
+              ".adminFoldToolbar{display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 -2px;width:100%}\n.adminFoldToolbar button{width:auto;padding:7px 12px;font-size:12px}"
+            ),
+          ]
+
+          for old, new in replacements:
+            if old not in s:
+              raise SystemExit(f'pattern not found: {old[:80]!r}')
+            s = s.replace(old, new, 1)
+
+          p.write_text(s, encoding='utf-8')
+      - name: Validate admin trigger tests
+        run: node --test tools/test-weather-admin-trigger.mjs
+      - name: Commit fix and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/tmp-fix-admin-layout.yml
+          git add index.html
+          git commit -m 'Fix admin folding toolbar layout'
+          git push origin HEAD:fix/admin-fold-toolbar-layout
