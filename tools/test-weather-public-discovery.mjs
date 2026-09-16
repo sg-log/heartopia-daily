@@ -21,6 +21,13 @@ test('normalizes X status URLs without account dependency', () => {
   });
 });
 
+test('rejects X profile and media redirect links because they are not post evidence', () => {
+  assert.equal(normalizeCandidateUrl('https://x.com/example?utm_source=yjrealtime'), null);
+  assert.equal(normalizeCandidateUrl('https://twitter.com/example'), null);
+  assert.equal(normalizeCandidateUrl('https://t.co/abc123'), null);
+  assert.equal(normalizeCandidateUrl('https://pic.x.com/abc123'), null);
+});
+
 test('unwraps DuckDuckGo redirect and rejects search-provider pages', () => {
   const wrapped = 'https://duckduckgo.com/l/?uddg=' + encodeURIComponent('https://x.com/user/status/999');
   assert.equal(normalizeCandidateUrl(wrapped)?.url, 'https://x.com/i/status/999');
