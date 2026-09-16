@@ -87,7 +87,9 @@ async function inspectScreenshot(page, imageDataUrl, templates) {
     const signature=canvas=>{const ctx=canvas.getContext('2d',{willReadFrequently:true}),{width,height}=canvas,data=ctx.getImageData(0,0,width,height).data;const corner=[[1,1],[width-2,1],[1,height-2],[width-2,height-2]].map(([x,y])=>{const i=(y*width+x)*4;return[data[i],data[i+1],data[i+2]]});const bg=corner.reduce((a,p)=>[a[0]+p[0],a[1]+p[1],a[2]+p[2]],[0,0,0]).map(v=>v/corner.length);const pix=[],mask=[];for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*4,r=data[i],g=data[i+1],b=data[i+2],hsv=rgbToHsv(r,g,b),dist=Math.hypot(r-bg[0],g-bg[1],b-bg[2]);mask.push(dist>=18||hsv.s>=.15?1:0);pix.push([r,g,b]);}return{pix,mask};};
     const similarity=(a,b)=>{let union=0,intersection=0,color=0,n=0;for(let i=0;i<a.mask.length;i++){if(a.mask[i]||b.mask[i])union++;if(a.mask[i]&&b.mask[i]){intersection++;const p=a.pix[i],q=b.pix[i],diff=(Math.abs(p[0]-q[0])+Math.abs(p[1]-q[1])+Math.abs(p[2]-q[2]))/765;color+=1-diff;n++;}}return(union?intersection/union:0)*.42+(n?color/n:0)*.58;};
     const prepared=templates.map((t,i)=>{const c=document.createElement('canvas');c.width=c.height=56;c.getContext('2d').drawImage(templateImages[i],0,0,56,56);return{weather:t.weather,file:t.file,sig:signature(c)};});
-    const centersY=[.06,.23,.38,.54,.68].map(v=>header.y+header.h+header.h*v);
+    // The five rows sit progressively lower than the first prototype assumed.
+    // These ratios are measured from real X evidence of the in-game panel, not inferred from post text.
+    const centersY=[.08,.25,.42,.59,.78].map(v=>header.y+header.h+header.h*v);
     const centerX=header.x+header.w*.88;
     const size=Math.max(14,Math.min(28,Math.round(header.w*.10)));
     const scores=centersY.map(cy=>{
