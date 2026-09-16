@@ -194,7 +194,7 @@
     const badge = card.querySelector(":scope > .pendingWeatherToggle .pendingWeatherBadge");
     if(badge){
       const label = evidenceLabel(card);
-      badge.textContent = label;
+      if(badge.textContent !== label) badge.textContent = label;
       badge.classList.toggle("noEvidence", label === "証拠画像なし");
     }
     enhanceImageLinks(card);
