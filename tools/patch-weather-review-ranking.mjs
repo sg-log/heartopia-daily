@@ -2,10 +2,7 @@ import fs from 'node:fs';
 
 const file = 'tools/weather-deterministic-review.mjs';
 let text = fs.readFileSync(file, 'utf8');
-if (text.includes('const rankedPanels=[...coarse,...refined]')) {
-  console.log('Weather review ranking patch already applied.');
-  process.exit(0);
-}
+
 function replaceOnce(needle, replacement, label) {
   const index = text.indexOf(needle);
   if (index < 0) throw new Error(`Missing patch target: ${label}`);
@@ -13,20 +10,111 @@ function replaceOnce(needle, replacement, label) {
   text = text.slice(0, index) + replacement + text.slice(index + needle.length);
 }
 
-text = text.replaceAll('[.72, .76, .80, .84]', '[.72, .75, .78, .81]');
-text = text.replaceAll('[.04, .07, .10, .13]', '[.07, .10, .12, .14]');
-text = text.replaceAll('[.72,.76,.80,.84]', '[.72,.75,.78,.81]');
-text = text.replaceAll('[.04,.07,.10,.13]', '[.07,.10,.12,.14]');
+if (!text.includes('const TIME_BANDS = [')) {
+  replaceOnce(
+`const SLOT_RECTS = [
+  { key: 'slot0', x: .080, y: .418, w: .105, h: .070 },
+  { key: 'slot1', x: .294, y: .418, w: .105, h: .070 },
+  { key: 'slot2', x: .471, y: .418, w: .105, h: .070 },
+  { key: 'slot3', x: .650, y: .418, w: .105, h: .070 },
+  { key: 'slot4', x: .829, y: .418, w: .105, h: .070 }
+];
+const TIME_STRIP = { x: .075, y: .490, w: .850, h: .065 };`,
+`const SLOT_RECTS = [
+  { key: 'slot0', x: .105, y: .425, w: .110, h: .075 },
+  { key: 'slot1', x: .275, y: .425, w: .110, h: .075 },
+  { key: 'slot2', x: .450, y: .425, w: .110, h: .075 },
+  { key: 'slot3', x: .640, y: .425, w: .110, h: .075 },
+  { key: 'slot4', x: .835, y: .425, w: .110, h: .075 }
+];
+const TIME_BANDS = [
+  { x: .055, y: .465, w: .900, h: .105 },
+  { x: .055, y: .485, w: .900, h: .105 },
+  { x: .055, y: .505, w: .900, h: .105 },
+  { x: .055, y: .525, w: .900, h: .105 }
+];`,
+  'weather layout constants');
 
-replaceOnce(
-`    const best=[...coarse,...refined].sort((a,b)=>b.highCount-a.highCount||b.okCount-a.okCount||b.minMargin-a.minMargin||b.avg-a.avg)[0]||null;\n    return {width:sourceImage.naturalWidth,height:sourceImage.naturalHeight,best};`,
-`    const rankedPanels=[...coarse,...refined]\n      .sort((a,b)=>b.highCount-a.highCount||b.okCount-a.okCount||b.minMargin-a.minMargin||b.avg-a.avg)\n      .slice(0,16);\n    const best=rankedPanels[0]||null;\n    return {width:sourceImage.naturalWidth,height:sourceImage.naturalHeight,best,ranked:rankedPanels};`,
-'scoreImage ranked panels');
+  replaceOnce(
+`async function readStartSlot(page, imageDataUrl, rect) {
+  await page.addScriptTag({ url: TESSERACT_URL });
+  return page.evaluate(async ({ imageDataUrl, rect, timeStrip, startSlots }) => {
+    const image = await new Promise((resolve, reject) => { const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=imageDataUrl; });
+    const panel=document.createElement('canvas');panel.width=rect.w;panel.height=rect.h;panel.getContext('2d').drawImage(image,rect.x,rect.y,rect.w,rect.h,0,0,rect.w,rect.h);
+    const x=Math.round(timeStrip.x*panel.width),y=Math.round(timeStrip.y*panel.height),w=Math.round(timeStrip.w*panel.width),h=Math.round(timeStrip.h*panel.height);
+    const canvas=document.createElement('canvas');canvas.width=Math.max(1,w*3);canvas.height=Math.max(1,h*3);const ctx=canvas.getContext('2d');ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(panel,x,y,w,h,0,0,canvas.width,canvas.height);
+    const result=await window.Tesseract.recognize(canvas,'eng',{tessedit_char_whitelist:'0123456789',logger:()=>{}});
+    const times=(result?.data?.text||'').match(/\\d{1,2}/g)?.map(value=>String(Number(value)).padStart(2,'0').slice(-2))||[];
+    const valid=times.filter(value=>startSlots.includes(value)).slice(0,5);
+    const hourAt=(start,index)=>startSlots[(startSlots.indexOf(start)+index)%startSlots.length];
+    if(valid.length===5&&valid.every((value,index)=>value===hourAt(valid[0],index)))return{startSlot:valid[0],times,valid};
+    if(valid.length>=3&&startSlots.includes(valid[0])){const matches=valid.filter((value,index)=>value===hourAt(valid[0],index)).length;if(matches>=3)return{startSlot:valid[0],times,valid};}
+    return{startSlot:'',times,valid};
+  }, { imageDataUrl, rect, timeStrip: TIME_STRIP, startSlots: START_SLOTS });
+}`,
+`async function readStartSlot(page, imageDataUrl, rect) {
+  if (!(await page.evaluate(() => Boolean(window.Tesseract)))) await page.addScriptTag({ url: TESSERACT_URL });
+  return page.evaluate(async ({ imageDataUrl, rect, timeBands, startSlots }) => {
+    const image = await new Promise((resolve, reject) => { const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=imageDataUrl; });
+    const panel=document.createElement('canvas');panel.width=rect.w;panel.height=rect.h;panel.getContext('2d').drawImage(image,rect.x,rect.y,rect.w,rect.h,0,0,rect.w,rect.h);
+    const hourAt=(start,index)=>startSlots[(startSlots.indexOf(start)+index)%startSlots.length];
+    const parseTimes=(value)=>((String(value||'').match(/\\d{1,2}/g)||[]).map(v=>String(Number(v)).padStart(2,'0').slice(-2))).filter(v=>startSlots.includes(v));
+    const evaluateTimes=(times)=>{
+      for(let offset=0;offset<times.length;offset++){
+        const sequence=times.slice(offset,offset+5);
+        if(sequence.length===5&&sequence.every((value,index)=>value===hourAt(sequence[0],index)))return{startSlot:sequence[0],valid:sequence,matches:5};
+      }
+      let best={startSlot:'',valid:[],matches:0};
+      for(let offset=0;offset<times.length;offset++){
+        const sequence=times.slice(offset,offset+5);
+        if(!sequence.length||!startSlots.includes(sequence[0]))continue;
+        const matches=sequence.filter((value,index)=>value===hourAt(sequence[0],index)).length;
+        if(matches>best.matches)best={startSlot:matches>=3?sequence[0]:'',valid:sequence,matches};
+      }
+      return best;
+    };
+    const attempts=[];
+    for(const band of timeBands){
+      const x=Math.round(band.x*panel.width),y=Math.round(band.y*panel.height),w=Math.round(band.w*panel.width),h=Math.round(band.h*panel.height);
+      const base=document.createElement('canvas');base.width=Math.max(1,w*6);base.height=Math.max(1,h*6);
+      const bctx=base.getContext('2d',{willReadFrequently:true});bctx.imageSmoothingEnabled=false;bctx.drawImage(panel,x,y,w,h,0,0,base.width,base.height);
+      const variants=[base];
+      for(const threshold of [165,185,205]){
+        const binary=document.createElement('canvas');binary.width=base.width;binary.height=base.height;
+        const ctx=binary.getContext('2d',{willReadFrequently:true});ctx.drawImage(base,0,0);
+        const imageData=ctx.getImageData(0,0,binary.width,binary.height);
+        for(let i=0;i<imageData.data.length;i+=4){
+          const lum=.299*imageData.data[i]+.587*imageData.data[i+1]+.114*imageData.data[i+2];
+          const value=lum>=threshold?0:255;
+          imageData.data[i]=value;imageData.data[i+1]=value;imageData.data[i+2]=value;imageData.data[i+3]=255;
+        }
+        ctx.putImageData(imageData,0,0);variants.push(binary);
+      }
+      for(let variantIndex=0;variantIndex<variants.length;variantIndex++){
+        const result=await window.Tesseract.recognize(variants[variantIndex],'eng',{tessedit_char_whitelist:'0123456789',tessedit_pageseg_mode:'7',logger:()=>{}});
+        const text=String(result?.data?.text||'').trim();
+        const times=parseTimes(text);
+        const evaluated=evaluateTimes(times);
+        attempts.push({band,variantIndex,text,times,matches:evaluated.matches});
+        if(evaluated.matches===5)return{startSlot:evaluated.startSlot,times,valid:evaluated.valid,attempts};
+      }
+    }
+    const bestAttempt=attempts.sort((a,b)=>b.matches-a.matches)[0]||null;
+    if(bestAttempt?.matches>=3){const evaluated=evaluateTimes(bestAttempt.times);return{startSlot:evaluated.startSlot,times:bestAttempt.times,valid:evaluated.valid,attempts};}
+    return{startSlot:'',times:bestAttempt?.times||[],valid:[],attempts};
+  }, { imageDataUrl, rect, timeBands: TIME_BANDS, startSlots: START_SLOTS });
+}`,
+  'start slot OCR search');
 
-replaceOnce(
-`  let best = null;\n  try {\n    const page = await browser.newPage();\n    for (const media of capture.rawMedia.slice(0, 4)) {\n      const filePath = path.join(captureDir, String(media.file || ''));\n      let descriptor;\n      try { descriptor = await imageDescriptor(filePath); } catch { continue; }\n      if (descriptor.sha256 !== media.sha256 || descriptor.mimeType !== media.mimeType) continue;\n      const imageDataUrl = \`data:\${descriptor.mimeType};base64,\${descriptor.bytes.toString('base64')}\`;\n      const scored = await scoreImage(page, imageDataUrl, templates);\n      const candidate = scored.best ? { media, descriptor, imageDataUrl, scored } : null;\n      if (!candidate) continue;\n      const rank = [candidate.scored.best.highCount, candidate.scored.best.okCount, candidate.scored.best.minMargin, candidate.scored.best.avg];\n      const prior = best ? [best.scored.best.highCount,best.scored.best.okCount,best.scored.best.minMargin,best.scored.best.avg] : null;\n      if (!prior || rank.some((value,index)=>value>prior[index] && rank.slice(0,index).every((v,i)=>v===prior[i]))) best = candidate;\n    }\n    if (!best || best.scored.best.highCount !== 5 || best.scored.best.okCount !== 5) {\n      return { schemaVersion:1, ready:false, targetDate, selectedImage:null, interpretation:{ready:false,observedDate:targetDate,startSlot:null,slots:Array.from({length:5},(_,i)=>({slot:\`slot\${i}\`,visible:false,weather:[],confidence:'low',description:''})),confidence:'low',summary:'天気5枠を高確信度で判読できませんでした。',unresolved:['時間別5枠の画像判定が高確信度に達しませんでした']}, diagnostics:{postDates:dates,best:best?.scored?.best||null} };\n    }\n    const ocr = await readStartSlot(page, best.imageDataUrl, best.scored.best.rect);\n    if (!ocr.startSlot) {\n      return { schemaVersion:1, ready:false, targetDate, selectedImage:{file:best.media.file,mimeType:best.media.mimeType,captureSha256:best.media.sha256}, interpretation:{ready:false,observedDate:targetDate,startSlot:null,slots:best.scored.best.slots.map((s,i)=>({slot:\`slot\${i}\`,visible:true,weather:s.value?[s.value]:[],confidence:s.confidence,description:\`画像テンプレート判定 score=\${s.bestScore.toFixed(3)} margin=\${s.margin.toFixed(3)}\`})),confidence:'low',summary:'時刻ラベルを確定できませんでした。',unresolved:['開始時刻を画像内の時刻ラベルから確定できませんでした']}, diagnostics:{postDates:dates,panel:best.scored.best.rect,ocr} };\n    }\n    const slots=best.scored.best.slots.map((s,i)=>({slot:\`slot\${i}\`,visible:true,weather:[s.value],confidence:'high',description:\`画像テンプレート判定 score=\${s.bestScore.toFixed(3)} margin=\${s.margin.toFixed(3)}\`}));\n    const interpretation={ready:true,observedDate:targetDate,startSlot:ocr.startSlot,slots,confidence:'high',summary:\`投稿本文で\${targetDate}を確認し、元画像の天気パネルをテンプレート照合、時刻ラベルをOCRして5枠を判読。\`,unresolved:[]};\n    return { schemaVersion:1, ready:true, targetDate, selectedImage:{file:best.media.file,mimeType:best.media.mimeType,captureSha256:best.media.sha256}, interpretation, diagnostics:{postDates:dates,panel:best.scored.best.rect,ocr,slotScores:best.scored.best.slots.map(s=>({bestValue:s.bestValue,bestScore:s.bestScore,secondValue:s.secondValue,secondScore:s.secondScore,margin:s.margin}))} };`,
-`  let best = null;\n  try {\n    const page = await browser.newPage();\n    const panelCandidates = [];\n    for (const media of capture.rawMedia.slice(0, 4)) {\n      const filePath = path.join(captureDir, String(media.file || ''));\n      let descriptor;\n      try { descriptor = await imageDescriptor(filePath); } catch { continue; }\n      if (descriptor.sha256 !== media.sha256 || descriptor.mimeType !== media.mimeType) continue;\n      const imageDataUrl = \`data:\${descriptor.mimeType};base64,\${descriptor.bytes.toString('base64')}\`;\n      const scored = await scoreImage(page, imageDataUrl, templates);\n      for (const panel of scored.ranked || []) {\n        if (panel.okCount < 5 || panel.highCount < 3) continue;\n        panelCandidates.push({ media, descriptor, imageDataUrl, panel });\n      }\n    }\n    panelCandidates.sort((a,b)=>b.panel.highCount-a.panel.highCount||b.panel.okCount-a.panel.okCount||b.panel.minMargin-a.panel.minMargin||b.panel.avg-a.panel.avg);\n    const ocrAttempts = [];\n    for (const candidate of panelCandidates.slice(0, 12)) {\n      const ocr = await readStartSlot(page, candidate.imageDataUrl, candidate.panel.rect);\n      ocrAttempts.push({file:candidate.media.file,rect:candidate.panel.rect,highCount:candidate.panel.highCount,okCount:candidate.panel.okCount,ocr});\n      if (!ocr.startSlot) continue;\n      if (!best || candidate.panel.highCount > best.panel.highCount ||\n          (candidate.panel.highCount === best.panel.highCount && candidate.panel.minMargin > best.panel.minMargin) ||\n          (candidate.panel.highCount === best.panel.highCount && candidate.panel.minMargin === best.panel.minMargin && candidate.panel.avg > best.panel.avg)) {\n        best = { ...candidate, ocr };\n      }\n    }\n    if (!best || best.panel.highCount !== 5 || best.panel.okCount !== 5 || !best.ocr.startSlot) {\n      const fallback = panelCandidates[0] || null;\n      return { schemaVersion:1, ready:false, targetDate, selectedImage:null, interpretation:{ready:false,observedDate:targetDate,startSlot:null,slots:Array.from({length:5},(_,i)=>({slot:\`slot\${i}\`,visible:false,weather:[],confidence:'low',description:''})),confidence:'low',summary:'時刻ラベルで整合する天気5枠を高確信度で判読できませんでした。',unresolved:['時間別5枠と開始時刻の両方を高確信度で確定できませんでした']}, diagnostics:{postDates:dates,best:fallback?.panel||null,ocrAttempts} };\n    }\n    const slots=best.panel.slots.map((s,i)=>({slot:\`slot\${i}\`,visible:true,weather:[s.value],confidence:'high',description:\`画像テンプレート判定 score=\${s.bestScore.toFixed(3)} margin=\${s.margin.toFixed(3)}\`}));\n    const interpretation={ready:true,observedDate:targetDate,startSlot:best.ocr.startSlot,slots,confidence:'high',summary:\`投稿本文で\${targetDate}を確認し、元画像の天気パネルをテンプレート照合、時刻ラベルをOCRして5枠を判読。\`,unresolved:[]};\n    return { schemaVersion:1, ready:true, targetDate, selectedImage:{file:best.media.file,mimeType:best.media.mimeType,captureSha256:best.media.sha256}, interpretation, diagnostics:{postDates:dates,panel:best.panel.rect,ocr:best.ocr,ocrAttempts,slotScores:best.panel.slots.map(s=>({bestValue:s.bestValue,bestScore:s.bestScore,secondValue:s.secondValue,secondScore:s.secondScore,margin:s.margin}))} };`,
-'inspectCapture OCR-ranked selection');
+  text = text.replace('.slice(0,16);', '.slice(0,64);');
+  text = text.replace('if (panel.okCount < 5 || panel.highCount < 3) continue;', 'if (panel.okCount < 4 || panel.highCount < 2) continue;');
+  text = text.replace('panelCandidates.push({ media, descriptor, imageDataUrl, panel });', `const right=(scored.width-panel.rect.x-panel.rect.w)/scored.width;\n        const geometryDistance=Math.abs(panel.rect.h/scored.height-.75)+Math.abs(panel.rect.y/scored.height-.12)+Math.abs(right-.08);\n        panelCandidates.push({ media, descriptor, imageDataUrl, panel, geometryDistance });`);
+  text = text.replace('panelCandidates.sort((a,b)=>b.panel.highCount-a.panel.highCount||b.panel.okCount-a.panel.okCount||b.panel.minMargin-a.panel.minMargin||b.panel.avg-a.panel.avg);', 'panelCandidates.sort((a,b)=>a.geometryDistance-b.geometryDistance||b.panel.highCount-a.panel.highCount||b.panel.okCount-a.panel.okCount||b.panel.minMargin-a.panel.minMargin||b.panel.avg-a.panel.avg);');
+  text = text.replace('for (const candidate of panelCandidates.slice(0, 12)) {', 'for (const candidate of panelCandidates.slice(0, 16)) {');
+  text = text.replace('ocrAttempts.push({file:candidate.media.file,rect:candidate.panel.rect,highCount:candidate.panel.highCount,okCount:candidate.panel.okCount,ocr});', 'ocrAttempts.push({file:candidate.media.file,rect:candidate.panel.rect,geometryDistance:candidate.geometryDistance,highCount:candidate.panel.highCount,okCount:candidate.panel.okCount,ocr});');
 
-fs.writeFileSync(file, text, 'utf8');
-console.log('Applied deterministic review ranking patch.');
+  fs.writeFileSync(file, text, 'utf8');
+  console.log('Applied weather time-row detection patch.');
+} else {
+  console.log('Weather time-row detection patch already applied.');
+}
