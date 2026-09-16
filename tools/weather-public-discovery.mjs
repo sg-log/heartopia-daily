@@ -30,7 +30,6 @@ export function normalizeCandidateUrl(raw) {
     const status = u.pathname.match(/^\/(?:i\/status|[A-Za-z0-9_]+\/status)\/(\d+)(?:\/(?:photo|video)\/[1-4])?\/?$/);
     if (isXHost) {
       if (status) return { url: `https://x.com/i/status/${status[1]}`, sourceType: 'x', sourceId: status[1] };
-      // Profile/search/navigation links from Yahoo Realtime are not evidence URLs.
       return null;
     }
     if (host === 't.co' || host === 'pic.x.com') return null;
@@ -118,11 +117,7 @@ async function collectFromPage(page, provider, query, targetDate, limit = 25) {
         }
         node = node.parentElement;
       }
-      return {
-        href: a.href || '',
-        text: anchorText,
-        parentText: bestText.slice(0, 1200)
-      };
+      return { href: a.href || '', text: anchorText, parentText: bestText.slice(0, 1200) };
     }));
     result.linksSeen = rows.length;
     for (const row of rows) {
@@ -152,6 +147,51 @@ async function collectFromPage(page, provider, query, targetDate, limit = 25) {
   return result;
 }
 
+function rankCandidates(candidates) {
+  return [...candidates].sort((a, b) =>
+    Number(Boolean(b.dateMatched)) - Number(Boolean(a.dateMatched)) ||
+    Number(Boolean(b.forecastMatched)) - Number(Boolean(a.forecastMatched)) ||
+    Number(b.relevanceScore || 0) - Number(a.relevanceScore || 0) ||
+    b.discoveries.length - a.discoveries.length ||
+    String(a.sourceUrl).localeCompare(String(b.sourceUrl))
+  );
+}
+
+export function selectDiversifiedCandidates(candidates, limit = 12) {
+  const ranked = rankCandidates(candidates);
+  const selected = [];
+  const selectedUrls = new Set();
+  const providerCounts = new Map();
+  const typeCounts = new Map();
+  const providerCap = Math.max(2, Math.ceil(limit / 3));
+  const typeCap = Math.max(3, Math.ceil(limit * 0.6));
+  const add = (candidate) => {
+    if (selectedUrls.has(candidate.sourceUrl)) return false;
+    selected.push(candidate);
+    selectedUrls.add(candidate.sourceUrl);
+    providerCounts.set(candidate.discoverySource, (providerCounts.get(candidate.discoverySource) || 0) + 1);
+    typeCounts.set(candidate.sourceType, (typeCounts.get(candidate.sourceType) || 0) + 1);
+    return true;
+  };
+
+  // First pass keeps a single search provider or source type from crowding out
+  // equally relevant public Web/SNS candidates. Provider/type are diversity
+  // controls only; neither receives a ranking bonus.
+  for (const candidate of ranked) {
+    if (selected.length >= limit) break;
+    if ((providerCounts.get(candidate.discoverySource) || 0) >= providerCap) continue;
+    if ((typeCounts.get(candidate.sourceType) || 0) >= typeCap) continue;
+    add(candidate);
+  }
+  // If the public web only yields one provider/type, fill the remaining slots
+  // rather than discarding valid evidence candidates.
+  for (const candidate of ranked) {
+    if (selected.length >= limit) break;
+    add(candidate);
+  }
+  return selected;
+}
+
 export function mergeAndRankCandidates(attempts, targetDate, limit = 12) {
   const merged = new Map();
   for (const attempt of attempts || []) {
@@ -167,16 +207,10 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 12) {
       record.forecastMatched = Boolean(record.forecastMatched || relevance.forecastMatched);
     }
   }
-  return [...merged.values()]
-    .filter((candidate) => candidateRelevance(`${candidate.anchorText || ''} ${candidate.context || ''}`, targetDate).relevant)
-    .sort((a, b) =>
-      Number(Boolean(b.dateMatched)) - Number(Boolean(a.dateMatched)) ||
-      Number(Boolean(b.forecastMatched)) - Number(Boolean(a.forecastMatched)) ||
-      Number(b.relevanceScore || 0) - Number(a.relevanceScore || 0) ||
-      (b.sourceType === 'x') - (a.sourceType === 'x') ||
-      b.discoveries.length - a.discoveries.length
-    )
-    .slice(0, limit);
+  const relevant = [...merged.values()].filter((candidate) =>
+    candidateRelevance(`${candidate.anchorText || ''} ${candidate.context || ''}`, targetDate).relevant
+  );
+  return selectDiversifiedCandidates(relevant, limit);
 }
 
 export async function discover(targetDate) {
@@ -196,7 +230,6 @@ export async function discover(targetDate) {
   }
 
   const candidates = mergeAndRankCandidates(attempts, targetDate, 12);
-
   return {
     schemaVersion: 1,
     responseType: 'weather-public-discovery',
@@ -218,7 +251,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       sourceType: candidate.sourceType,
       relevanceScore: candidate.relevanceScore,
       dateMatched: candidate.dateMatched,
-      discoverySource: candidate.discoverySource
+      discoverySource: candidate.discoverySource,
+      discoveryCount: candidate.discoveries?.length || 0
     })),
     attempts: result.attempts
   }));
