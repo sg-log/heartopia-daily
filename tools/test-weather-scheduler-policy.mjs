@@ -18,17 +18,20 @@ test('scheduler guards successful slots and only reuses successfully processed s
   assert.match(workflow, /already_succeeded/)
 })
 
-test('scheduler connects discovery through capture, deterministic review, and pending submit', () => {
+test('scheduler connects public discovery through source-specific capture, deterministic review, and pending submit', () => {
   assert.match(workflow, /weather-x-embed-evidence\.mjs/)
+  assert.match(workflow, /weather-cloud-url-evidence\.mjs/)
+  assert.match(workflow, /sourceType -eq 'x'/)
+  assert.match(workflow, /sourceType -eq 'web'/)
   assert.match(workflow, /weather-deterministic-review\.mjs/)
   assert.match(workflow, /weather-artifact-review-bridge\.ps1/)
   assert.match(workflow, /weather-cloud-submit\.ps1/)
   assert.doesNotMatch(workflow, /OPENAI_API_KEY/)
 })
 
-test('no usable candidates fail so the independent snooze can retry', () => {
+test('no usable public candidates fail so the independent snooze can retry', () => {
   assert.match(workflow, /No public weather candidates found/)
-  assert.match(workflow, /No supported X evidence candidate found/)
+  assert.match(workflow, /No supported public evidence candidate found/)
   assert.match(workflow, /core\.setFailed/)
   assert.match(workflow, /steps\.slot\.outputs\.is_snooze == 'true'/)
 })
