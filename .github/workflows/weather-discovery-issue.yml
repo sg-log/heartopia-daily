@@ -5,7 +5,7 @@ on:
     types: [opened, reopened]
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 jobs:
@@ -64,6 +64,61 @@ jobs:
               ...context.repo,
               issue_number: Number(process.env.ISSUE_NUMBER),
               body: `<!-- heartopia-weather-discovery-v1 -->\n\`\`\`json\n${JSON.stringify(result)}\n\`\`\``,
+              state: 'closed',
+              state_reason: 'completed'
+            })
+
+  maintenance_admin_trigger:
+    if: ${{ github.event.issue.title == '[maintenance-weather-admin-trigger]' && github.event.issue.user.login == 'sg-log' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate maintenance request
+        shell: pwsh
+        run: |
+          $event = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ([string]$event.repository.full_name -cne 'sg-log/heartopia-daily' -or
+              [string]$event.issue.user.login -cne 'sg-log' -or
+              [string]$event.sender.login -cne 'sg-log' -or
+              [string]$event.issue.author_association -cne 'OWNER' -or
+              [string]$event.issue.body -cne '{"task":"apply-weather-admin-trigger-v1","branch":"fix/weather-scheduler-handoff"}') {
+            throw 'Unauthorized maintenance request.'
+          }
+
+      - name: Check out target feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/weather-scheduler-handoff
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply and validate admin weather trigger patch
+        shell: bash
+        run: |
+          node tools/apply-weather-admin-trigger-patch.mjs
+          node --test tools/test-weather-admin-trigger.mjs
+          git diff --check
+
+      - name: Commit patch to feature branch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html apps-script/weather-api.gs .github/workflows/weather-scheduled-run.yml
+          git commit -m "Add admin weather automation trigger"
+          git push origin HEAD:fix/weather-scheduler-handoff
+
+      - name: Close maintenance request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.update({
+              ...context.repo,
+              issue_number: context.issue.number,
               state: 'closed',
               state_reason: 'completed'
             })
