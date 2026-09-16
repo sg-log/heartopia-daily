@@ -68,6 +68,22 @@ async function inspectScreenshot(page, imageDataUrl, templates) {
     const header=components[0];
     if(!header)return{ready:false,reason:'weeklyHeaderNotFound',components:components.slice(0,8)};
 
+    // A real in-game weekly forecast has a large white/light-neutral list directly below
+    // the blue header. This structural guard prevents unrelated blue panels in social-media
+    // collages from being misread as five sunny forecast rows.
+    const panelLeft=Math.max(0,Math.round(header.x+header.w*.03));
+    const panelRight=Math.min(full.width,Math.round(header.x+header.w*.97));
+    const panelTop=Math.max(0,Math.round(header.y+header.h*1.10));
+    const panelBottom=Math.min(full.height,Math.round(header.y+header.h*1.75));
+    let panelLight=0,panelTotal=0;
+    for(let y=panelTop;y<panelBottom;y+=2)for(let x=panelLeft;x<panelRight;x+=2){
+      const i=(y*full.width+x)*4,r=pixels[i],g=pixels[i+1],b=pixels[i+2],hsv=rgbToHsv(r,g,b);
+      panelTotal++;
+      if(hsv.v>=.72&&hsv.s<=.25)panelLight++;
+    }
+    const panelBackgroundRatio=panelTotal?panelLight/panelTotal:0;
+    if(panelBackgroundRatio<.40)return{ready:false,reason:'weeklyPanelBackgroundNotFound',header,panelBackgroundRatio,components:components.slice(0,8)};
+
     const signature=canvas=>{const ctx=canvas.getContext('2d',{willReadFrequently:true}),{width,height}=canvas,data=ctx.getImageData(0,0,width,height).data;const corner=[[1,1],[width-2,1],[1,height-2],[width-2,height-2]].map(([x,y])=>{const i=(y*width+x)*4;return[data[i],data[i+1],data[i+2]]});const bg=corner.reduce((a,p)=>[a[0]+p[0],a[1]+p[1],a[2]+p[2]],[0,0,0]).map(v=>v/corner.length);const pix=[],mask=[];for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*4,r=data[i],g=data[i+1],b=data[i+2],hsv=rgbToHsv(r,g,b),dist=Math.hypot(r-bg[0],g-bg[1],b-bg[2]);mask.push(dist>=18||hsv.s>=.15?1:0);pix.push([r,g,b]);}return{pix,mask};};
     const similarity=(a,b)=>{let union=0,intersection=0,color=0,n=0;for(let i=0;i<a.mask.length;i++){if(a.mask[i]||b.mask[i])union++;if(a.mask[i]&&b.mask[i]){intersection++;const p=a.pix[i],q=b.pix[i],diff=(Math.abs(p[0]-q[0])+Math.abs(p[1]-q[1])+Math.abs(p[2]-q[2]))/765;color+=1-diff;n++;}}return(union?intersection/union:0)*.42+(n?color/n:0)*.58;};
     const prepared=templates.map((t,i)=>{const c=document.createElement('canvas');c.width=c.height=56;c.getContext('2d').drawImage(templateImages[i],0,0,56,56);return{weather:t.weather,file:t.file,sig:signature(c)};});
@@ -81,7 +97,7 @@ async function inspectScreenshot(page, imageDataUrl, templates) {
       const ranked=[...byWeather.entries()].sort((a,b)=>b[1]-a[1]);const [bestValue,bestScore]=ranked[0]||['',0],[secondValue,secondScore]=ranked[1]||['',0];return{bestValue,bestScore,secondValue,secondScore,margin:bestScore-secondScore,box:{x:sx,y:sy,size}};
     });
     const days=scores.map(s=>({weather:s.bestScore>=.53&&s.margin>=.035?s.bestValue:'',confidence:s.bestScore>=.53&&s.margin>=.035?'high':'low',...s}));
-    return{ready:days.every(d=>d.confidence==='high'&&d.weather),header,days,width:full.width,height:full.height};
+    return{ready:days.every(d=>d.confidence==='high'&&d.weather),header,panelBackgroundRatio,days,width:full.width,height:full.height};
   }, { imageDataUrl, templates });
 }
 
@@ -97,7 +113,7 @@ export async function inspectWeeklyScreenshot({ captureDir, targetDate, repoRoot
   try{const page=await browser.newPage();inspected=await inspectScreenshot(page,`data:${mimeType};base64,${bytes.toString('base64')}`,templates);}finally{await browser.close();}
   if(!inspected.ready)return{ready:false,targetDate,selectedImage:{file:capture.evidence.file,mimeType,captureSha256:digest},diagnostics:inspected};
   const days=inspected.days.map((day,index)=>({date:addDays(targetDate,index+1),weather:[day.weather],visible:true,confidence:'high',description:`週間欄アイコン照合 score=${day.bestScore.toFixed(3)} margin=${day.margin.toFixed(3)}`}));
-  return{schemaVersion:1,ready:true,targetDate,selectedImage:{file:capture.evidence.file,mimeType,captureSha256:digest},interpretation:{ready:true,baseDate:targetDate,baseDateDescription:`投稿本文/表示日時で${targetDate}を確認。`,days,confidence:'high',summary:'公開投稿の週間予報欄を直接視認できる証拠画像から、表示されている5日分のみ判読。',unresolved:[]},diagnostics:{mode:'weekly-embed-screenshot',header:inspected.header,scores:inspected.days}};
+  return{schemaVersion:1,ready:true,targetDate,selectedImage:{file:capture.evidence.file,mimeType,captureSha256:digest},interpretation:{ready:true,baseDate:targetDate,baseDateDescription:`投稿本文/表示日時で${targetDate}を確認。`,days,confidence:'high',summary:'公開投稿の週間予報欄を直接視認できる証拠画像から、表示されている5日分のみ判読。',unresolved:[]},diagnostics:{mode:'weekly-embed-screenshot',header:inspected.header,panelBackgroundRatio:inspected.panelBackgroundRatio,scores:inspected.days}};
 }
 
 function parseArgs(argv){const out={};for(let i=0;i<argv.length;i+=2){if(!argv[i]?.startsWith('--')||argv[i+1]===undefined)throw new Error('invalidArguments');out[argv[i].slice(2)]=argv[i+1];}return out;}
