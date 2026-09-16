@@ -5,6 +5,7 @@ import {
   normalizeCandidateUrl,
   candidateRelevance,
   mergeAndRankCandidates,
+  selectDiversifiedCandidates,
   targetDateTokens
 } from './weather-public-discovery.mjs';
 
@@ -73,7 +74,7 @@ test('date tokens include common Japanese and slash forms', () => {
   assert.ok(tokens.includes('09/16'));
 });
 
-test('mergeAndRankCandidates drops unrelated X links and prioritizes dated weather candidates', () => {
+test('mergeAndRankCandidates drops unrelated links and prioritizes dated weather candidates', () => {
   const attempts = [
     {
       candidates: [
@@ -87,10 +88,10 @@ test('mergeAndRankCandidates drops unrelated X links and prioritizes dated weath
           context: '今日はラーメンを食べた'
         },
         {
-          sourceUrl: 'https://x.com/i/status/2',
-          sourceType: 'x',
-          sourceId: '2',
-          discoverySource: 'yahoo-realtime',
+          sourceUrl: 'https://example.org/weather',
+          sourceType: 'web',
+          sourceId: null,
+          discoverySource: 'bing',
           searchQuery: 'ハートピア 天気',
           anchorText: 'ハートピア 天気',
           context: 'ハートピアの天気予報まとめ'
@@ -108,6 +109,39 @@ test('mergeAndRankCandidates drops unrelated X links and prioritizes dated weath
     }
   ];
   const ranked = mergeAndRankCandidates(attempts, '2026-09-16');
-  assert.deepEqual(ranked.map((item) => item.sourceId), ['3', '2']);
+  assert.equal(ranked[0].sourceId, '3');
   assert.equal(ranked[0].dateMatched, true);
+  assert.ok(ranked.some((item) => item.sourceType === 'web'));
+  assert.ok(!ranked.some((item) => item.sourceId === '1'));
+});
+
+test('diversification does not give X or Yahoo Realtime an intrinsic ranking bonus', () => {
+  const candidates = [];
+  for (let i = 0; i < 8; i++) {
+    candidates.push({
+      sourceUrl: `https://x.com/i/status/${100 + i}`,
+      sourceType: 'x',
+      sourceId: String(100 + i),
+      discoverySource: 'yahoo-realtime',
+      relevanceScore: 15,
+      dateMatched: true,
+      forecastMatched: true,
+      discoveries: [{ discoverySource: 'yahoo-realtime', searchQuery: 'q' }]
+    });
+  }
+  for (let i = 0; i < 4; i++) {
+    candidates.push({
+      sourceUrl: `https://example${i}.org/weather`,
+      sourceType: 'web',
+      sourceId: null,
+      discoverySource: i % 2 ? 'bing' : 'yahoo-web',
+      relevanceScore: 15,
+      dateMatched: true,
+      forecastMatched: true,
+      discoveries: [{ discoverySource: i % 2 ? 'bing' : 'yahoo-web', searchQuery: 'q' }]
+    });
+  }
+  const selected = selectDiversifiedCandidates(candidates, 8);
+  assert.ok(selected.some((item) => item.sourceType === 'web'));
+  assert.ok(selected.filter((item) => item.discoverySource === 'yahoo-realtime').length <= 4);
 });
