@@ -1,0 +1,47 @@
+name: Weather deterministic integration CI
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/weather-deterministic-integration-ci.yml'
+      - 'tools/weather-deterministic-review.mjs'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  historical-artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Download known real capture artifact
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: 10358184684
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 34870529944
+          path: ${{ runner.temp }}/real-weather-artifact
+      - name: Directly inspect real saved media without an AI API
+        run: >-
+          node tools/weather-deterministic-review.mjs
+          --mode inspect
+          --capture-dir "${{ runner.temp }}/real-weather-artifact"
+          --target-date 2026-09-14
+          --output "${{ runner.temp }}/real-weather-review.json"
+      - name: Assert known visible facts
+        shell: pwsh
+        run: |
+          $review = Get-Content -LiteralPath "${{ runner.temp }}/real-weather-review.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($review.ready -ne $true) { throw 'Real capture was not review-ready.' }
+          if ([string]$review.selectedImage.file -cne 'raw-media-1.jpg') { throw 'Wrong real media image selected.' }
+          if ([string]$review.interpretation.observedDate -cne '2026-09-14') { throw 'Real date mismatch.' }
+          if ([string]$review.interpretation.startSlot -cne '06') { throw 'Real start slot mismatch.' }
+          if ('雨' -notin @($review.interpretation.slots[1].weather)) { throw 'Known 12-18 rain slot was not detected.' }
