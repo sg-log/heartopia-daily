@@ -3,6 +3,7 @@ name: Weather admin trigger CI
 on:
   pull_request:
     paths:
+      - '.clasp.json'
       - 'index.html'
       - 'apps-script/weather-api.gs'
       - 'apps-script/weather-scheduler.gs'
