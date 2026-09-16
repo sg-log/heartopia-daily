@@ -14,6 +14,7 @@ on:
       - 'tools/weather-daily-normalized-review.mjs'
       - 'tools/weather-daily-review.mjs'
       - 'tools/weather-daily-recovery-review.mjs'
+      - 'tools/weather-weekly-screenshot-review.mjs'
       - 'assets/weather-templates/**'
 
 permissions:
@@ -110,16 +111,18 @@ jobs:
         env:
           RESULT_PATH: ${{ runner.temp }}/weather-public-weekly-discovery.json
         run: node tools/weather-public-weekly-discovery.mjs --target-date 2026-09-16 --out "$RESULT_PATH"
-      - name: Capture top weekly candidates for diagnosis
+      - name: Capture and inspect weekly candidates
         shell: pwsh
         env:
           RESULT_PATH: ${{ runner.temp }}/weather-public-weekly-discovery.json
+          SELECTED_DIR: ${{ runner.temp }}/weather-weekly-selected
         run: |
           $ErrorActionPreference = 'Continue'
           $result = Get-Content -LiteralPath $env:RESULT_PATH -Raw -Encoding UTF8 | ConvertFrom-Json
           $candidates = @($result.candidates | Select-Object -First 8)
           Write-Host ("Weekly candidate count: " + $candidates.Count)
           if ($candidates.Count -eq 0) { throw 'No weekly public candidates discovered.' }
+          $selected = $null
           for ($i = 0; $i -lt $candidates.Count; $i++) {
             $candidate = $candidates[$i]
             Write-Host ("Weekly #" + $i + " type=" + [string]$candidate.sourceType + " provider=" + [string]$candidate.discoverySource + " " + [string]$candidate.sourceUrl + " score=" + [string]$candidate.relevanceScore + " dateMatched=" + [string]$candidate.dateMatched)
@@ -130,9 +133,30 @@ jobs:
               & node tools/weather-x-embed-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
             } elseif ([string]$candidate.sourceType -eq 'web') {
               & node tools/weather-cloud-url-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
+            } else {
+              continue
             }
-            if ($LASTEXITCODE -ne 0) { Write-Host 'Weekly capture failed.' }
+            if ($LASTEXITCODE -ne 0) { Write-Host 'Weekly capture failed.'; continue }
+            $review = Join-Path $dir 'weekly-review.json'
+            & node tools/weather-weekly-screenshot-review.mjs --capture-dir $dir --target-date 2026-09-16 --output $review
+            if (Test-Path $review) {
+              $reviewObject = Get-Content -LiteralPath $review -Raw -Encoding UTF8 | ConvertFrom-Json
+              Write-Host ("Weekly review ready=" + [string]$reviewObject.ready)
+              if ($reviewObject.ready) {
+                Write-Host ("Weekly weather=" + (($reviewObject.interpretation.days | ForEach-Object { $_.weather -join '+' }) -join ','))
+              } else {
+                Write-Host ("Weekly diagnostics=" + ($reviewObject.diagnostics | ConvertTo-Json -Depth 9 -Compress))
+              }
+            }
+            if ($LASTEXITCODE -eq 0) {
+              if (Test-Path $env:SELECTED_DIR) { Remove-Item -Recurse -Force $env:SELECTED_DIR }
+              Copy-Item -Recurse -LiteralPath $dir -Destination $env:SELECTED_DIR
+              $selected = $candidate
+              break
+            }
           }
+          if ($null -eq $selected) { throw 'No ranked public candidate produced complete weekly weather.' }
+          Write-Host ("Selected weekly source: " + [string]$selected.sourceUrl)
       - name: Upload weekly discovery diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -141,5 +165,6 @@ jobs:
           path: |
             ${{ runner.temp }}/weather-public-weekly-discovery.json
             ${{ runner.temp }}/weather-weekly-candidate-*
+            ${{ runner.temp }}/weather-weekly-selected
           if-no-files-found: warn
           retention-days: 2
