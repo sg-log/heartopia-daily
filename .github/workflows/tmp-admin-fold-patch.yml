@@ -1,0 +1,38 @@
+name: Temporary admin card folding patch
+
+on:
+  push:
+    branches:
+      - fix/admin-cards-collapse
+    paths:
+      - tools/tmp-admin-fold-patch.mjs
+      - .github/workflows/tmp-admin-fold-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/admin-cards-collapse
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply admin folding patch
+        run: node tools/tmp-admin-fold-patch.mjs
+      - name: Validate admin trigger tests
+        run: node --test tools/test-weather-admin-trigger.mjs
+      - name: Commit patched files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Make admin cards collapsible"
+            git push origin HEAD:fix/admin-cards-collapse
+          fi
