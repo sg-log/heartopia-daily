@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -55,7 +55,9 @@ export function inferStartSlotFromMappings(mappings) {
   const normalized = [];
   for (const mapping of mappings || []) {
     const values = Array.from({ length: 5 }, (_, index) => {
-      const value = String(mapping?.[index] || '').padStart(2, '0');
+      const raw = String(mapping?.[index] || '').trim();
+      if (!raw) return '';
+      const value = raw.padStart(2, '0').slice(-2);
       return START_SLOTS.includes(value) ? value : '';
     });
     if (values.filter(Boolean).length >= 2) normalized.push(values);
@@ -221,7 +223,7 @@ async function inspectUnifiedCapture({ captureDir, targetDate, repoRoot }) {
         const crop = await cropPanel(page, originalBytes, originalMime, PANEL_VARIANTS[variantIndex]);
         if (!crop) continue;
         const workDir = path.join(tempRoot, `${String(media.file).replace(/[^A-Za-z0-9._-]/g,'_')}-${variantIndex}`);
-        await import('node:fs/promises').then(fs => fs.mkdir(workDir, { recursive: true }));
+        await mkdir(workDir, { recursive: true });
         const cropFile = 'raw-media-0.jpg';
         await writeFile(path.join(workDir, cropFile), crop.bytes);
         await writeFile(path.join(workDir, 'post-content.txt'), postText, 'utf8');
