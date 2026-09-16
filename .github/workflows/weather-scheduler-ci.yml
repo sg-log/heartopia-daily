@@ -7,6 +7,10 @@ on:
       - '.github/workflows/weather-scheduler-ci.yml'
       - 'tools/test-weather-scheduler-policy.mjs'
       - 'tools/README-weather-scheduler.md'
+      - 'tools/weather-cloud-submit.ps1'
+      - 'tools/test-weather-cloud-submit.ps1'
+      - 'tools/weather-weekly-submit.mjs'
+      - 'tools/test-weather-weekly.mjs'
   workflow_dispatch:
 
 permissions:
@@ -19,3 +23,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate scheduler policy
         run: node --test tools/test-weather-scheduler-policy.mjs
+      - name: Validate daily content dedupe
+        shell: pwsh
+        run: ./tools/test-weather-cloud-submit.ps1
+      - name: Validate weekly content dedupe
+        run: node --test tools/test-weather-weekly.mjs
