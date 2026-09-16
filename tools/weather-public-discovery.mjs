@@ -26,10 +26,14 @@ export function normalizeCandidateUrl(raw) {
     }
     if (!u) continue;
     const host = u.hostname.toLowerCase();
+    const isXHost = host === 'x.com' || host === 'www.x.com' || host === 'twitter.com' || host === 'www.twitter.com';
     const status = u.pathname.match(/^\/(?:i\/status|[A-Za-z0-9_]+\/status)\/(\d+)(?:\/(?:photo|video)\/[1-4])?\/?$/);
-    if ((host === 'x.com' || host === 'www.x.com' || host === 'twitter.com' || host === 'www.twitter.com') && status) {
-      return { url: `https://x.com/i/status/${status[1]}`, sourceType: 'x', sourceId: status[1] };
+    if (isXHost) {
+      if (status) return { url: `https://x.com/i/status/${status[1]}`, sourceType: 'x', sourceId: status[1] };
+      // Profile/search/navigation links from Yahoo Realtime are not evidence URLs.
+      return null;
     }
+    if (host === 't.co' || host === 'pic.x.com') return null;
     if (host.endsWith('bing.com') || host.endsWith('duckduckgo.com') || host.endsWith('search.yahoo.co.jp')) return null;
     u.hash = '';
     return { url: u.toString(), sourceType: 'web', sourceId: null };
@@ -83,10 +87,6 @@ export function candidateRelevance(text, targetDate) {
   return { relevant: hasGame && hasWeather, dateMatched, forecastMatched, score };
 }
 
-function looksRelevant(text) {
-  return candidateRelevance(text, '').relevant;
-}
-
 function providerUrl(provider, query) {
   const q = encodeURIComponent(query);
   if (provider === 'bing') return `https://www.bing.com/search?q=${q}`;
@@ -102,19 +102,34 @@ async function collectFromPage(page, provider, query, targetDate, limit = 25) {
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(1500);
-    const rows = await page.locator('a[href]').evaluateAll((els) => els.slice(0, 300).map((a) => ({
-      href: a.href || '',
-      text: (a.innerText || a.textContent || '').trim(),
-      parentText: (a.parentElement?.innerText || '').trim().slice(0, 600)
-    })));
+    const rows = await page.locator('a[href]').evaluateAll((els) => els.slice(0, 300).map((a) => {
+      const anchorText = (a.innerText || a.textContent || '').trim();
+      let node = a.parentElement;
+      let bestText = (node?.innerText || '').trim();
+      for (let depth = 0; depth < 8 && node; depth += 1) {
+        const candidateText = (node.innerText || '').trim();
+        const normalized = candidateText.replace(/\s+/g, ' ').toLowerCase();
+        const hasGame = normalized.includes('ハートピア') || normalized.includes('heartopia');
+        const hasWeather = normalized.includes('天気') || normalized.includes('weather') || normalized.includes('予報') || normalized.includes('forecast');
+        if (candidateText.length > bestText.length && candidateText.length <= 1600) bestText = candidateText;
+        if (candidateText.length >= 40 && candidateText.length <= 1600 && hasGame && hasWeather) {
+          bestText = candidateText;
+          break;
+        }
+        node = node.parentElement;
+      }
+      return {
+        href: a.href || '',
+        text: anchorText,
+        parentText: bestText.slice(0, 1200)
+      };
+    }));
     result.linksSeen = rows.length;
     for (const row of rows) {
       const normalized = normalizeCandidateUrl(row.href);
       if (!normalized) continue;
       const contextText = `${row.text} ${row.parentText}`;
       const relevance = candidateRelevance(contextText, targetDate);
-      // X links used to bypass relevance checks entirely, which allowed unrelated
-      // status links from a search page to consume all capture attempts.
       if (!relevance.relevant) continue;
       result.candidates.push({
         sourceUrl: normalized.url,
@@ -123,7 +138,7 @@ async function collectFromPage(page, provider, query, targetDate, limit = 25) {
         discoverySource: provider,
         searchQuery: query,
         anchorText: row.text.slice(0, 300),
-        context: row.parentText.slice(0, 500),
+        context: row.parentText.slice(0, 1000),
         relevanceScore: relevance.score,
         dateMatched: relevance.dateMatched,
         forecastMatched: relevance.forecastMatched
