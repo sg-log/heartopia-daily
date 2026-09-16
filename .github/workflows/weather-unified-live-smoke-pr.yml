@@ -26,7 +26,7 @@ jobs:
         env:
           CAPTURE_DIR: ${{ runner.temp }}/weather-unified-live
           REVIEW_PATH: ${{ runner.temp }}/weather-unified-review.json
-        run: node tools/weather-direct-panel-review.mjs --capture-dir "$CAPTURE_DIR" --target-date 2026-09-16 --output "$REVIEW_PATH"
+        run: node tools/weather-unified-review.mjs --mode inspect --capture-dir "$CAPTURE_DIR" --target-date 2026-09-16 --output "$REVIEW_PATH"
       - name: Upload smoke diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
