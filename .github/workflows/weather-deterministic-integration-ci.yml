@@ -30,12 +30,17 @@ jobs:
           run-id: 34870529944
           path: ${{ runner.temp }}/real-weather-artifact
       - name: Directly inspect real saved media without an AI API
+        id: inspect
+        continue-on-error: true
         run: >-
           node tools/weather-deterministic-review.mjs
           --mode inspect
           --capture-dir "${{ runner.temp }}/real-weather-artifact/weather-x-embed-evidence-34870529944"
           --target-date 2026-09-14
           --output "${{ runner.temp }}/real-weather-review.json"
+      - name: Show review diagnostics
+        if: ${{ always() }}
+        run: cat "${{ runner.temp }}/real-weather-review.json"
       - name: Assert known visible facts
         shell: pwsh
         run: |
