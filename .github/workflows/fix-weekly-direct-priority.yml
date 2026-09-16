@@ -21,19 +21,23 @@ jobs:
           from pathlib import Path
           path = Path('index.html')
           text = path.read_text(encoding='utf-8')
-          old = '''  const weeks = Object.fromEntries(WEATHER_WEEK_KEYS.map((key, index) => [
-            key,
-            weekIndexMap.get(weekDate(date, index)) || []
-          ]));
-          const raw = rawWeatherData(date);'''.replace('            key,', '    key,').replace('            weekIndexMap', '    weekIndexMap').replace('          ]));', '  ]));').replace('          const raw', '  const raw')
-          new = '''  const raw = rawWeatherData(date);
-          const weeks = Object.fromEntries(WEATHER_WEEK_KEYS.map((key, index) => {
-            const direct = weatherValues(raw?.weeks?.[key]);
-            return [
-              key,
-              direct.length ? direct : (weekIndexMap.get(weekDate(date, index)) || [])
-            ];
-          }));'''.replace('          const weeks', '  const weeks').replace('            const direct', '    const direct').replace('            return [', '    return [').replace('              key,', '      key,').replace('              direct.length', '      direct.length').replace('            ];', '    ];').replace('          }));', '  }));')
+          old = "\n".join([
+            "  const weeks = Object.fromEntries(WEATHER_WEEK_KEYS.map((key, index) => [",
+            "    key,",
+            "    weekIndexMap.get(weekDate(date, index)) || []",
+            "  ]));",
+            "  const raw = rawWeatherData(date);"
+          ])
+          new = "\n".join([
+            "  const raw = rawWeatherData(date);",
+            "  const weeks = Object.fromEntries(WEATHER_WEEK_KEYS.map((key, index) => {",
+            "    const direct = weatherValues(raw?.weeks?.[key]);",
+            "    return [",
+            "      key,",
+            "      direct.length ? direct : (weekIndexMap.get(weekDate(date, index)) || [])",
+            "    ];",
+            "  }));"
+          ])
           if text.count(old) != 1:
               raise SystemExit(f'expected weekly display block once, found {text.count(old)}')
           path.write_text(text.replace(old, new), encoding='utf-8')
