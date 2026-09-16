@@ -1,6 +1,9 @@
 const POST_KEY_PROPERTY = "POST_KEY";
 const ADMIN_KEY_PROPERTY = "ADMIN_KEY";
 const DISCORD_WEBHOOK_URL_PROPERTY = "DISCORD_WEBHOOK_URL";
+const GITHUB_ACTIONS_TOKEN_PROPERTY = "GITHUB_ACTIONS_TOKEN";
+const GITHUB_REPOSITORY = "sg-log/heartopia-daily";
+const GITHUB_WEATHER_WORKFLOW = "weather-scheduled-run.yml";
 const HEARTOPIA_DAILY_URL = "https://sg-log.github.io/heartopia-daily/";
 const SHEET_NAME = "weather_reports";
 const OLD_WEEK_HEADERS = ["week1", "week2", "week3", "week4", "week5"];
@@ -83,6 +86,7 @@ function doPost(e) {
     const action = String(body.action || "");
     if (action === "recordAccess") return recordAccess_();
     if (action === "getAccessStats") return getAccessStats_(body);
+    if (action === "requestWeatherAutomation") return requestWeatherAutomation_(body);
     if (action === "submit") return submit_(body);
     if (action === "weatherReviewImage") return createWeatherReviewImage_(body);
     if (action === "weatherEvidence") return getWeatherEvidence_(body);
@@ -111,6 +115,39 @@ function doPost(e) {
     if (weatherSubmitStage_(error)) response.stage = weatherSubmitStage_(error);
     return json_(response);
   }
+}
+
+function requestWeatherAutomation_(body) {
+  requireKey_(body.adminKey, adminKey_(), "管理キー");
+  const targetDate = validateDateForWrite_(body.targetDate);
+  const slot = String(body.slot || "").trim();
+  if (["morning", "evening"].indexOf(slot) < 0) throw new Error("便が不正です");
+
+  const token = String(PropertiesService.getScriptProperties().getProperty(GITHUB_ACTIONS_TOKEN_PROPERTY) || "").trim();
+  if (!token) return json_({ ok:false, error:"GitHub連携が未設定です。", failureCode:"githubAutomationNotConfigured" });
+
+  const endpoint = "https://api.github.com/repos/" + GITHUB_REPOSITORY + "/actions/workflows/" + encodeURIComponent(GITHUB_WEATHER_WORKFLOW) + "/dispatches";
+  const response = UrlFetchApp.fetch(endpoint, {
+    method:"post",
+    muteHttpExceptions:true,
+    contentType:"application/json",
+    headers:{
+      Authorization:"Bearer " + token,
+      Accept:"application/vnd.github+json",
+      "X-GitHub-Api-Version":"2022-11-28",
+      "User-Agent":"heartopia-daily-apps-script"
+    },
+    payload:JSON.stringify({
+      ref:"main",
+      inputs:{ slot:slot, target_date:targetDate }
+    })
+  });
+  const status = response.getResponseCode();
+  if (status !== 204) {
+    Logger.log("GitHub weather workflow dispatch failed: HTTP " + status);
+    return json_({ ok:false, error:"GitHub Actionsを起動できませんでした（HTTP " + status + "）。", failureCode:"githubAutomationDispatchFailed" });
+  }
+  return json_({ ok:true, status:"accepted", targetDate:targetDate, slot:slot });
 }
 
 function publicWeatherItem_(item) {
