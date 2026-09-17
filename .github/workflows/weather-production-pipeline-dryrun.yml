@@ -1,0 +1,172 @@
+name: Weather production pipeline dry run
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/weather-authoritative-ui-gate-20260917]
+    paths:
+      - '.github/workflows/weather-production-pipeline-dryrun.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  TARGET_DATE: '2026-09-17'
+  EXPECTED_SOURCE_URL: 'https://x.com/i/status/2100325752185159960'
+  INCIDENT_MAP_SHA: 'a19a1cfce88943327872d70a1cb774a7a77ba9a9ccbf13f7c098ee4e0e99ab74'
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/weather-authoritative-ui-gate-20260917
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+
+      - name: Discover public weather candidates
+        env:
+          RESULT_PATH: ${{ runner.temp }}/weather-public-discovery.json
+        run: node tools/weather-public-discovery.mjs --target-date "$TARGET_DATE" --out "$RESULT_PATH"
+
+      - name: Capture and select verified weather UI
+        id: capture
+        shell: pwsh
+        env:
+          RESULT_PATH: ${{ runner.temp }}/weather-public-discovery.json
+          SELECTED_DIR: ${{ runner.temp }}/weather-selected-evidence
+          REVIEW_DRAFT: ${{ runner.temp }}/weather-unified-review.json
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $all = @((Get-Content -LiteralPath $env:RESULT_PATH -Raw -Encoding UTF8 | ConvertFrom-Json).candidates)
+          $candidates = @($all | Where-Object {
+            if ([string]$_.sourceType -eq 'x') { return ([string]$_.sourceUrl -match '^https://x\.com/i/status/\d+$') }
+            return ([string]$_.sourceType -eq 'web' -and [string]$_.sourceUrl -match '^https://')
+          } | Select-Object -First 24)
+          $selected = $null
+          for ($i = 0; $i -lt $candidates.Count; $i++) {
+            $candidate = $candidates[$i]
+            $dir = Join-Path $env:RUNNER_TEMP ("weather-e2e-candidate-" + $i)
+            if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            try {
+              if ([string]$candidate.sourceType -eq 'x') {
+                & node tools/weather-x-embed-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
+              } else {
+                & node tools/weather-cloud-url-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
+              }
+              if ($LASTEXITCODE -ne 0) { continue }
+              ./tools/weather-cloud-discovery.ps1 `
+                -CapturePath (Join-Path $dir 'capture.json') `
+                -OutputPath (Join-Path $dir 'discovery-candidate.json') `
+                -DiscoverySource ([string]$candidate.discoverySource) `
+                -SearchQuery ([string]$candidate.searchQuery)
+              & node tools/weather-unified-review.mjs --mode inspect --capture-dir $dir --target-date $env:TARGET_DATE --output $env:REVIEW_DRAFT
+              if ($LASTEXITCODE -ne 0) { continue }
+              $review = Get-Content -LiteralPath $env:REVIEW_DRAFT -Raw -Encoding UTF8 | ConvertFrom-Json
+              if ($review.ready -ne $true) { continue }
+              if (Test-Path $env:SELECTED_DIR) { Remove-Item -Recurse -Force $env:SELECTED_DIR }
+              Move-Item -LiteralPath $dir -Destination $env:SELECTED_DIR
+              $selected = $candidate
+              break
+            } catch { continue }
+          }
+          if ($null -eq $selected) { throw 'No verified weather UI candidate found.' }
+          "selected_dir=$env:SELECTED_DIR" >> $env:GITHUB_OUTPUT
+          "selected_source_url=$([string]$selected.sourceUrl)" >> $env:GITHUB_OUTPUT
+
+      - name: Assert historical fixture selection is correct
+        shell: pwsh
+        env:
+          SELECTED_DIR: ${{ steps.capture.outputs.selected_dir }}
+          REVIEW_DRAFT: ${{ runner.temp }}/weather-unified-review.json
+          SELECTED_SOURCE_URL: ${{ steps.capture.outputs.selected_source_url }}
+        run: |
+          if ($env:SELECTED_SOURCE_URL -cne $env:EXPECTED_SOURCE_URL) { throw ("Unexpected selected source: " + $env:SELECTED_SOURCE_URL) }
+          $review = Get-Content -LiteralPath $env:REVIEW_DRAFT -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($review.ready -ne $true) { throw 'Review is not ready.' }
+          if ([string]$review.selectedImage.file -cne 'verified-weather-panel.jpg') { throw ("Unsafe selected image: " + [string]$review.selectedImage.file) }
+          if ([string]$review.interpretation.startSlot -cne '00') { throw 'Unexpected start slot.' }
+          $daily = @($review.interpretation.slots | ForEach-Object { @($_.weather) -join '+' })
+          $weekly = @($review.interpretation.weeklyDays | ForEach-Object { @($_.weather) -join '+' })
+          if (($daily -join ',') -cne '雨,晴,晴,晴,晴') { throw ("Unexpected daily: " + ($daily -join ',')) }
+          if (($weekly -join ',') -cne '晴,晴,虹,晴,晴') { throw ("Unexpected weekly: " + ($weekly -join ',')) }
+          $capture = Get-Content -LiteralPath (Join-Path $env:SELECTED_DIR 'capture.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          $map = @($capture.rawMedia | Where-Object { [string]$_.sha256 -ceq $env:INCIDENT_MAP_SHA })
+          if ($map.Count -ne 1) { throw 'Known incident map is not present in source capture.' }
+          if ([string]$review.selectedImage.sha256 -ceq $env:INCIDENT_MAP_SHA) { throw 'Incident map was selected as evidence.' }
+          Write-Host ("SAFE_SELECTION source=" + $env:SELECTED_SOURCE_URL + " image=" + [string]$review.selectedImage.file + " sha=" + [string]$review.selectedImage.sha256)
+
+      - name: Upload exact selected evidence artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: weather-production-dryrun-evidence-${{ github.run_id }}
+          path: ${{ steps.capture.outputs.selected_dir }}
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Bind review to artifact
+        id: bind
+        shell: pwsh
+        env:
+          REVIEW_DRAFT: ${{ runner.temp }}/weather-unified-review.json
+          REVIEW_ENVELOPE: ${{ runner.temp }}/weather-review-envelope.json
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_NAME: weather-production-dryrun-evidence-${{ github.run_id }}
+        run: >-
+          node tools/weather-unified-bind.mjs
+          --draft "$env:REVIEW_DRAFT"
+          --artifact-run-id "${{ github.run_id }}"
+          --artifact-id "$env:ARTIFACT_ID"
+          --artifact-name "$env:ARTIFACT_NAME"
+          --output "$env:REVIEW_ENVELOPE"
+
+      - name: Verify artifact SHA and prepare pending preview
+        id: bridge
+        shell: pwsh
+        env:
+          REVIEW_PAYLOAD_BASE64: ${{ steps.bind.outputs.review_payload_base64 }}
+          REVIEW_PATH: ${{ runner.temp }}/weather-artifact-review.json
+          RESULT_DIR: ${{ runner.temp }}/weather-reviewed-result
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_NAME: weather-production-dryrun-evidence-${{ github.run_id }}
+        run: |
+          ./tools/weather-artifact-review-request.ps1 -ReviewPayloadBase64 "$env:REVIEW_PAYLOAD_BASE64" -ReviewPath "$env:REVIEW_PATH"
+          ./tools/weather-artifact-review-bridge.ps1 `
+            -ReviewPath "$env:REVIEW_PATH" `
+            -ArtifactDirectory "${{ steps.capture.outputs.selected_dir }}" `
+            -DownloadedArtifactId "$env:ARTIFACT_ID" `
+            -DownloadedArtifactName "$env:ARTIFACT_NAME" `
+            -DownloadedArtifactRunId "${{ github.run_id }}" `
+            -CandidatePath "$env:RESULT_DIR/weather-candidate.json" `
+            -DryRunPath "$env:RESULT_DIR/weather-dry-run.json" `
+            -PendingPreviewPath "$env:RESULT_DIR/pending-preview.json"
+
+      - name: Assert pending preview preserves exact verified crop
+        shell: pwsh
+        env:
+          RESULT_DIR: ${{ runner.temp }}/weather-reviewed-result
+          REVIEW_DRAFT: ${{ runner.temp }}/weather-unified-review.json
+        run: |
+          if ('${{ steps.bridge.outputs.ready }}' -cne 'true') { throw 'Bridge did not remain ready.' }
+          if ('${{ steps.bridge.outputs.pending_prepared }}' -cne 'true') { throw 'Pending preview was not prepared.' }
+          $review = Get-Content -LiteralPath $env:REVIEW_DRAFT -Raw -Encoding UTF8 | ConvertFrom-Json
+          $preview = Get-Content -LiteralPath (Join-Path $env:RESULT_DIR 'pending-preview.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          $candidate = Get-Content -LiteralPath (Join-Path $env:RESULT_DIR 'weather-candidate.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          $expectedSha = [string]$review.selectedImage.sha256
+          if ([string]$candidate.evidence.sha256 -cne $expectedSha) { throw 'Candidate evidence SHA changed.' }
+          if ([string]$preview.evidence.sha256 -cne $expectedSha) { throw 'Pending preview evidence SHA changed.' }
+          if ([string]$preview.evidence.file -cne 'verified-weather-panel.jpg') { throw ("Pending preview points at wrong file: " + [string]$preview.evidence.file) }
+          if ([string]$preview.evidence.sha256 -ceq $env:INCIDENT_MAP_SHA) { throw 'Pending preview contains the incident map.' }
+          Write-Host ("E2E_DRYRUN_OK evidence=" + [string]$preview.evidence.file + " sha=" + [string]$preview.evidence.sha256)
+
+      - name: Confirm no submit step exists
+        run: echo 'NO_SUBMIT_NO_DISCORD'
