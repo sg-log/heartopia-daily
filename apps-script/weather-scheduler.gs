@@ -5,7 +5,8 @@ const WEATHER_SCHEDULER_ATTEMPT_PROPERTIES = {
   morningPrimary: "WEATHER_SCHEDULER_MORNING_PRIMARY_DATE",
   morningRetry: "WEATHER_SCHEDULER_MORNING_RETRY_DATE",
   eveningPrimary: "WEATHER_SCHEDULER_EVENING_PRIMARY_DATE",
-  eveningRetry: "WEATHER_SCHEDULER_EVENING_RETRY_DATE"
+  eveningRetry: "WEATHER_SCHEDULER_EVENING_RETRY_DATE",
+  test20260917_2220: "WEATHER_SCHEDULER_TEST_20260917_2220"
 };
 
 /**
@@ -40,7 +41,8 @@ function getWeatherSchedulerStatus() {
     morningPrimary: String(props.getProperty(WEATHER_SCHEDULER_ATTEMPT_PROPERTIES.morningPrimary) || ""),
     morningRetry: String(props.getProperty(WEATHER_SCHEDULER_ATTEMPT_PROPERTIES.morningRetry) || ""),
     eveningPrimary: String(props.getProperty(WEATHER_SCHEDULER_ATTEMPT_PROPERTIES.eveningPrimary) || ""),
-    eveningRetry: String(props.getProperty(WEATHER_SCHEDULER_ATTEMPT_PROPERTIES.eveningRetry) || "")
+    eveningRetry: String(props.getProperty(WEATHER_SCHEDULER_ATTEMPT_PROPERTIES.eveningRetry) || ""),
+    test20260917_2220: String(props.getProperty(WEATHER_SCHEDULER_ATTEMPT_PROPERTIES.test20260917_2220) || "")
   };
 }
 
@@ -77,6 +79,24 @@ function runWeatherScheduler() {
 
 function nextWeatherSchedulerAttempt_(date, minuteOfDay) {
   const props = PropertiesService.getScriptProperties();
+
+  // One-time production-path acceptance test. It uses the normal five-minute
+  // Apps Script heartbeat and the real evening workflow, but can fire only on
+  // 2026-09-17 and only once. Remove after the acceptance run.
+  if (
+    date === "2026-09-17" &&
+    minuteOfDay >= 22 * 60 + 20 &&
+    String(props.getProperty(WEATHER_SCHEDULER_ATTEMPT_PROPERTIES.test20260917_2220) || "") !== date
+  ) {
+    return {
+      name: "acceptance-test-20260917-2220",
+      kind: "retry",
+      slot: "evening",
+      dueMinute: 22 * 60 + 20,
+      propertyName: WEATHER_SCHEDULER_ATTEMPT_PROPERTIES.test20260917_2220
+    };
+  }
+
   const attempts = minuteOfDay < 19 * 60
     ? [
         {
