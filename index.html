@@ -988,6 +988,10 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
 .pendingWeatherCard{border:1px solid #ddd;border-radius:12px;padding:16px;margin:12px 0}
 .pendingWeatherCard.pendingWeatherTarget{outline:3px solid rgba(124,145,137,.38);outline-offset:3px;background:#f7fbf8;box-shadow:0 0 0 7px rgba(124,145,137,.08)}
 .pendingWeatherSlots{display:grid;grid-template-columns:1fr;gap:8px;margin:12px 0}
+.pendingWeatherSectionTitle{margin:16px 0 4px}
+.pendingWeatherWeeks{display:grid;gap:8px;margin:8px 0 14px}
+.pendingWeatherWeeks .weatherSlot{display:grid;grid-template-columns:88px minmax(0,1fr);gap:10px;align-items:center;margin:0;padding:8px 10px}
+.pendingWeatherWeeks .weatherSlot label{margin:0}
 .pendingWeatherEditNote{font-size:12px;color:var(--muted);margin:8px 0 4px}
 .pendingWeatherCard .quickWeatherSlot{grid-template-columns:54px minmax(0,1fr);padding:7px 0;border-bottom:1px solid #eee8df}
 .pendingWeatherCard .quickWeatherSlot:last-child{border-bottom:0}
@@ -1019,7 +1023,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
 .pendingWeatherImageDialogCaption{font-size:13px;font-weight:800;color:#f6f1e8}
 .pendingWeatherImageDialogClose{padding:7px 11px;background:#fff;color:#3f3a36}
 .pendingWeatherImageDialog img{display:block;max-width:100%;max-height:80vh;width:auto;height:auto;margin:auto;object-fit:contain;border-radius:10px;background:#fff}
-@media(max-width:640px){.pendingWeatherCard{padding:12px}.pendingWeatherSlots{gap:6px}.pendingWeatherCard .quickWeatherSlot{grid-template-columns:44px minmax(0,1fr)}.pendingWeatherCard .quickWeatherSlot .weatherChip{min-width:42px;padding:6px 7px}.pendingWeatherImages img{width:100%;max-height:none}}
+@media(max-width:640px){.pendingWeatherCard{padding:12px}.pendingWeatherSlots{gap:6px}.pendingWeatherCard .quickWeatherSlot{grid-template-columns:44px minmax(0,1fr)}.pendingWeatherCard .quickWeatherSlot .weatherChip{min-width:42px;padding:6px 7px}.pendingWeatherWeeks .weatherSlot{grid-template-columns:72px minmax(0,1fr);gap:7px}.pendingWeatherImages img{width:100%;max-height:none}}
 </style>
 </head>
 <body>
@@ -1276,6 +1280,16 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
             <button type="button" class="secondary" data-admin-expand-all>全部開く</button>
           </div>
           <div class="card s12">
+            <h2>未承認の天気報告</h2>
+            <div class="row">
+              <div><label for="weatherAdminKey">管理キー</label><input id="weatherAdminKey" type="password" autocomplete="off" spellcheck="false"></div>
+              <div class="buttons"><button class="secondary" id="refreshPendingWeatherBtn">一覧を更新</button></div>
+            </div>
+            <div id="pendingWeatherStatus" class="status"></div>
+            <div id="pendingWeatherReports" class="tableWrap"></div>
+          </div>
+
+          <div class="card s12">
             <h2>天気自動更新</h2>
             <p class="small">ネット上の最新候補を探す自動更新を手動で起動します。同じ対象日・同じ便が成功済みなら重複実行しません。</p>
             <div class="row">
@@ -1400,15 +1414,6 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
             </div>
           </div>
 
-          <div class="card s12">
-            <h2>未承認の天気報告</h2>
-            <div class="row">
-              <div><label for="weatherAdminKey">管理キー</label><input id="weatherAdminKey" type="password" autocomplete="off" spellcheck="false"></div>
-              <div class="buttons"><button class="secondary" id="refreshPendingWeatherBtn">一覧を更新</button></div>
-            </div>
-            <div id="pendingWeatherStatus" class="status"></div>
-            <div id="pendingWeatherReports" class="tableWrap"></div>
-          </div>
         </div>
 
         <div class="adminTabPanel" data-admin-panel="manage" role="tabpanel">
@@ -5521,15 +5526,19 @@ function pendingWeatherCard(r){
   const source = pendingWeatherEvidenceUrl(r.sourceUrl);
   const images = Array.isArray(r.sourceImageUrls) ? [...new Set(r.sourceImageUrls.map(url => pendingWeatherEvidenceUrl(url, true)).filter(Boolean))].slice(0, 8) : [];
   const editPrefix = `pending-edit-${r.id}`;
+  const weekEditPrefix = `pending-week-${r.id}`;
   return `<details class="pendingWeatherCard" id="pending-weather-${esc(r.id)}" data-pending-weather-id="${esc(r.id)}" open><summary class="pendingWeatherSummary"><strong>${esc(reportDate)} ／ ${esc(startSlot)}時開始</strong></summary><div class="pendingWeatherCardBody">
-    <p class="pendingWeatherEditNote">違っていたら、天気アイコンをタップして直してから承認できます。</p>
+    <p class="pendingWeatherEditNote">デイリー。違っていたら、天気アイコンをタップして直してから承認できます。</p>
     <div class="pendingWeatherSlots" data-pending-weather-editor="${esc(r.id)}">${quickWeatherGroupHtml(editPrefix, startSlot)}</div>
+    <h3 class="pendingWeatherSectionTitle">週間予報（修正できます）</h3>
+    <p class="pendingWeatherEditNote">各日は1種類または「—」を選べます。画像にない日は空欄のままで問題ありません。</p>
+    <div class="pendingWeatherWeeks" data-pending-weather-week-editor="${esc(r.id)}">${weekChipGroupHtml(weekEditPrefix, reportDate, true)}</div>
     ${r.evidenceStatus === 'saved' && r.evidenceImages?.length ? `<div class="pendingWeatherImages" data-weather-evidence="${esc(r.id)}" data-evidence-display><p class="pendingWeatherEvidenceStatus">証拠画像を読み込み待ち…</p></div>` : '<p>保存済み証拠画像なし</p>'}
     ${source ? `<a class="pendingWeatherSourceLink" href="${esc(source)}" target="_blank" rel="noopener noreferrer">元投稿を開く</a>` : "<p>元投稿URLなし</p>"}
     <div class="buttons pendingWeatherActions"><button type="button" data-approve-weather="${esc(r.id)}">この内容で承認</button><button type="button" class="danger" data-reject-weather="${esc(r.id)}">却下</button></div>
     <details class="pendingWeatherDetails"><summary>詳細情報</summary><div class="pendingWeatherDetailsBody">
       <p>取得元：${esc(r.sourceType || '未記録')}<br>取得日時：${esc(r.retrievedAt || '未記録')}</p>
-      ${WEATHER_WEEK_KEYS.some(key => weeks[key]?.length) ? `<div><strong>週間の報告</strong>${WEATHER_WEEK_KEYS.map((key, i) => `<div>${esc(weekDateLabel(reportDate, i))}：${esc(simpleWeatherText(weeks[key], "未入力"))}</div>`).join("")}</div>` : ""}
+      ${WEATHER_WEEK_KEYS.some(key => weeks[key]?.length) ? `<div><strong>自動判読時の週間データ</strong>${WEATHER_WEEK_KEYS.map((key, i) => `<div>${esc(weekDateLabel(reportDate, i))}：${esc(simpleWeatherText(weeks[key], "未入力"))}</div>`).join("")}</div>` : ""}
       ${r.memo ? `<p class="pendingWeatherMemo">${esc(r.memo)}</p>` : ""}
       <p class="pendingWeatherSourceImagesLabel">元投稿画像（参考用・保存済み証拠画像とは別）</p>
       <div class="pendingWeatherImages">${images.length ? images.map((url, i) => `<button type="button" class="pendingWeatherImageButton" data-weather-image-open="${esc(url)}" data-weather-image-alt="元投稿画像 ${i + 1}" data-weather-image-caption="元投稿画像（参考） ${i + 1}"><img src="${esc(url)}" alt="元画像 ${i + 1}" loading="lazy" referrerpolicy="no-referrer"><span>元画像${i + 1}を拡大</span></button>`).join("") : "<p>元画像情報なし</p>"}</div>
@@ -5619,7 +5628,10 @@ async function fetchPendingWeatherReports(){
     E.pendingWeatherStatus.textContent = reports.length ? `${reports.length}件の未承認報告があります。` : "未承認の天気報告はありません。";
     clearPendingEvidenceImages();
     E.pendingWeatherReports.innerHTML = reports.map(pendingWeatherCard).join("");
-    reports.forEach(report => setChipSelections(`pending-edit-${report.id}`, normalizeWeatherSlots(report)));
+    reports.forEach(report => {
+      setChipSelections(`pending-edit-${report.id}`, normalizeWeatherSlots(report));
+      setWeekSelections(`pending-week-${report.id}`, normalizeWeatherWeeks(report));
+    });
     observePendingEvidence();
     focusPendingWeatherDeepLink();
     return reports;
@@ -5635,17 +5647,27 @@ async function approveWeatherReport(id){
   try{
     if(!report) throw new Error("対象の未承認報告が見つかりません。一覧を更新してください。");
     const editedSlots = chipSelections(`pending-edit-${id}`);
+    const editedWeeks = weekSelections(`pending-week-${id}`);
     if(WEATHER_SLOT_KEYS.some(key => !weatherValues(editedSlots[key]).length)){
       throw new Error("5つの時間枠すべてに天気を1つ選んでください。");
     }
+    if(WEATHER_WEEK_KEYS.some(key => weatherValues(editedWeeks[key]).length > 1)){
+      throw new Error("週間予報は各日1つまで選んでください。");
+    }
     const originalSlots = normalizeWeatherSlots(report);
-    const changed = WEATHER_SLOT_KEYS.some(key => {
+    const originalWeeks = normalizeWeatherWeeks(report);
+    const slotsChanged = WEATHER_SLOT_KEYS.some(key => {
       const before = [...weatherValues(originalSlots[key])].sort();
       const after = [...weatherValues(editedSlots[key])].sort();
       return JSON.stringify(before) !== JSON.stringify(after);
     });
+    const weeksChanged = WEATHER_WEEK_KEYS.some(key => {
+      const before = [...weatherValues(originalWeeks[key])].sort();
+      const after = [...weatherValues(editedWeeks[key])].sort();
+      return JSON.stringify(before) !== JSON.stringify(after);
+    });
 
-    if(!changed){
+    if(!slotsChanged && !weeksChanged){
       const result = await apiPost({action:"approve", id, adminKey:adminKeyValue()});
       if(result.ok === false) throw new Error(result.error || "APIエラー");
       await fetchPendingWeatherReports();
@@ -5657,7 +5679,7 @@ async function approveWeatherReport(id){
       date:normalizeApiDate(report.date),
       startSlot:normalizeStartSlot(report.startSlot),
       slots:editedSlots,
-      weeks:normalizeWeatherWeeks(report),
+      weeks:editedWeeks,
       memo:String(report.memo || "")
     };
     E.pendingWeatherStatus.textContent = "訂正版を保存中です…";
