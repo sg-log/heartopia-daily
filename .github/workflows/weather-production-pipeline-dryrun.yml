@@ -101,8 +101,15 @@ jobs:
           $capture = Get-Content -LiteralPath (Join-Path $env:SELECTED_DIR 'capture.json') -Raw -Encoding UTF8 | ConvertFrom-Json
           $map = @($capture.rawMedia | Where-Object { [string]$_.sha256 -ceq $env:INCIDENT_MAP_SHA })
           if ($map.Count -ne 1) { throw 'Known incident map is not present in source capture.' }
-          if ([string]$review.selectedImage.sha256 -ceq $env:INCIDENT_MAP_SHA) { throw 'Incident map was selected as evidence.' }
-          Write-Host ("SAFE_SELECTION source=" + $env:SELECTED_SOURCE_URL + " image=" + [string]$review.selectedImage.file + " sha=" + [string]$review.selectedImage.sha256)
+          $selectedMedia = @($capture.rawMedia | Where-Object { [string]$_.file -ceq 'verified-weather-panel.jpg' })
+          if ($selectedMedia.Count -ne 1) { throw 'Verified weather panel metadata is missing or duplicated.' }
+          if ([string]$selectedMedia[0].sourceScope -cne 'verified-game-ui-crop') { throw 'Verified crop scope is invalid.' }
+          $selectedSha = [string]$selectedMedia[0].sha256
+          if ($selectedSha -notmatch '^[a-f0-9]{64}$') { throw 'Verified crop SHA is invalid.' }
+          if ($selectedSha -ceq $env:INCIDENT_MAP_SHA) { throw 'Incident map was selected as evidence.' }
+          $actualSha = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $env:SELECTED_DIR 'verified-weather-panel.jpg')).Hash.ToLowerInvariant()
+          if ($actualSha -cne $selectedSha) { throw 'Verified crop file bytes do not match capture metadata.' }
+          Write-Host ("SAFE_SELECTION source=" + $env:SELECTED_SOURCE_URL + " image=verified-weather-panel.jpg sha=" + $selectedSha)
 
       - name: Upload exact selected evidence artifact
         id: upload
@@ -154,19 +161,30 @@ jobs:
         shell: pwsh
         env:
           RESULT_DIR: ${{ runner.temp }}/weather-reviewed-result
-          REVIEW_DRAFT: ${{ runner.temp }}/weather-unified-review.json
         run: |
           if ('${{ steps.bridge.outputs.ready }}' -cne 'true') { throw 'Bridge did not remain ready.' }
           if ('${{ steps.bridge.outputs.pending_prepared }}' -cne 'true') { throw 'Pending preview was not prepared.' }
-          $review = Get-Content -LiteralPath $env:REVIEW_DRAFT -Raw -Encoding UTF8 | ConvertFrom-Json
+          $expectedSha = '${{ steps.bridge.outputs.capture_sha256 }}'
+          if ($expectedSha -notmatch '^[a-f0-9]{64}$') { throw 'Bridge did not expose a valid verified crop SHA.' }
+          if ($expectedSha -ceq $env:INCIDENT_MAP_SHA) { throw 'Bridge selected the incident map.' }
           $preview = Get-Content -LiteralPath (Join-Path $env:RESULT_DIR 'pending-preview.json') -Raw -Encoding UTF8 | ConvertFrom-Json
           $candidate = Get-Content -LiteralPath (Join-Path $env:RESULT_DIR 'weather-candidate.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-          $expectedSha = [string]$review.selectedImage.sha256
-          if ([string]$candidate.evidence.sha256 -cne $expectedSha) { throw 'Candidate evidence SHA changed.' }
-          if ([string]$preview.evidence.sha256 -cne $expectedSha) { throw 'Pending preview evidence SHA changed.' }
-          if ([string]$preview.evidence.file -cne 'verified-weather-panel.jpg') { throw ("Pending preview points at wrong file: " + [string]$preview.evidence.file) }
-          if ([string]$preview.evidence.sha256 -ceq $env:INCIDENT_MAP_SHA) { throw 'Pending preview contains the incident map.' }
-          Write-Host ("E2E_DRYRUN_OK evidence=" + [string]$preview.evidence.file + " sha=" + [string]$preview.evidence.sha256)
+          if ([string]$candidate.hourlyForecast.evidence.reviewedImageSha256 -cne $expectedSha) { throw 'Candidate reviewed image SHA changed.' }
+          if ($preview.status -cne 'preview' -or $preview.sent -ne $false) { throw 'Pending preview state is invalid.' }
+          $images = @($preview.payload.evidenceImages)
+          if ($images.Count -ne 1) { throw 'Pending payload must contain exactly one verified evidence image.' }
+          $image = $images[0]
+          if ([string]$image.sha256 -cne $expectedSha) { throw 'Pending payload evidence SHA changed.' }
+          if ([string]$image.mimeType -cne 'image/jpeg') { throw 'Pending payload evidence MIME changed.' }
+          if ([string]::IsNullOrWhiteSpace([string]$image.bodyBase64)) { throw 'Pending payload evidence bytes are missing.' }
+          $bytes = [Convert]::FromBase64String([string]$image.bodyBase64)
+          if ([long]$image.byteSize -ne $bytes.LongLength) { throw 'Pending payload evidence byte size changed.' }
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try { $payloadSha = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant() }
+          finally { $sha.Dispose() }
+          if ($payloadSha -cne $expectedSha) { throw 'Pending payload Base64 bytes do not match verified crop SHA.' }
+          if ([string]$preview.payload.sourceUrl -cne $env:EXPECTED_SOURCE_URL) { throw 'Pending payload source URL changed.' }
+          Write-Host ("E2E_DRYRUN_OK sha=" + $expectedSha + " bytes=" + $bytes.LongLength + " source=" + [string]$preview.payload.sourceUrl)
 
       - name: Confirm no submit step exists
         run: echo 'NO_SUBMIT_NO_DISCORD'
