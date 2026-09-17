@@ -1,0 +1,22 @@
+name: Weather game-date regression
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/weather-authoritative-ui-gate-20260917]
+    paths:
+      - 'tools/weather-candidate.ps1'
+      - 'tools/test-weather-game-date.ps1'
+      - '.github/workflows/weather-game-date-regression.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  game-date:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify 06:00 Heartopia day boundary
+        shell: pwsh
+        run: ./tools/test-weather-game-date.ps1
