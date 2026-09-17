@@ -1,0 +1,31 @@
+name: Weather approved-read regression
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/weather-authoritative-ui-gate-20260917]
+    paths:
+      - 'tools/weather-approved-public-read.ps1'
+      - 'tools/test-weather-approved-public-read.ps1'
+      - 'tools/weather-cloud-submit-unified.ps1'
+      - '.github/workflows/weather-approved-read-regression.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  approved-read:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify public approved lookup safety
+        shell: pwsh
+        run: ./tools/test-weather-approved-public-read.ps1
+      - name: Verify unified submit parses
+        shell: pwsh
+        run: |
+          $errors = $null
+          $tokens = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path './tools/weather-cloud-submit-unified.ps1'), [ref]$tokens, [ref]$errors)
+          if ($errors.Count) { $errors | Format-List | Out-String | Write-Error; exit 1 }
+          Write-Host 'PASS: unified submit script parses.'
