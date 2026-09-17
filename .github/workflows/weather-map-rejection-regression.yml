@@ -1,0 +1,117 @@
+name: Weather map rejection regression
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/weather-map-rejection-regression.yml'
+      - 'tools/weather-unified-review.mjs'
+      - 'tools/weather-direct-panel-review.mjs'
+      - 'tools/weather-weekly-screenshot-review.mjs'
+      - 'tools/weather-x-embed-evidence.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  reject-known-map:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+
+      - name: Capture the exact post from the 19:04 incident
+        run: node tools/weather-x-embed-evidence.mjs --url 'https://x.com/i/status/2100325752185159960' --output-dir '${{ runner.temp }}/source'
+
+      - name: Isolate the exact map image by incident SHA
+        shell: bash
+        env:
+          INCIDENT_MAP_SHA: a19a1cfce88943327872d70a1cb774a7a77ba9a9ccbf13f7c098ee4e0e99ab74
+          SOURCE_DIR: ${{ runner.temp }}/source
+          MAP_DIR: ${{ runner.temp }}/map-only
+        run: |
+          node --input-type=module <<'NODE'
+          import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+          import path from 'node:path';
+          const sourceDir = process.env.SOURCE_DIR;
+          const mapDir = process.env.MAP_DIR;
+          const wanted = process.env.INCIDENT_MAP_SHA;
+          const capture = JSON.parse(await readFile(path.join(sourceDir, 'capture.json'), 'utf8'));
+          const media = (capture.rawMedia || []).find(item => item.sha256 === wanted);
+          if (!media) throw new Error(`Known incident map SHA not found: ${wanted}`);
+          await mkdir(mapDir, { recursive: true });
+          await copyFile(path.join(sourceDir, media.file), path.join(mapDir, 'raw-media-0.jpg'));
+          await copyFile(path.join(sourceDir, media.file), path.join(mapDir, 'evidence.jpg'));
+          await copyFile(path.join(sourceDir, capture.postContent.file), path.join(mapDir, 'post-content.txt'));
+          const isolated = {
+            status: 'captured',
+            adapter: 'x-official-embed',
+            sourceUrl: capture.sourceUrl,
+            finalUrl: capture.finalUrl,
+            sourceType: 'x',
+            sourceId: capture.sourceId,
+            capturedAt: capture.capturedAt,
+            postContent: { file: 'post-content.txt' },
+            rawMedia: [{
+              url: media.url,
+              file: 'raw-media-0.jpg',
+              mimeType: media.mimeType,
+              byteSize: media.byteSize,
+              sha256: media.sha256,
+              sourceScope: 'unknown'
+            }],
+            evidence: {
+              file: 'evidence.jpg',
+              mimeType: media.mimeType,
+              byteSize: media.byteSize,
+              sha256: media.sha256,
+              kind: 'embed-screenshot',
+              capturedAt: capture.capturedAt
+            }
+          };
+          await writeFile(path.join(mapDir, 'capture.json'), JSON.stringify(isolated, null, 2));
+          console.log(JSON.stringify({ isolatedMapSha: media.sha256, file: media.file }));
+          NODE
+
+      - name: Require direct panel reviewer to reject the map
+        shell: bash
+        env:
+          MAP_DIR: ${{ runner.temp }}/map-only
+          OUT: ${{ runner.temp }}/map-direct.json
+        run: |
+          set +e
+          node tools/weather-direct-panel-review.mjs --capture-dir "$MAP_DIR" --target-date 2026-09-17 --output "$OUT"
+          code=$?
+          set -e
+          test "$code" -eq 2
+          node --input-type=module <<'NODE'
+          import { readFile } from 'node:fs/promises';
+          const result = JSON.parse(await readFile(process.env.OUT, 'utf8'));
+          if (result.ready !== false) throw new Error('Incident map was accepted by direct reviewer');
+          console.log(JSON.stringify({ directReady: result.ready, reason: result.diagnostics?.reason || result.diagnostics?.mode || '' }));
+          NODE
+
+      - name: Require unified reviewer to reject the map-only capture
+        shell: bash
+        env:
+          MAP_DIR: ${{ runner.temp }}/map-only
+          OUT: ${{ runner.temp }}/map-unified.json
+        run: |
+          set +e
+          node tools/weather-unified-review.mjs --mode inspect --capture-dir "$MAP_DIR" --target-date 2026-09-17 --output "$OUT"
+          code=$?
+          set -e
+          test "$code" -ne 0
+          node --input-type=module <<'NODE'
+          import { readFile } from 'node:fs/promises';
+          const result = JSON.parse(await readFile(process.env.OUT, 'utf8'));
+          if (result.ready !== false) throw new Error('Incident map was accepted by unified reviewer');
+          if (result.selectedImage) throw new Error('Incident map was selected as weather evidence');
+          console.log(JSON.stringify({ unifiedReady: result.ready, selectedImage: result.selectedImage || null, diagnostics: result.diagnostics || {} }));
+          NODE
