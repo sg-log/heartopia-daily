@@ -28,13 +28,21 @@ jobs:
         run: python tools/apply-weather-authoritative-fix-v3.py
       - name: Run focused regression tests
         run: node --test tools/test-weather-unified-review.mjs tools/test-weather-x-embed-evidence.mjs
-      - name: Live fixture must use verified embed UI, not map/event raw media
+      - name: Live fixture diagnostic
         shell: bash
         run: |
           rm -rf /tmp/weather-live
           mkdir -p /tmp/weather-live
           node tools/weather-x-embed-evidence.mjs --url https://x.com/i/status/2100325752185159960 --output-dir /tmp/weather-live
+          set +e
           node tools/weather-unified-review.mjs --mode inspect --capture-dir /tmp/weather-live --target-date 2026-09-17 --output /tmp/weather-review.json
+          review_exit=$?
+          set -e
+          cat /tmp/weather-review.json
+          echo "review_exit=$review_exit"
+      - name: Live fixture must use verified embed UI, not map/event raw media
+        shell: bash
+        run: |
           node - <<'NODE'
           const fs=require('fs');
           const r=JSON.parse(fs.readFileSync('/tmp/weather-review.json','utf8'));
