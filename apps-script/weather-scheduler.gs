@@ -62,7 +62,7 @@ function runWeatherScheduler() {
     const attempt = nextWeatherSchedulerAttempt_(date, minuteOfDay);
     if (!attempt) return;
 
-    const result = dispatchWeatherAutomationFromScheduler_(date, attempt.slot);
+    const result = dispatchWeatherAutomationFromScheduler_(date, attempt.slot, attempt.kind);
     if (!result.ok) {
       Logger.log("Weather scheduler dispatch failed: " + JSON.stringify(result));
       return;
@@ -81,12 +81,14 @@ function nextWeatherSchedulerAttempt_(date, minuteOfDay) {
     ? [
         {
           name: "morning-primary",
+          kind: "primary",
           slot: "morning",
           dueMinute: 7 * 60,
           propertyName: WEATHER_SCHEDULER_ATTEMPT_PROPERTIES.morningPrimary
         },
         {
           name: "morning-retry",
+          kind: "retry",
           slot: "morning",
           dueMinute: 7 * 60 + 10,
           propertyName: WEATHER_SCHEDULER_ATTEMPT_PROPERTIES.morningRetry
@@ -95,12 +97,14 @@ function nextWeatherSchedulerAttempt_(date, minuteOfDay) {
     : [
         {
           name: "evening-primary",
+          kind: "primary",
           slot: "evening",
           dueMinute: 19 * 60,
           propertyName: WEATHER_SCHEDULER_ATTEMPT_PROPERTIES.eveningPrimary
         },
         {
           name: "evening-retry",
+          kind: "retry",
           slot: "evening",
           dueMinute: 19 * 60 + 10,
           propertyName: WEATHER_SCHEDULER_ATTEMPT_PROPERTIES.eveningRetry
@@ -116,10 +120,15 @@ function nextWeatherSchedulerAttempt_(date, minuteOfDay) {
   return null;
 }
 
-function dispatchWeatherAutomationFromScheduler_(targetDate, slot) {
+function dispatchWeatherAutomationFromScheduler_(targetDate, slot, attemptKind) {
   const token = String(PropertiesService.getScriptProperties().getProperty(GITHUB_ACTIONS_TOKEN_PROPERTY) || "").trim();
   if (!token) {
     return { ok:false, error:"GitHub連携が未設定です。", failureCode:"githubAutomationNotConfigured" };
+  }
+
+  const kind = String(attemptKind || "").trim();
+  if (["primary", "retry"].indexOf(kind) < 0) {
+    return { ok:false, error:"天気自動更新の試行種別が不正です。", failureCode:"githubAutomationAttemptInvalid" };
   }
 
   const endpoint = "https://api.github.com/repos/" + GITHUB_REPOSITORY + "/actions/workflows/" + encodeURIComponent(GITHUB_WEATHER_WORKFLOW) + "/dispatches";
@@ -135,7 +144,12 @@ function dispatchWeatherAutomationFromScheduler_(targetDate, slot) {
     },
     payload:JSON.stringify({
       ref:"main",
-      inputs:{ slot:slot, target_date:targetDate }
+      inputs:{
+        slot:slot,
+        target_date:targetDate,
+        trigger_origin:"apps-script",
+        attempt_kind:kind
+      }
     })
   });
 
@@ -148,5 +162,5 @@ function dispatchWeatherAutomationFromScheduler_(targetDate, slot) {
       httpStatus:status
     };
   }
-  return { ok:true, status:"accepted", targetDate:targetDate, slot:slot };
+  return { ok:true, status:"accepted", targetDate:targetDate, slot:slot, attemptKind:kind };
 }
