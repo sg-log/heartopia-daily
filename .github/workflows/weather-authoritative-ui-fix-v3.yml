@@ -1,0 +1,55 @@
+name: Weather authoritative UI fix v3
+
+on:
+  push:
+    branches:
+      - fix/weather-authoritative-ui-gate-20260917
+    paths:
+      - '.github/workflows/weather-authoritative-ui-fix-v3.yml'
+      - 'tools/apply-weather-authoritative-fix-v3.py'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/weather-authoritative-ui-gate-20260917
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Apply v3 safety patch
+        run: python tools/apply-weather-authoritative-fix-v3.py
+      - name: Run focused regression tests
+        run: node --test tools/test-weather-unified-review.mjs tools/test-weather-x-embed-evidence.mjs
+      - name: Live fixture must use verified embed UI, not map/event raw media
+        shell: bash
+        run: |
+          rm -rf /tmp/weather-live
+          mkdir -p /tmp/weather-live
+          node tools/weather-x-embed-evidence.mjs --url https://x.com/i/status/2100325752185159960 --output-dir /tmp/weather-live
+          node tools/weather-unified-review.mjs --mode inspect --capture-dir /tmp/weather-live --target-date 2026-09-17 --output /tmp/weather-review.json
+          node - <<'NODE'
+          const fs=require('fs');
+          const r=JSON.parse(fs.readFileSync('/tmp/weather-review.json','utf8'));
+          if(!r.ready) throw new Error('Live review not ready');
+          if(r.selectedImage?.file!=='evidence.jpg') throw new Error(`Expected verified embed evidence, got ${r.selectedImage?.file}`);
+          if(r.interpretation?.startSlot!=='06') throw new Error(`Unexpected start ${r.interpretation?.startSlot}`);
+          if(!Array.isArray(r.interpretation?.slots)||r.interpretation.slots.length!==5||r.interpretation.slots.some(s=>!Array.isArray(s.weather)||!s.weather.length)) throw new Error('Daily slots incomplete');
+          if(!Array.isArray(r.interpretation?.weeklyDays)||r.interpretation.weeklyDays.length<5) throw new Error('Weekly days incomplete');
+          console.log(JSON.stringify({selected:r.selectedImage.file,start:r.interpretation.startSlot,slots:r.interpretation.slots.map(s=>s.weather),weekly:r.interpretation.weeklyDays.map(d=>d.weather)}));
+          NODE
+      - name: Commit tested production patch
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tools/weather-deterministic-review.mjs tools/weather-unified-review.mjs tools/weather-direct-panel-review.mjs tools/weather-weekly-screenshot-review.mjs tools/test-weather-unified-review.mjs
+          git commit -m 'Require verified weather UI evidence'
+          git push origin HEAD:fix/weather-authoritative-ui-gate-20260917
