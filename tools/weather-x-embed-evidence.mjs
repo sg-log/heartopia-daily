@@ -303,6 +303,8 @@ async function captureXEmbed({ post, outputDir }) {
       pathways,
       postContent: { file: "post-content.txt" },
       directPage: { file: "direct-page.png" },
+      debugImages: images,
+      debugObservedMediaUrls: observedMediaUrls,
       rawMedia,
       evidence: {
         file: "evidence.jpg",
