@@ -6,7 +6,11 @@ on:
       - '.github/workflows/weather-candidate-diagnostic.yml'
       - 'tools/weather-unified-review.mjs'
       - 'tools/weather-weekly-screenshot-review.mjs'
+      - 'tools/weather-deterministic-review.mjs'
+      - 'tools/weather-x-raw-media.mjs'
+      - 'tools/weather-x-embed-evidence.mjs'
       - 'tools/test-weather-unified-review.mjs'
+      - 'tools/test-weather-deterministic-review.mjs'
   workflow_dispatch:
 
 permissions:
