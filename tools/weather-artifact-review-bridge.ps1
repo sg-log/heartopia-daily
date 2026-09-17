@@ -77,6 +77,7 @@ foreach ($selected in @($review.reviewedImages)) {
         $expectedMime = [string]$matches[0].mimeType
         $expectedSha = [string]$matches[0].sha256
         $expectedSize = [long]$matches[0].byteSize
+        if ([string]$matches[0].sourceScope -ceq 'verified-game-ui-crop') { $kind = 'screenshot' }
     }
 
     $artifact = New-WeatherEvidenceImage -Path $imagePath -Kind $kind -CapturedAt $rawCapturedAt
