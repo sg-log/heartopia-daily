@@ -10,6 +10,7 @@ function parseArgs(argv) {
 }
 
 function sourcePlatformForHost(host) {
+  if (host === 'x.com' || host === 'www.x.com' || host === 'twitter.com' || host === 'www.twitter.com') return 'x';
   if (host === 'instagram.com' || host === 'www.instagram.com') return 'instagram';
   if (host === 'tiktok.com' || host === 'www.tiktok.com' || host.endsWith('.tiktok.com')) return 'tiktok';
   if (host === 'youtube.com' || host === 'www.youtube.com' || host === 'youtu.be') return 'youtube';
@@ -35,24 +36,27 @@ export function normalizeCandidateUrl(raw) {
     if (!u) continue;
 
     const host = u.hostname.toLowerCase();
+    const platform = sourcePlatformForHost(host);
 
-    // The weather finder is WEB-first. X/Twitter and Yahoo! realtime are
-    // deliberately not candidate sources; even if a normal search engine
-    // surfaces them, fail closed here instead of sending them downstream.
-    if (
-      host === 'x.com' || host === 'www.x.com' ||
-      host === 'twitter.com' || host === 'www.twitter.com' ||
-      host === 't.co' || host === 'pic.x.com'
-    ) return null;
+    if (platform === 'x') {
+      const status = u.pathname.match(/^\/(?:i\/status|[A-Za-z0-9_]+\/status)\/(\d+)(?:\/(?:photo|video)\/[1-4])?\/?$/);
+      if (!status) return null;
+      return {
+        url: `https://x.com/i/status/${status[1]}`,
+        sourceType: 'x',
+        sourcePlatform: 'x',
+        sourceId: status[1]
+      };
+    }
 
-    if (host.endsWith('search.yahoo.co.jp')) return null;
-    if (host.endsWith('bing.com') || host.endsWith('duckduckgo.com')) return null;
+    if (host === 't.co' || host === 'pic.x.com') return null;
+    if (host.endsWith('bing.com') || host.endsWith('duckduckgo.com') || host.endsWith('search.yahoo.co.jp')) return null;
 
     u.hash = '';
     return {
       url: u.toString(),
       sourceType: 'web',
-      sourcePlatform: sourcePlatformForHost(host),
+      sourcePlatform: platform,
       sourceId: null
     };
   }
@@ -110,6 +114,7 @@ function providerUrl(provider, query) {
   if (provider === 'bing') return `https://www.bing.com/search?q=${q}`;
   if (provider === 'duckduckgo') return `https://html.duckduckgo.com/html/?q=${q}`;
   if (provider === 'yahoo-web') return `https://search.yahoo.co.jp/search?p=${q}`;
+  if (provider === 'yahoo-realtime') return `https://search.yahoo.co.jp/realtime/search?p=${q}`;
   throw new Error(`Unknown provider ${provider}`);
 }
 
@@ -189,16 +194,17 @@ export function selectDiversifiedCandidates(candidates, limit = 24) {
     selected.push(candidate);
     selectedUrls.add(candidate.sourceUrl);
     providerCounts.set(candidate.discoverySource, (providerCounts.get(candidate.discoverySource) || 0) + 1);
-    const platform = candidate.sourcePlatform || 'web';
+    const platform = candidate.sourcePlatform || candidate.sourceType || 'web';
     platformCounts.set(platform, (platformCounts.get(platform) || 0) + 1);
     return true;
   };
 
-  // Diversify by ordinary web search provider and destination platform.
-  // Relevance/date evidence still controls ranking; no platform is preferred.
+  // Search route and destination platform diversify the pool only. They do not
+  // determine truth: date/game/weather relevance ranks candidates, and later
+  // stages must verify the actual in-game weather UI image.
   for (const candidate of ranked) {
     if (selected.length >= limit) break;
-    const platform = candidate.sourcePlatform || 'web';
+    const platform = candidate.sourcePlatform || candidate.sourceType || 'web';
     if ((providerCounts.get(candidate.discoverySource) || 0) >= providerCap) continue;
     if ((platformCounts.get(platform) || 0) >= platformCap) continue;
     add(candidate);
@@ -233,15 +239,17 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24) {
 
 export async function discover(targetDate) {
   const queries = buildQueries(targetDate);
-  // Ordinary web search only. Do not call Yahoo! realtime and do not search X directly.
-  const providers = ['bing', 'duckduckgo', 'yahoo-web'];
+  // Public-WEB discovery uses multiple routes. X/Yahoo realtime are allowed as
+  // discovery routes, but neither is privileged or treated as authoritative.
+  const providers = ['bing', 'duckduckgo', 'yahoo-web', 'yahoo-realtime'];
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ locale: 'ja-JP', timezoneId: 'Asia/Tokyo' });
   const page = await context.newPage();
   const attempts = [];
   try {
     for (const provider of providers) {
-      for (const query of queries) attempts.push(await collectFromPage(page, provider, query, targetDate));
+      const providerQueries = provider === 'yahoo-realtime' ? [queries[0], queries[1]] : queries;
+      for (const query of providerQueries) attempts.push(await collectFromPage(page, provider, query, targetDate));
     }
   } finally {
     await browser.close();
@@ -249,8 +257,8 @@ export async function discover(targetDate) {
 
   const candidates = mergeAndRankCandidates(attempts, targetDate, 24);
   return {
-    schemaVersion: 2,
-    responseType: 'weather-public-web-discovery',
+    schemaVersion: 3,
+    responseType: 'weather-public-discovery',
     targetDate,
     generatedAt: new Date().toISOString(),
     attempts: attempts.map(({ provider, query, status, error, linksSeen, candidates }) => ({ provider, query, status, error, linksSeen, candidateCount: candidates.length })),
