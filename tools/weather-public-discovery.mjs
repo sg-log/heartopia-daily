@@ -248,7 +248,9 @@ export async function discover(targetDate) {
   const attempts = [];
   try {
     for (const provider of providers) {
-      const providerQueries = provider === 'yahoo-realtime' ? [queries[0], queries[1]] : queries;
+      const providerQueries = provider === 'yahoo-realtime'
+        ? [queries[0], queries[1], 'ハートピア 天気']
+        : queries;
       for (const query of providerQueries) attempts.push(await collectFromPage(page, provider, query, targetDate));
     }
   } finally {
