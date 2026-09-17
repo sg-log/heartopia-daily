@@ -54,9 +54,10 @@ Assert ((ConvertTo-WeatherReportDryRun $sample).payload.slots.slot3.Count -eq 0)
 $sample = New-Sample
 $sample.startSlot = '00'
 $midnight = ConvertTo-WeatherReportDryRun $sample
-Assert ($midnight.payload.date -eq '2026-09-10') '00 start must use following calendar date for API'
+Assert ($midnight.payload.date -eq '2026-09-09') '00 start must keep observed Heartopia game date for API'
+Assert ($midnight.timeline[0].calendarTime -eq '2026-09-10 00:00') '00 start calendar timestamp is following midnight'
 Assert ($midnight.timeline[0].gameDate -eq '2026-09-09') '00 start retains observation game day'
-'PASS: sample, unknown date, low confidence, inference, moon evidence, empty slot, midnight mapping'
+'PASS: sample, unknown date, low confidence, inference, moon evidence, empty slot, midnight game-date mapping'
 
 function New-SectionSample {
     $slots = [ordered]@{}
