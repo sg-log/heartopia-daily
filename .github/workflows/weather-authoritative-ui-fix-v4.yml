@@ -47,12 +47,18 @@ jobs:
       - name: Run unified strict review
         shell: bash
         run: |
+          set +e
           node tools/weather-unified-review.mjs \
             --mode inspect \
             --capture-dir /tmp/weather-v4 \
             --target-date 2026-09-17 \
             --output /tmp/weather-v4-review.json
+          review_status=$?
+          set -e
+          echo "review_status=$review_status"
           cat /tmp/weather-v4-review.json
+          echo "--- generated evidence files ---"
+          ls -lah /tmp/weather-v4
 
       - name: Assert exact verified panel evidence and values
         shell: bash
@@ -65,7 +71,7 @@ jobs:
           const expectedWeekly=['晴','晴','虹','晴','晴'];
           const daily=r.interpretation?.slots?.map(s=>s.weather?.[0]);
           const weekly=r.interpretation?.weeklyDays?.map(d=>d.weather?.[0]);
-          if(!r.ready) throw new Error('Unified verified-panel review is not ready');
+          if(!r.ready) throw new Error(`Unified verified-panel review is not ready: ${JSON.stringify(r.diagnostics)}`);
           if(r.selectedImage?.file!=='verified-weather-panel.jpg') throw new Error(`Expected verified crop evidence, got ${r.selectedImage?.file}`);
           if(r.pendingEvidenceFile!=='verified-weather-panel.jpg') throw new Error(`Pending evidence is not the verified crop: ${r.pendingEvidenceFile}`);
           if(r.diagnostics?.mode!=='verified-game-ui-crop') throw new Error(`Unexpected review mode ${r.diagnostics?.mode}`);
