@@ -313,9 +313,21 @@ export async function inspectCapture({ captureDir, targetDate, repoRoot = path.r
       const imageDataUrl = `data:${descriptor.mimeType};base64,${descriptor.bytes.toString('base64')}`;
       const scored = await scoreImage(page, imageDataUrl, templates);
       for (const panel of scored.ranked || []) {
+        const structure = await page.evaluate(async ({ imageDataUrl, rect }) => {
+          const image = await new Promise((resolve, reject) => { const value = new Image(); value.onload=()=>resolve(value); value.onerror=reject; value.src=imageDataUrl; });
+          const canvas=document.createElement('canvas'); canvas.width=rect.w; canvas.height=rect.h;
+          const ctx=canvas.getContext('2d',{willReadFrequently:true}); ctx.drawImage(image,rect.x,rect.y,rect.w,rect.h,0,0,rect.w,rect.h);
+          const data=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+          let topBlue=0,topTotal=0,lowerLight=0,lowerTotal=0;
+          const rgbToHsv=(r,g,b)=>{r/=255;g/=255;b/=255;const max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0;if(d){if(max===r)h=((g-b)/d)%6;else if(max===g)h=(b-r)/d+2;else h=(r-g)/d+4;h*=60;if(h<0)h+=360;}return{h,s:max?d/max:0,v:max};};
+          for(let y=0;y<canvas.height;y+=2)for(let x=0;x<canvas.width;x+=2){const i=(y*canvas.width+x)*4,r=data[i],g=data[i+1],b=data[i+2],hsv=rgbToHsv(r,g,b);if(y<canvas.height*.52){topTotal++;if(b>140&&g>105&&b>r*1.12&&hsv.s>.22&&hsv.h>=175&&hsv.h<=235)topBlue++;}else{lowerTotal++;if(hsv.v>=.72&&hsv.s<=.25)lowerLight++;}}
+          const topBlueRatio=topTotal?topBlue/topTotal:0,lowerLightRatio=lowerTotal?lowerLight/lowerTotal:0;
+          return { ready: topBlueRatio>=.20 && lowerLightRatio>=.35, topBlueRatio, lowerLightRatio };
+        }, { imageDataUrl, rect: panel.rect });
+        if (!structure.ready) continue;
         const right=(scored.width-panel.rect.x-panel.rect.w)/scored.width;
         const geometryDistance=Math.abs(panel.rect.h/scored.height-.75)+Math.abs(panel.rect.y/scored.height-.12)+Math.abs(right-.08);
-        panelCandidates.push({ media, descriptor, imageDataUrl, panel, geometryDistance });
+        panelCandidates.push({ media, descriptor, imageDataUrl, panel, geometryDistance, structure });
       }
     }
     panelCandidates.sort((a,b)=>a.geometryDistance-b.geometryDistance||b.panel.highCount-a.panel.highCount||b.panel.okCount-a.panel.okCount||b.panel.minMargin-a.panel.minMargin||b.panel.avg-a.panel.avg);

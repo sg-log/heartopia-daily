@@ -8,7 +8,7 @@ import { WeatherCloudError, assertPublicHostname } from "./weather-cloud-url-evi
 export const MAX_RAW_MEDIA_BYTES = 512 * 1024;
 const X_MEDIA_HOST = "pbs.twimg.com";
 const X_MEDIA_PATH = /^\/(?:media|ext_tw_video_thumb|tweet_video_thumb)\/[A-Za-z0-9._~%-]+$/;
-const ALLOWED_FORMATS = new Set(["jpg", "jpeg", "png"]);
+const ALLOWED_FORMATS = new Set(["jpg", "jpeg", "png", "webp"]);
 const ALLOWED_NAMES = new Set(["thumb", "small", "medium", "large", "orig"]);
 
 export function parseXPublicMediaUrl(value) {
@@ -30,6 +30,7 @@ export function parseXPublicMediaUrl(value) {
   if ((format && !ALLOWED_FORMATS.has(format.toLowerCase())) || (name && !ALLOWED_NAMES.has(name.toLowerCase()))) {
     throw new WeatherCloudError("invalidXMediaUrl");
   }
+  if (format && format.toLowerCase() === "webp") url.searchParams.set("format", "jpg");
   return url;
 }
 

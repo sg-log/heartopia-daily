@@ -157,10 +157,17 @@ export function applyTimedSpecialWeatherHints(result, postText) {
     if (!hint) continue;
     const slot = clone.interpretation.slots[index];
     const previous = Array.isArray(slot.weather) ? [...slot.weather] : [];
-    slot.weather = [hint.weather];
-    slot.confidence = 'high';
-    slot.description = ((slot.description || '') + ' 投稿本文の時刻付き「流星雨/流星群」と照合。').trim();
-    corrections.push({ slot: slot.slot, previous, weather: hint.weather, sourceLine: hint.sourceLine });
+    if (previous.includes(hint.weather)) {
+      slot.description = ((slot.description || '') + ' 投稿本文の時刻付き特殊天気と一致。').trim();
+      corrections.push({ slot: slot.slot, previous, weather: hint.weather, sourceLine: hint.sourceLine, action:'confirmed' });
+      continue;
+    }
+    clone.ready = false;
+    clone.interpretation.ready = false;
+    clone.interpretation.confidence = 'low';
+    clone.interpretation.unresolved = [...(clone.interpretation.unresolved || []), `画像と投稿本文の天気が競合: ${slot.slot}`];
+    clone.diagnostics = { ...(clone.diagnostics || {}), textWeatherHints: hints, textWeatherConflicts: [{ slot:slot.slot, imageWeather:previous, textWeather:hint.weather, sourceLine:hint.sourceLine }] };
+    return clone;
   }
   if (!corrections.length) return result;
   clone.interpretation.summary = ((clone.interpretation.summary || '') + ' 投稿本文の時刻付き特殊天気を照合。').trim();

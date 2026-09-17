@@ -76,7 +76,7 @@ test('does not combine split evidence when weekly data is incomplete', () => {
   assert.equal(combineDailyWeeklyReviews(daily, weekly), null);
 });
 
-test('uses an explicit timed 流星雨 line to correct the visually ambiguous 18 slot', () => {
+test('stops for review when timed 流星雨 text conflicts with the game UI image', () => {
   const postText = '09/16(水)\nお天気予報\n00:00～17:59　晴れ\n18:00～23:59　流星雨\n翌00:00～05:59　雨';
   assert.deepEqual(extractTimedMeteorIntervals(postText).map(item => [item.startMinute, item.endMinute, item.weather]), [[1080, 1439, '流星群']]);
   const result = {
@@ -94,8 +94,10 @@ test('uses an explicit timed 流星雨 line to correct the visually ambiguous 18
     diagnostics: {}
   };
   const corrected = applyTimedSpecialWeatherHints(result, postText);
-  assert.deepEqual(corrected.interpretation.slots.map(slot => slot.weather), [['晴'],['晴'],['流星群'],['雨'],['晴']]);
-  assert.equal(corrected.diagnostics.textWeatherCorrections.length, 1);
+  assert.equal(corrected.ready, false);
+  assert.equal(corrected.interpretation.ready, false);
+  assert.deepEqual(corrected.interpretation.slots.map(slot => slot.weather), [['晴'],['晴'],['晴'],['雨'],['晴']]);
+  assert.equal(corrected.diagnostics.textWeatherConflicts.length, 1);
   assert.deepEqual(result.interpretation.slots[2].weather, ['晴']);
 });
 
