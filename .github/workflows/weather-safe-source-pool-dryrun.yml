@@ -1,0 +1,84 @@
+name: Weather safe source pool dry run
+
+on:
+  push:
+    branches: [fix/weather-authoritative-ui-gate-20260917]
+    paths:
+      - '.github/workflows/weather-safe-source-pool-dryrun.yml'
+      - 'tools/apply-weather-authoritative-fix-v3.py'
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/weather-authoritative-ui-gate-20260917
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Apply fail-closed review patch in workspace
+        run: python tools/apply-weather-authoritative-fix-v3.py
+      - name: Regression tests
+        run: node --test tools/test-weather-unified-review.mjs tools/test-weather-x-embed-evidence.mjs
+      - name: Discover candidates
+        run: node tools/weather-public-discovery.mjs --target-date 2026-09-17 --out /tmp/discovery.json
+      - name: Try diversified public sources without submitting
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $all = (Get-Content /tmp/discovery.json -Raw -Encoding UTF8 | ConvertFrom-Json).candidates
+          $candidates = @($all | Select-Object -First 24)
+          $results = @()
+          $selected = $null
+          for ($i = 0; $i -lt $candidates.Count; $i++) {
+            $candidate = $candidates[$i]
+            $dir = Join-Path $env:RUNNER_TEMP ("safe-source-" + $i)
+            if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            $captureOk = $false
+            try {
+              if ([string]$candidate.sourceType -eq 'x') {
+                & node tools/weather-x-embed-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
+              } else {
+                & node tools/weather-cloud-url-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
+              }
+              $captureOk = ($LASTEXITCODE -eq 0)
+            } catch {}
+            if (-not $captureOk) {
+              $results += [pscustomobject]@{ index=$i; url=[string]$candidate.sourceUrl; type=[string]$candidate.sourceType; capture=$false; ready=$false; reason='capture-failed' }
+              continue
+            }
+            try {
+              ./tools/weather-cloud-discovery.ps1 -CapturePath (Join-Path $dir 'capture.json') -OutputPath (Join-Path $dir 'discovery-candidate.json') -DiscoverySource ([string]$candidate.discoverySource) -SearchQuery ([string]$candidate.searchQuery)
+            } catch {
+              $results += [pscustomobject]@{ index=$i; url=[string]$candidate.sourceUrl; type=[string]$candidate.sourceType; capture=$true; ready=$false; reason='discovery-bind-failed' }
+              continue
+            }
+            $out = Join-Path $dir 'review.json'
+            & node tools/weather-unified-review.mjs --mode inspect --capture-dir $dir --target-date 2026-09-17 --output $out
+            $review = $null
+            if (Test-Path $out) { try { $review = Get-Content $out -Raw -Encoding UTF8 | ConvertFrom-Json } catch {} }
+            $ready = ($LASTEXITCODE -eq 0 -and $null -ne $review -and $review.ready -eq $true)
+            $reason = ''
+            if ($null -ne $review) {
+              $reason = [string]($review.diagnostics.reason)
+              if (-not $reason -and $null -ne $review.diagnostics.splitFallback) { $reason = 'split-not-ready' }
+            }
+            $results += [pscustomobject]@{ index=$i; url=[string]$candidate.sourceUrl; type=[string]$candidate.sourceType; capture=$true; ready=$ready; reason=$reason; selectedImage=[string]($review.selectedImage.file); startSlot=[string]($review.interpretation.startSlot); slots=@($review.interpretation.slots | ForEach-Object { @($_.weather) -join '+' }); weekly=@($review.interpretation.weeklyDays | ForEach-Object { @($_.weather) -join '+' }) }
+            if ($ready) { $selected = $results[-1]; break }
+          }
+          $results | ConvertTo-Json -Depth 8 | Set-Content /tmp/source-results.json -Encoding UTF8
+          Get-Content /tmp/source-results.json
+          if ($null -ne $selected) {
+            Write-Host ('SELECTED=' + ($selected | ConvertTo-Json -Compress -Depth 8))
+          } else {
+            Write-Host 'SELECTED=NONE'
+          }
