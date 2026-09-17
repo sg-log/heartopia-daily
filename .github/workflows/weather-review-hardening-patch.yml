@@ -1,0 +1,73 @@
+name: Weather review hardening patch
+
+on:
+  push:
+    paths:
+      - '.github/workflows/weather-review-hardening-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/weather-final-hardening-20260917
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply guarded reviewer fixes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          # Modern X embeds may request pbs media as webp. Canonicalize those URLs
+          # to JPEG before downloading so all original post photos remain available.
+          p = Path('tools/weather-x-raw-media.mjs')
+          s = p.read_text()
+          s = s.replace('const ALLOWED_FORMATS = new Set(["jpg", "jpeg", "png"]);', 'const ALLOWED_FORMATS = new Set(["jpg", "jpeg", "png", "webp"]);')
+          old = '''  if ((format && !ALLOWED_FORMATS.has(format.toLowerCase())) || (name && !ALLOWED_NAMES.has(name.toLowerCase()))) {\n    throw new WeatherCloudError("invalidXMediaUrl");\n  }\n  return url;'''
+          new = '''  if ((format && !ALLOWED_FORMATS.has(format.toLowerCase())) || (name && !ALLOWED_NAMES.has(name.toLowerCase()))) {\n    throw new WeatherCloudError("invalidXMediaUrl");\n  }\n  if (format && format.toLowerCase() === "webp") url.searchParams.set("format", "jpg");\n  return url;'''
+          if old not in s: raise SystemExit('raw-media patch anchor missing')
+          p.write_text(s.replace(old, new))
+
+          # Reject look-alike crops unless they have the actual Heartopia weather
+          # panel structure: blue upper weather area + light weekly/list area.
+          p = Path('tools/weather-deterministic-review.mjs')
+          s = p.read_text()
+          old = '''      for (const panel of scored.ranked || []) {\n        const right=(scored.width-panel.rect.x-panel.rect.w)/scored.width;\n        const geometryDistance=Math.abs(panel.rect.h/scored.height-.75)+Math.abs(panel.rect.y/scored.height-.12)+Math.abs(right-.08);\n        panelCandidates.push({ media, descriptor, imageDataUrl, panel, geometryDistance });\n      }'''
+          new = '''      for (const panel of scored.ranked || []) {\n        const structure = await page.evaluate(async ({ imageDataUrl, rect }) => {\n          const image = await new Promise((resolve, reject) => { const value = new Image(); value.onload=()=>resolve(value); value.onerror=reject; value.src=imageDataUrl; });\n          const canvas=document.createElement('canvas'); canvas.width=rect.w; canvas.height=rect.h;\n          const ctx=canvas.getContext('2d',{willReadFrequently:true}); ctx.drawImage(image,rect.x,rect.y,rect.w,rect.h,0,0,rect.w,rect.h);\n          const data=ctx.getImageData(0,0,canvas.width,canvas.height).data;\n          let topBlue=0,topTotal=0,lowerLight=0,lowerTotal=0;\n          const rgbToHsv=(r,g,b)=>{r/=255;g/=255;b/=255;const max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0;if(d){if(max===r)h=((g-b)/d)%6;else if(max===g)h=(b-r)/d+2;else h=(r-g)/d+4;h*=60;if(h<0)h+=360;}return{h,s:max?d/max:0,v:max};};\n          for(let y=0;y<canvas.height;y+=2)for(let x=0;x<canvas.width;x+=2){const i=(y*canvas.width+x)*4,r=data[i],g=data[i+1],b=data[i+2],hsv=rgbToHsv(r,g,b);if(y<canvas.height*.52){topTotal++;if(b>140&&g>105&&b>r*1.12&&hsv.s>.22&&hsv.h>=175&&hsv.h<=235)topBlue++;}else{lowerTotal++;if(hsv.v>=.72&&hsv.s<=.25)lowerLight++;}}\n          const topBlueRatio=topTotal?topBlue/topTotal:0,lowerLightRatio=lowerTotal?lowerLight/lowerTotal:0;\n          return { ready: topBlueRatio>=.20 && lowerLightRatio>=.35, topBlueRatio, lowerLightRatio };\n        }, { imageDataUrl, rect: panel.rect });\n        if (!structure.ready) continue;\n        const right=(scored.width-panel.rect.x-panel.rect.w)/scored.width;\n        const geometryDistance=Math.abs(panel.rect.h/scored.height-.75)+Math.abs(panel.rect.y/scored.height-.12)+Math.abs(right-.08);\n        panelCandidates.push({ media, descriptor, imageDataUrl, panel, geometryDistance, structure });\n      }'''
+          if old not in s: raise SystemExit('deterministic patch anchor missing')
+          p.write_text(s.replace(old, new))
+
+          # Text may confirm a visually read special-weather slot, but it must never
+          # silently override a conflicting game UI reading. Conflict => human review.
+          p = Path('tools/weather-unified-review.mjs')
+          s = p.read_text()
+          old = '''    const slot = clone.interpretation.slots[index];\n    const previous = Array.isArray(slot.weather) ? [...slot.weather] : [];\n    slot.weather = [hint.weather];\n    slot.confidence = 'high';\n    slot.description = ((slot.description || '') + ' 投稿本文の時刻付き「流星雨/流星群」と照合。').trim();\n    corrections.push({ slot: slot.slot, previous, weather: hint.weather, sourceLine: hint.sourceLine });'''
+          new = '''    const slot = clone.interpretation.slots[index];\n    const previous = Array.isArray(slot.weather) ? [...slot.weather] : [];\n    if (previous.includes(hint.weather)) {\n      slot.description = ((slot.description || '') + ' 投稿本文の時刻付き特殊天気と一致。').trim();\n      corrections.push({ slot: slot.slot, previous, weather: hint.weather, sourceLine: hint.sourceLine, action:'confirmed' });\n      continue;\n    }\n    clone.ready = false;\n    clone.interpretation.ready = false;\n    clone.interpretation.confidence = 'low';\n    clone.interpretation.unresolved = [...(clone.interpretation.unresolved || []), `画像と投稿本文の天気が競合: ${slot.slot}`];\n    clone.diagnostics = { ...(clone.diagnostics || {}), textWeatherHints: hints, textWeatherConflicts: [{ slot:slot.slot, imageWeather:previous, textWeather:hint.weather, sourceLine:hint.sourceLine }] };\n    return clone;'''
+          if old not in s: raise SystemExit('meteor patch anchor missing')
+          p.write_text(s.replace(old, new))
+
+          # Update the regression expectation from text override to safe conflict.
+          p = Path('tools/test-weather-unified-review.mjs')
+          s = p.read_text()
+          s = s.replace("test('uses an explicit timed 流星雨 line to correct the visually ambiguous 18 slot', () => {", "test('stops for review when timed 流星雨 text conflicts with the game UI image', () => {")
+          old = '''  assert.deepEqual(corrected.interpretation.slots.map(slot => slot.weather), [['晴'],['晴'],['流星群'],['雨'],['晴']]);\n  assert.equal(corrected.diagnostics.textWeatherCorrections.length, 1);\n  assert.deepEqual(result.interpretation.slots[2].weather, ['晴']);'''
+          new = '''  assert.equal(corrected.ready, false);\n  assert.equal(corrected.interpretation.ready, false);\n  assert.deepEqual(corrected.interpretation.slots.map(slot => slot.weather), [['晴'],['晴'],['晴'],['雨'],['晴']]);\n  assert.equal(corrected.diagnostics.textWeatherConflicts.length, 1);\n  assert.deepEqual(result.interpretation.slots[2].weather, ['晴']);'''
+          if old not in s: raise SystemExit('meteor test anchor missing')
+          p.write_text(s.replace(old, new))
+      - name: Regression tests
+        run: node --test tools/test-weather-unified-review.mjs tools/test-weather-deterministic-review.mjs
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tools/weather-x-raw-media.mjs tools/weather-deterministic-review.mjs tools/weather-unified-review.mjs tools/test-weather-unified-review.mjs
+          git diff --cached --check
+          git commit -m 'Harden weather image evidence and text conflict handling'
+          git push origin HEAD:fix/weather-final-hardening-20260917
