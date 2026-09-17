@@ -5,7 +5,6 @@ on:
     branches: [fix/weather-authoritative-ui-gate-20260917]
     paths:
       - '.github/workflows/weather-safe-source-pool-dryrun.yml'
-      - 'tools/apply-weather-authoritative-fix-v3.py'
       - 'tools/weather-public-discovery.mjs'
 
 permissions:
@@ -25,8 +24,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - name: Apply fail-closed review patch in workspace
-        run: python tools/apply-weather-authoritative-fix-v3.py
       - name: Regression tests
         run: node --test tools/test-weather-unified-review.mjs tools/test-weather-x-embed-evidence.mjs
       - name: Discover public WEB candidates
@@ -35,6 +32,7 @@ jobs:
         shell: pwsh
         run: |
           $discovery = Get-Content /tmp/discovery.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($discovery.schemaVersion -ne 3) { throw ("Unexpected discovery schema " + $discovery.schemaVersion) }
           $providers = @($discovery.attempts | ForEach-Object { [string]$_.provider } | Sort-Object -Unique)
           foreach ($required in @('bing','duckduckgo','yahoo-web','yahoo-realtime')) {
             if ($providers -notcontains $required) { throw ("Missing discovery route: " + $required) }
@@ -79,21 +77,27 @@ jobs:
             }
             $out = Join-Path $dir 'review.json'
             & node tools/weather-unified-review.mjs --mode inspect --capture-dir $dir --target-date 2026-09-17 --output $out
+            $reviewExit = $LASTEXITCODE
             $review = $null
             if (Test-Path $out) { try { $review = Get-Content $out -Raw -Encoding UTF8 | ConvertFrom-Json } catch {} }
-            $ready = ($LASTEXITCODE -eq 0 -and $null -ne $review -and $review.ready -eq $true)
+            $ready = ($reviewExit -eq 0 -and $null -ne $review -and $review.ready -eq $true)
             $reason = ''
             if ($null -ne $review) {
               $reason = [string]($review.diagnostics.reason)
+              if (-not $reason -and $null -ne $review.diagnostics.verifiedPanel -and -not $review.diagnostics.verifiedPanel.ready) { $reason = [string]$review.diagnostics.verifiedPanel.reason }
               if (-not $reason -and $null -ne $review.diagnostics.splitFallback) { $reason = 'split-not-ready' }
             }
-            $results += [pscustomobject]@{ index=$i; url=[string]$candidate.sourceUrl; type=[string]$candidate.sourceType; platform=[string]$candidate.sourcePlatform; capture=$true; ready=$ready; reason=$reason; selectedImage=[string]($review.selectedImage.file); startSlot=[string]($review.interpretation.startSlot); slots=@($review.interpretation.slots | ForEach-Object { @($_.weather) -join '+' }); weekly=@($review.interpretation.weeklyDays | ForEach-Object { @($_.weather) -join '+' }) }
+            $results += [pscustomobject]@{
+              index=$i; url=[string]$candidate.sourceUrl; type=[string]$candidate.sourceType; platform=[string]$candidate.sourcePlatform;
+              capture=$true; ready=$ready; reason=$reason; selectedImage=[string]($review.selectedImage.file);
+              startSlot=[string]($review.interpretation.startSlot); slots=@($review.interpretation.slots | ForEach-Object { @($_.weather) -join '+' });
+              weekly=@($review.interpretation.weeklyDays | ForEach-Object { @($_.weather) -join '+' })
+            }
             if ($ready) { $selected = $results[-1]; break }
           }
           $results | ConvertTo-Json -Depth 8 | Set-Content /tmp/source-results.json -Encoding UTF8
           Get-Content /tmp/source-results.json
-          if ($null -ne $selected) {
-            Write-Host ('SELECTED=' + ($selected | ConvertTo-Json -Compress -Depth 8))
-          } else {
-            Write-Host 'SELECTED=NONE'
+          if ($null -eq $selected) {
+            throw 'No verified Heartopia weather UI candidate was found; fail closed.'
           }
+          Write-Host ('SELECTED=' + ($selected | ConvertTo-Json -Compress -Depth 8))
