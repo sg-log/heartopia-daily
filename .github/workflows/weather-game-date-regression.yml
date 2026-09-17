@@ -6,6 +6,7 @@ on:
     branches: [fix/weather-authoritative-ui-gate-20260917]
     paths:
       - 'tools/weather-candidate.ps1'
+      - 'tools/test-weather-candidate.ps1'
       - 'tools/test-weather-game-date.ps1'
       - '.github/workflows/weather-game-date-regression.yml'
 
@@ -17,6 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Verify candidate conversion safety
+        shell: pwsh
+        run: ./tools/test-weather-candidate.ps1
       - name: Verify 06:00 Heartopia day boundary
         shell: pwsh
         run: ./tools/test-weather-game-date.ps1
