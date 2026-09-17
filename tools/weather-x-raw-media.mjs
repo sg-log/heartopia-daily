@@ -10,6 +10,7 @@ const X_MEDIA_HOST = "pbs.twimg.com";
 const X_MEDIA_PATH = /^\/(?:media|ext_tw_video_thumb|tweet_video_thumb)\/[A-Za-z0-9._~%-]+$/;
 const ALLOWED_FORMATS = new Set(["jpg", "jpeg", "png", "webp"]);
 const ALLOWED_NAMES = new Set(["thumb", "small", "medium", "large", "orig"]);
+const DYNAMIC_SIZE_NAME = /^\d{2,4}x\d{2,4}$/;
 
 export function parseXPublicMediaUrl(value) {
   if (typeof value !== "string" || value.length < 1 || value.length > 2048 || /[\u0000-\u0020\u007f]/.test(value)) {
@@ -27,10 +28,13 @@ export function parseXPublicMediaUrl(value) {
   }
   const format = url.searchParams.get("format");
   const name = url.searchParams.get("name");
-  if ((format && !ALLOWED_FORMATS.has(format.toLowerCase())) || (name && !ALLOWED_NAMES.has(name.toLowerCase()))) {
-    throw new WeatherCloudError("invalidXMediaUrl");
-  }
+  if (format && !ALLOWED_FORMATS.has(format.toLowerCase())) throw new WeatherCloudError("invalidXMediaUrl");
+  if (name && !ALLOWED_NAMES.has(name.toLowerCase()) && !DYNAMIC_SIZE_NAME.test(name)) throw new WeatherCloudError("invalidXMediaUrl");
   if (format && format.toLowerCase() === "webp") url.searchParams.set("format", "jpg");
+  // X embeds often expose transient square thumbnail names such as 360x360.
+  // Re-request the same public media id with X's documented non-cropping "small"
+  // rendition so the weather panel is not clipped before review.
+  if (name && DYNAMIC_SIZE_NAME.test(name)) url.searchParams.set("name", "small");
   return url;
 }
 
