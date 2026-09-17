@@ -9,6 +9,13 @@ function parseArgs(argv) {
   return { targetDate: args['--target-date'], out: args['--out'] };
 }
 
+function sourcePlatformForHost(host) {
+  if (host === 'instagram.com' || host === 'www.instagram.com') return 'instagram';
+  if (host === 'tiktok.com' || host === 'www.tiktok.com' || host.endsWith('.tiktok.com')) return 'tiktok';
+  if (host === 'youtube.com' || host === 'www.youtube.com' || host === 'youtu.be') return 'youtube';
+  return 'web';
+}
+
 export function normalizeCandidateUrl(raw) {
   if (!raw || typeof raw !== 'string') return null;
   let text = raw.trim();
@@ -16,6 +23,7 @@ export function normalizeCandidateUrl(raw) {
     let u;
     try { u = new URL(text); } catch { return null; }
     if (u.protocol !== 'https:') return null;
+
     for (const key of ['uddg', 'url', 'u', 'target']) {
       const nested = u.searchParams.get(key);
       if (nested && /^https%?3A|^https:\/\//i.test(nested)) {
@@ -25,27 +33,38 @@ export function normalizeCandidateUrl(raw) {
       }
     }
     if (!u) continue;
+
     const host = u.hostname.toLowerCase();
-    const isXHost = host === 'x.com' || host === 'www.x.com' || host === 'twitter.com' || host === 'www.twitter.com';
-    const status = u.pathname.match(/^\/(?:i\/status|[A-Za-z0-9_]+\/status)\/(\d+)(?:\/(?:photo|video)\/[1-4])?\/?$/);
-    if (isXHost) {
-      if (status) return { url: `https://x.com/i/status/${status[1]}`, sourceType: 'x', sourceId: status[1] };
-      return null;
-    }
-    if (host === 't.co' || host === 'pic.x.com') return null;
-    if (host.endsWith('bing.com') || host.endsWith('duckduckgo.com') || host.endsWith('search.yahoo.co.jp')) return null;
+
+    // The weather finder is WEB-first. X/Twitter and Yahoo! realtime are
+    // deliberately not candidate sources; even if a normal search engine
+    // surfaces them, fail closed here instead of sending them downstream.
+    if (
+      host === 'x.com' || host === 'www.x.com' ||
+      host === 'twitter.com' || host === 'www.twitter.com' ||
+      host === 't.co' || host === 'pic.x.com'
+    ) return null;
+
+    if (host.endsWith('search.yahoo.co.jp')) return null;
+    if (host.endsWith('bing.com') || host.endsWith('duckduckgo.com')) return null;
+
     u.hash = '';
-    return { url: u.toString(), sourceType: 'web', sourceId: null };
+    return {
+      url: u.toString(),
+      sourceType: 'web',
+      sourcePlatform: sourcePlatformForHost(host),
+      sourceId: null
+    };
   }
   return null;
 }
 
 export function buildQueries(targetDate) {
-  const [year, month, day] = targetDate.split('-').map(Number);
+  const [, month, day] = targetDate.split('-').map(Number);
   return [
     `ハートピア 天気 ${month}月${day}日`,
-    `Heartopia weather ${targetDate}`,
-    'ハートピア 天気'
+    `ハートピア スローライフ 天気 ${month}月${day}日`,
+    `Heartopia weather ${targetDate}`
   ];
 }
 
@@ -91,7 +110,6 @@ function providerUrl(provider, query) {
   if (provider === 'bing') return `https://www.bing.com/search?q=${q}`;
   if (provider === 'duckduckgo') return `https://html.duckduckgo.com/html/?q=${q}`;
   if (provider === 'yahoo-web') return `https://search.yahoo.co.jp/search?p=${q}`;
-  if (provider === 'yahoo-realtime') return `https://search.yahoo.co.jp/realtime/search?p=${q}`;
   throw new Error(`Unknown provider ${provider}`);
 }
 
@@ -129,6 +147,7 @@ async function collectFromPage(page, provider, query, targetDate, limit = 40) {
       result.candidates.push({
         sourceUrl: normalized.url,
         sourceType: normalized.sourceType,
+        sourcePlatform: normalized.sourcePlatform,
         sourceId: normalized.sourceId,
         discoverySource: provider,
         searchQuery: query,
@@ -162,24 +181,26 @@ export function selectDiversifiedCandidates(candidates, limit = 24) {
   const selected = [];
   const selectedUrls = new Set();
   const providerCounts = new Map();
-  const typeCounts = new Map();
+  const platformCounts = new Map();
   const providerCap = Math.max(3, Math.ceil(limit / 3));
-  const typeCap = Math.max(6, Math.ceil(limit * 0.65));
+  const platformCap = Math.max(4, Math.ceil(limit * 0.5));
   const add = (candidate) => {
     if (selectedUrls.has(candidate.sourceUrl)) return false;
     selected.push(candidate);
     selectedUrls.add(candidate.sourceUrl);
     providerCounts.set(candidate.discoverySource, (providerCounts.get(candidate.discoverySource) || 0) + 1);
-    typeCounts.set(candidate.sourceType, (typeCounts.get(candidate.sourceType) || 0) + 1);
+    const platform = candidate.sourcePlatform || 'web';
+    platformCounts.set(platform, (platformCounts.get(platform) || 0) + 1);
     return true;
   };
 
-  // Provider and source type only diversify the candidate pool. They never
-  // receive a relevance bonus: date/game/weather evidence stays the ranking key.
+  // Diversify by ordinary web search provider and destination platform.
+  // Relevance/date evidence still controls ranking; no platform is preferred.
   for (const candidate of ranked) {
     if (selected.length >= limit) break;
+    const platform = candidate.sourcePlatform || 'web';
     if ((providerCounts.get(candidate.discoverySource) || 0) >= providerCap) continue;
-    if ((typeCounts.get(candidate.sourceType) || 0) >= typeCap) continue;
+    if ((platformCounts.get(platform) || 0) >= platformCap) continue;
     add(candidate);
   }
   for (const candidate of ranked) {
@@ -212,15 +233,15 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24) {
 
 export async function discover(targetDate) {
   const queries = buildQueries(targetDate);
-  const providers = ['bing', 'duckduckgo', 'yahoo-web', 'yahoo-realtime'];
+  // Ordinary web search only. Do not call Yahoo! realtime and do not search X directly.
+  const providers = ['bing', 'duckduckgo', 'yahoo-web'];
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ locale: 'ja-JP', timezoneId: 'Asia/Tokyo' });
   const page = await context.newPage();
   const attempts = [];
   try {
     for (const provider of providers) {
-      const providerQueries = provider === 'yahoo-realtime' ? [queries[0], queries[2]] : queries.slice(0, 2);
-      for (const query of providerQueries) attempts.push(await collectFromPage(page, provider, query, targetDate));
+      for (const query of queries) attempts.push(await collectFromPage(page, provider, query, targetDate));
     }
   } finally {
     await browser.close();
@@ -228,8 +249,8 @@ export async function discover(targetDate) {
 
   const candidates = mergeAndRankCandidates(attempts, targetDate, 24);
   return {
-    schemaVersion: 1,
-    responseType: 'weather-public-discovery',
+    schemaVersion: 2,
+    responseType: 'weather-public-web-discovery',
     targetDate,
     generatedAt: new Date().toISOString(),
     attempts: attempts.map(({ provider, query, status, error, linksSeen, candidates }) => ({ provider, query, status, error, linksSeen, candidateCount: candidates.length })),
@@ -246,6 +267,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     candidates: result.candidates.map((candidate) => ({
       sourceUrl: candidate.sourceUrl,
       sourceType: candidate.sourceType,
+      sourcePlatform: candidate.sourcePlatform,
       relevanceScore: candidate.relevanceScore,
       dateMatched: candidate.dateMatched,
       discoverySource: candidate.discoverySource,
