@@ -1,0 +1,36 @@
+name: Weather final diagnostic
+
+on:
+  push:
+    branches: [fix/weather-image-first-final-20260917]
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Capture current weather post
+        run: node tools/weather-x-embed-evidence.mjs --url 'https://x.com/i/status/2100325752185159960' --output-dir "$RUNNER_TEMP/capture"
+      - name: Run current unified review
+        continue-on-error: true
+        run: node tools/weather-unified-review.mjs --mode inspect --capture-dir "$RUNNER_TEMP/capture" --target-date '2026-09-17' --output "$RUNNER_TEMP/review.json"
+      - name: Upload diagnostic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: weather-final-diagnostic-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/capture/capture.json
+            ${{ runner.temp }}/capture/post-content.txt
+            ${{ runner.temp }}/capture/raw-media-*.jpg
+            ${{ runner.temp }}/capture/evidence.jpg
+            ${{ runner.temp }}/review.json
+          retention-days: 1
