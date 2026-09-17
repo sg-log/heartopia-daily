@@ -1,0 +1,37 @@
+name: Weather candidate diagnostic
+
+on:
+  push:
+    paths:
+      - '.github/workflows/weather-candidate-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Capture candidate
+        run: node tools/weather-x-embed-evidence.mjs --url 'https://x.com/i/status/2100325752185159960' --output-dir "$RUNNER_TEMP/capture"
+      - name: Run unified review and print diagnostics
+        shell: bash
+        run: |
+          set +e
+          node tools/weather-unified-review.mjs --mode inspect --capture-dir "$RUNNER_TEMP/capture" --target-date '2026-09-17' --output "$RUNNER_TEMP/review.json"
+          rc=$?
+          echo "review_exit=$rc"
+          echo '--- files ---'
+          find "$RUNNER_TEMP/capture" -maxdepth 1 -type f -printf '%f %s bytes\n' | sort
+          echo '--- post content ---'
+          cat "$RUNNER_TEMP/capture/post-content.txt" || true
+          echo '--- review ---'
+          cat "$RUNNER_TEMP/review.json" || true
+          exit 0
