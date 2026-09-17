@@ -2,11 +2,9 @@ name: Weather scheduled run
 
 on:
   schedule:
-    # GitHub cron is UTC. 22:00/22:10 = 07:00/07:10 JST, 10:00/10:10 = 19:00/19:10 JST.
-    - cron: '0 22 * * *'
-    - cron: '10 22 * * *'
-    - cron: '0 10 * * *'
-    - cron: '10 10 * * *'
+    # GitHub cron is only a delayed backup clock now. Apps Script owns the 07:00/07:10 and 19:00/19:10 primary timing.
+    - cron: '30 22 * * *'
+    - cron: '30 10 * * *'
   workflow_dispatch:
     inputs:
       slot:
@@ -20,6 +18,18 @@ on:
         required: false
         type: string
         default: ''
+      trigger_origin:
+        description: 'Internal trigger origin'
+        required: true
+        type: choice
+        options: [manual, apps-script]
+        default: manual
+      attempt_kind:
+        description: 'Internal attempt kind'
+        required: true
+        type: choice
+        options: [manual, primary, retry]
+        default: manual
 
 permissions:
   contents: read
@@ -46,17 +56,27 @@ jobs:
           EVENT_SCHEDULE: ${{ github.event.schedule }}
           MANUAL_SLOT: ${{ inputs.slot }}
           MANUAL_TARGET_DATE: ${{ inputs.target_date }}
+          MANUAL_ORIGIN: ${{ inputs.trigger_origin }}
+          MANUAL_ATTEMPT_KIND: ${{ inputs.attempt_kind }}
         run: |
           $now = [DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(9))
           $targetDate = $now.ToString('yyyy-MM-dd')
           $slot = ''
           $isSnooze = 'false'
+          $origin = ''
+          $attemptKind = ''
           if ($env:EVENT_NAME -eq 'schedule') {
+            $origin = 'github-backup'
+            $attemptKind = 'backup'
+            $isSnooze = 'true'
             switch ($env:EVENT_SCHEDULE) {
-              '0 22 * * *'  { $slot = 'morning' }
-              '10 22 * * *' { $slot = 'morning'; $isSnooze = 'true' }
-              '0 10 * * *'  { $slot = 'evening' }
-              '10 10 * * *' { $slot = 'evening'; $isSnooze = 'true' }
+              '30 22 * * *' { $slot = 'morning' }
+              '30 10 * * *' { $slot = 'evening' }
+              # Gracefully absorb schedule events queued before the Apps Script handoff.
+              '0 22 * * *'  { $slot = 'morning'; $origin = 'github-legacy' }
+              '10 22 * * *' { $slot = 'morning'; $origin = 'github-legacy' }
+              '0 10 * * *'  { $slot = 'evening'; $origin = 'github-legacy' }
+              '10 10 * * *' { $slot = 'evening'; $origin = 'github-legacy' }
               default { throw "Unknown schedule: $env:EVENT_SCHEDULE" }
             }
           } else {
@@ -68,10 +88,20 @@ jobs:
               catch { throw 'Invalid manual target date.' }
               $targetDate = [string]$env:MANUAL_TARGET_DATE
             }
+            $origin = [string]$env:MANUAL_ORIGIN
+            if ([string]::IsNullOrWhiteSpace($origin)) { $origin = 'manual' }
+            $attemptKind = [string]$env:MANUAL_ATTEMPT_KIND
+            if ([string]::IsNullOrWhiteSpace($attemptKind)) { $attemptKind = 'manual' }
+            if ($origin -eq 'manual' -and $attemptKind -ne 'manual') { throw 'Manual dispatch must use attempt_kind=manual.' }
+            if ($origin -eq 'apps-script' -and $attemptKind -notin @('primary','retry')) { throw 'Apps Script dispatch must use primary or retry.' }
+            if ($origin -notin @('manual','apps-script')) { throw 'Invalid trigger origin.' }
+            if ($origin -eq 'apps-script' -and $attemptKind -eq 'retry') { $isSnooze = 'true' }
           }
           "target_date=$targetDate" >> $env:GITHUB_OUTPUT
           "slot=$slot" >> $env:GITHUB_OUTPUT
           "is_snooze=$isSnooze" >> $env:GITHUB_OUTPUT
+          "origin=$origin" >> $env:GITHUB_OUTPUT
+          "attempt_kind=$attemptKind" >> $env:GITHUB_OUTPUT
           "run_key=$targetDate-$slot" >> $env:GITHUB_OUTPUT
 
       - name: Check whether this update slot already succeeded
@@ -258,6 +288,8 @@ jobs:
           RUN_KEY: ${{ steps.slot.outputs.run_key }}
           SLOT: ${{ steps.slot.outputs.slot }}
           IS_SNOOZE: ${{ steps.slot.outputs.is_snooze }}
+          ORIGIN: ${{ steps.slot.outputs.origin }}
+          ATTEMPT_KIND: ${{ steps.slot.outputs.attempt_kind }}
           CANDIDATE_COUNT: ${{ steps.publish.outputs.candidate_count }}
           USABLE_COUNT: ${{ steps.publish.outputs.usable_candidate_count }}
           SUBMIT_OUTCOME: ${{ steps.submit.outcome }}
@@ -272,17 +304,33 @@ jobs:
             if (process.env.ALREADY_SUCCEEDED === 'true') {
               core.setOutput('terminal_success', 'true')
               core.setOutput('new_pending', 'false')
+              core.setOutput('notify_failure', 'false')
               return
             }
             const submitSucceeded = process.env.SUBMIT_OUTCOME === 'success' && (process.env.PENDING_REGISTERED === 'true' || process.env.CONTENT_DUPLICATE === 'true')
             const terminalSuccess = submitSucceeded
+            const origin = process.env.ORIGIN || 'unknown'
+            const attemptKind = process.env.ATTEMPT_KIND || 'unknown'
             const successMarker = terminalSuccess ? `<!-- heartopia-weather-scheduled-success:${process.env.RUN_KEY} -->` : ''
+            const failureMarker = terminalSuccess ? '' : `<!-- heartopia-weather-failure:${process.env.RUN_KEY}:${origin}:${attemptKind} -->`
+            let notifyFailure = false
+            if (!terminalSuccess) {
+              if (origin === 'manual') notifyFailure = true
+              else if (origin === 'apps-script' && attemptKind === 'retry') notifyFailure = true
+              else if (origin === 'github-backup') {
+                const retryMarker = `<!-- heartopia-weather-failure:${process.env.RUN_KEY}:apps-script:retry -->`
+                const { data } = await github.rest.issues.listForRepo({ ...context.repo, state:'all', per_page:100, sort:'created', direction:'desc' })
+                notifyFailure = !data.some(issue => !issue.pull_request && typeof issue.body === 'string' && issue.body.includes(retryMarker))
+              }
+            }
             const record = {
-              schemaVersion: 3,
+              schemaVersion: 4,
               responseType: 'weather-scheduled-result',
               runKey: process.env.RUN_KEY,
               slot: process.env.SLOT,
               snooze: process.env.IS_SNOOZE === 'true',
+              origin,
+              attemptKind,
               status: terminalSuccess ? (process.env.CONTENT_DUPLICATE === 'true' ? 'content-duplicate' : 'pending') : 'failed',
               candidateCount: Number(process.env.CANDIDATE_COUNT || 0),
               usableCandidateCount: Number(process.env.USABLE_COUNT || 0),
@@ -292,12 +340,13 @@ jobs:
               duplicate: process.env.CONTENT_DUPLICATE === 'true',
               runUrl: process.env.RUN_URL
             }
-            const body = [successMarker, '<!-- heartopia-weather-scheduled-v3 -->', '```json', JSON.stringify(record), '```'].filter(Boolean).join('\n')
+            const body = [successMarker, failureMarker, '<!-- heartopia-weather-scheduled-v4 -->', '```json', JSON.stringify(record), '```'].filter(Boolean).join('\n')
             const issue = await github.rest.issues.create({ ...context.repo, title:`[weather-scheduled-result] ${process.env.RUN_KEY}`, body })
             await github.rest.issues.update({ ...context.repo, issue_number:issue.data.number, state:'closed', state_reason:'completed' })
             core.setOutput('terminal_success', terminalSuccess ? 'true' : 'false')
             core.setOutput('new_pending', submitSucceeded && process.env.CONTENT_DUPLICATE !== 'true' ? 'true' : 'false')
             core.setOutput('report_id', process.env.REPORT_ID || '')
+            core.setOutput('notify_failure', notifyFailure ? 'true' : 'false')
             if (!terminalSuccess) core.setFailed('Scheduled weather run did not reach a verified daily+weekly pending or known content duplicate.')
 
       - name: Notify Discord about a new pending
@@ -310,17 +359,19 @@ jobs:
           $payload = @{ content = "🌤️ Heartopiaのデイリー＋週間天気pendingが届いたよ。`n確認・承認する ↓`n$adminUrl"; allowed_mentions = @{ parse = @() } } | ConvertTo-Json -Depth 5 -Compress
           Invoke-RestMethod -Method Post -Uri $env:WEATHER_DC_WEBHOOK_URL -ContentType 'application/json' -Body $payload | Out-Null
 
-      - name: Notify Discord after snooze or manual run fails
-        if: ${{ always() && steps.finalize.outputs.terminal_success != 'true' && env.WEATHER_DC_WEBHOOK_URL != '' && (steps.slot.outputs.is_snooze == 'true' || github.event_name == 'workflow_dispatch') }}
+      - name: Notify Discord after terminal failure
+        if: ${{ always() && steps.finalize.outputs.terminal_success != 'true' && steps.finalize.outputs.notify_failure == 'true' && env.WEATHER_DC_WEBHOOK_URL != '' }}
         shell: pwsh
         env:
           RUN_KEY: ${{ steps.slot.outputs.run_key }}
-          EVENT_NAME: ${{ github.event_name }}
+          ORIGIN: ${{ steps.slot.outputs.origin }}
+          ATTEMPT_KIND: ${{ steps.slot.outputs.attempt_kind }}
           WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/workflows/weather-scheduled-run.yml
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if ($env:EVENT_NAME -eq 'workflow_dispatch') { $headline = "⚠️ Heartopia天気の手動更新も失敗しました。" }
-          else { $headline = "⚠️ Heartopia天気 $env:RUN_KEY は通常便と10分後の保険便でも更新できませんでした。" }
-          $message = "$headline`n次の定時更新を待つか、手動で再実行できます。`n手動Run ↓`n$env:WORKFLOW_URL`n今回のRun ↓`n$env:RUN_URL"
+          if ($env:ORIGIN -eq 'manual') { $headline = "⚠️ Heartopia天気の手動更新が失敗しました。" }
+          elseif ($env:ORIGIN -eq 'apps-script' -and $env:ATTEMPT_KIND -eq 'retry') { $headline = "⚠️ Heartopia天気 $env:RUN_KEY は自動の通常便＋再試行でも更新できませんでした。" }
+          else { $headline = "⚠️ Heartopia天気 $env:RUN_KEY はバックアップ便でも更新できませんでした。" }
+          $message = "$headline`n手動で再実行できます。`n手動Run ↓`n$env:WORKFLOW_URL`n今回のRun ↓`n$env:RUN_URL"
           $payload = @{ content = $message; allowed_mentions = @{ parse = @() } } | ConvertTo-Json -Depth 5 -Compress
           Invoke-RestMethod -Method Post -Uri $env:WEATHER_DC_WEBHOOK_URL -ContentType 'application/json' -Body $payload | Out-Null
