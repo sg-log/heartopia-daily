@@ -1,6 +1,7 @@
 name: Weather safe source pool dry run
 
 on:
+  workflow_dispatch:
   push:
     branches: [fix/weather-authoritative-ui-gate-20260917]
     paths:
