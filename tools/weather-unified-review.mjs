@@ -47,6 +47,75 @@ export function inferStartSlotFromMappings(mappings) {
   return best;
 }
 
+export function extractFullDayStartSlotSupplement(text) {
+  const lines = String(text || '').replace(/\r/g, '').split('\n');
+  for (const rawLine of lines) {
+    const line = rawLine.trim().replace(/：/g, ':').replace(/[〜～]/g, '~');
+    const match = line.match(/^(00|06|12|18):00\s*[~\-]\s*(翌\s*)?(\d{1,2}):59(?:\s|$)/);
+    if (!match) continue;
+    const start = Number(match[1]);
+    const end = Number(match[3]);
+    const expectedEnd = (start + 23) % 24;
+    if (end !== expectedEnd) continue;
+    if (start === 0 && match[2]) continue;
+    if (start !== 0 && !match[2]) continue;
+    return { startSlot: String(start).padStart(2, '0'), sourceLine: rawLine.trim() };
+  }
+  return null;
+}
+
+export function recoverVisualDailyWithTextStartSlot(daily, postText, capture) {
+  if (daily?.ready || !daily?.diagnostics || !capture || !Array.isArray(capture.rawMedia)) return daily;
+  const supplement = extractFullDayStartSlotSupplement(postText);
+  if (!supplement) return daily;
+  const attempts = Array.isArray(daily.diagnostics.ocrAttempts) ? daily.diagnostics.ocrAttempts : [];
+  const candidates = attempts.filter(item => {
+    const slots = Array.isArray(item?.slots) ? item.slots : [];
+    return slots.length === 5 && slots.every(slot => slot?.value && slot?.confidence !== 'low');
+  });
+  if (!candidates.length) return daily;
+  candidates.sort((a, b) => {
+    const ah = Number(a.highCount || 0), bh = Number(b.highCount || 0);
+    const amin = Math.min(...a.slots.map(slot => Number(slot.margin || 0)));
+    const bmin = Math.min(...b.slots.map(slot => Number(slot.margin || 0)));
+    const aavg = a.slots.reduce((sum, slot) => sum + Number(slot.bestScore || 0), 0) / 5;
+    const bavg = b.slots.reduce((sum, slot) => sum + Number(slot.bestScore || 0), 0) / 5;
+    return bh - ah || bmin - amin || bavg - aavg;
+  });
+  const best = candidates[0];
+  const media = capture.rawMedia.find(item => String(item?.file || '') === String(best.file || ''));
+  if (!media?.file || !media?.mimeType || !media?.sha256) return daily;
+  const slots = best.slots.map((slot, index) => ({
+    slot: `slot${index}`,
+    visible: true,
+    weather: [slot.value],
+    confidence: 'high',
+    description: `画像テンプレート判定 score=${Number(slot.bestScore || 0).toFixed(3)} margin=${Number(slot.margin || 0).toFixed(3)}`
+  }));
+  return {
+    schemaVersion: 1,
+    ready: true,
+    targetDate: daily.targetDate,
+    selectedImage: { file: String(media.file), mimeType: String(media.mimeType), captureSha256: String(media.sha256) },
+    interpretation: {
+      ready: true,
+      observedDate: daily.targetDate,
+      startSlot: supplement.startSlot,
+      slots,
+      confidence: 'high',
+      summary: `元画像の天気5枠を画像判定し、開始時刻だけ投稿本文の明示的な24時間表記（${supplement.sourceLine}）で補完。`,
+      unresolved: []
+    },
+    diagnostics: {
+      ...(daily.diagnostics || {}),
+      startSlotSupplement: supplement,
+      recoveredFromVisualSlots: true,
+      weatherSource: 'image-primary',
+      textUse: 'start-slot-only'
+    }
+  };
+}
+
 export function extractTimedMeteorIntervals(text) {
   const out = [];
   const lines = String(text || '').replace(/\r/g, '').split('\n');
@@ -155,11 +224,14 @@ export async function inspectUnifiedCapture({ captureDir, targetDate, repoRoot =
   try { postText = await readFile(path.join(captureDir, 'post-content.txt'), 'utf8'); } catch {}
   if (direct?.ready) return applyTimedSpecialWeatherHints(direct, postText);
 
+  let capture = null;
+  try { capture = JSON.parse(await readFile(path.join(captureDir, 'capture.json'), 'utf8')); } catch {}
   let daily = null;
   let weekly = null;
   try { daily = await inspectCapture({ captureDir, targetDate, repoRoot }); } catch (error) {
     daily = { ready:false, diagnostics:{ reason:'dailyFallbackError', message:String(error?.message || error) } };
   }
+  daily = recoverVisualDailyWithTextStartSlot(daily, postText, capture);
   try { weekly = await inspectWeeklyScreenshot({ captureDir, targetDate, repoRoot }); } catch (error) {
     weekly = { ready:false, diagnostics:{ reason:'weeklyFallbackError', message:String(error?.message || error) } };
   }
