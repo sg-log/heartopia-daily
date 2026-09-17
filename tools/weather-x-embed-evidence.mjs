@@ -107,6 +107,7 @@ async function captureXEmbed({ post, outputDir }) {
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({
       viewport: { width: 900, height: 1200 },
+      deviceScaleFactor: 2,
       locale: "ja-JP",
       timezoneId: "Asia/Tokyo",
       serviceWorkers: "block"

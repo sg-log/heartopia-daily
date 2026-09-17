@@ -187,6 +187,7 @@ async function scoreImage(page, imageDataUrl, templates) {
       const width=sourceImage.naturalWidth,height=sourceImage.naturalHeight,out=[],seen=new Set();
       const add=(x,y,w,h,source)=>{x=Math.round(x);y=Math.round(y);w=Math.round(w);h=Math.round(h);if(w<120||h<160||x<0||y<0||x+w>width||y+h>height)return;const k=`${x},${y},${w},${h}`;if(seen.has(k))return;seen.add(k);out.push({x,y,w,h,source});};
       if(Math.abs(width/height-targetAspect)<=.18)add(0,0,width,height,'whole-image');
+      for(const wf of [.72,.80,.88,.94]){const w=width*wf,h=w/targetAspect;if(h<=height*.90){for(const tf of [.01,.04,.07,.10,.13,.16,.20,.24,.28,.32,.36,.40,.44,.48,.52])for(const cf of [.46,.50,.54])add(width*cf-w/2,height*tf,w,h,'embedded-panel-search');}}
       for(const hf of [.72,.75,.78,.81]){const h=height*hf,w=h*targetAspect;for(const tf of [.07,.10,.12,.14])for(const rf of [.03,.055,.08,.105])add(width-width*rf-w,height*tf,w,h,'right-panel-search');}
       return out;
     };
@@ -204,7 +205,7 @@ async function scoreImage(page, imageDataUrl, templates) {
     const refined=[];
     for(const base of refineBases){for(let dy=-6;dy<=6;dy+=3)for(let dx=-6;dx<=6;dx+=3){const r={...base.rect,x:Math.max(0,Math.min(sourceImage.naturalWidth-base.rect.w,base.rect.x+dx)),y:Math.max(0,Math.min(sourceImage.naturalHeight-base.rect.h,base.rect.y+dy)),source:'refined'};refined.push(classifyPanel(r));}}
     const rankedPanels=[...allCoarse,...refined]
-      .sort((a,b)=>geometryAnchorV2(a)-geometryAnchorV2(b)||b.highCount-a.highCount||b.okCount-a.okCount||b.minMargin-a.minMargin||b.avg-a.avg);
+      .sort((a,b)=>b.highCount-a.highCount||b.okCount-a.okCount||b.minMargin-a.minMargin||b.avg-a.avg||geometryAnchorV2(a)-geometryAnchorV2(b));
     const best=rankedPanels[0]||null;
     return {width:sourceImage.naturalWidth,height:sourceImage.naturalHeight,best,ranked:rankedPanels};
   }, { imageDataUrl, templates, targetAspect: TARGET_ASPECT, slotRects: SLOT_RECTS, thresholds: { confidence: CONFIDENCE_THRESHOLD, high: HIGH_THRESHOLD, margin: MARGIN_THRESHOLD } });
@@ -305,7 +306,12 @@ export async function inspectCapture({ captureDir, targetDate, repoRoot = path.r
   try {
     const page = await browser.newPage();
     const panelCandidates = [];
-    for (const media of capture.rawMedia.slice(0, 4)) {
+    const reviewMedia = capture.adapter === 'x-official-embed'
+      ? (capture.evidence?.file && capture.evidence?.sha256 && capture.evidence?.mimeType
+          ? [{ file:capture.evidence.file, sha256:capture.evidence.sha256, mimeType:capture.evidence.mimeType, sourceScope:'verified-embed' }]
+          : [])
+      : capture.rawMedia.slice(0, 4);
+    for (const media of reviewMedia.slice(0, 6)) {
       const filePath = path.join(captureDir, String(media.file || ''));
       let descriptor;
       try { descriptor = await imageDescriptor(filePath); } catch { continue; }
@@ -318,7 +324,7 @@ export async function inspectCapture({ captureDir, targetDate, repoRoot = path.r
         panelCandidates.push({ media, descriptor, imageDataUrl, panel, geometryDistance });
       }
     }
-    panelCandidates.sort((a,b)=>a.geometryDistance-b.geometryDistance||b.panel.highCount-a.panel.highCount||b.panel.okCount-a.panel.okCount||b.panel.minMargin-a.panel.minMargin||b.panel.avg-a.panel.avg);
+    panelCandidates.sort((a,b)=>b.panel.highCount-a.panel.highCount||b.panel.okCount-a.panel.okCount||b.panel.minMargin-a.panel.minMargin||b.panel.avg-a.panel.avg||a.geometryDistance-b.geometryDistance);
     const ocrAttempts = [];
     for (const candidate of panelCandidates.slice(0, 8)) {
       const ocr = await readStartSlot(page, candidate.imageDataUrl, candidate.panel.rect);

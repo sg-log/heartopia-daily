@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { bindReviewEnvelope, inspectCapture } from './weather-deterministic-review.mjs';
 import { inspectDirectPanelCapture } from './weather-direct-panel-review.mjs';
 import { inspectWeeklyScreenshot } from './weather-weekly-screenshot-review.mjs';
+import { createVerifiedPanelCapture } from './weather-verified-panel-crop.mjs';
 
 const START_SLOTS = ['00', '06', '12', '18'];
 
@@ -71,7 +72,10 @@ export function recoverVisualDailyWithTextStartSlot(daily, postText, capture) {
   const attempts = Array.isArray(daily.diagnostics.ocrAttempts) ? daily.diagnostics.ocrAttempts : [];
   const candidates = attempts.filter(item => {
     const slots = Array.isArray(item?.slots) ? item.slots : [];
-    return slots.length === 5 && slots.every(slot => slot?.value && slot?.confidence !== 'low');
+    const visualStart = inferStartSlotFromMappings([item?.ocr?.times || item?.ocr?.mapped || []]);
+    return slots.length === 5 &&
+      slots.every(slot => slot?.value && slot?.confidence !== 'low') &&
+      visualStart?.startSlot === supplement.startSlot;
   });
   if (!candidates.length) return daily;
   candidates.sort((a, b) => {
@@ -85,6 +89,7 @@ export function recoverVisualDailyWithTextStartSlot(daily, postText, capture) {
   const best = candidates[0];
   const media = capture.rawMedia.find(item => String(item?.file || '') === String(best.file || ''));
   if (!media?.file || !media?.mimeType || !media?.sha256) return daily;
+  if (capture.adapter === 'x-official-embed' && media.sourceScope !== 'exact-status') return daily;
   const slots = best.slots.map((slot, index) => ({
     slot: `slot${index}`,
     visible: true,
@@ -231,6 +236,32 @@ export async function inspectUnifiedCapture({ captureDir, targetDate, repoRoot =
   try { postText = await readFile(path.join(captureDir, 'post-content.txt'), 'utf8'); } catch {}
   if (direct?.ready) return applyTimedSpecialWeatherHints(direct, postText);
 
+  let verifiedPanel = null;
+  let verifiedDirect = null;
+  try {
+    verifiedPanel = await createVerifiedPanelCapture({ captureDir, targetDate, repoRoot });
+    if (verifiedPanel?.ready) {
+      verifiedDirect = await inspectDirectPanelCapture({
+        captureDir, targetDate, repoRoot, captureFile: verifiedPanel.captureFile
+      });
+      if (verifiedDirect?.ready) {
+        verifiedDirect = {
+          ...verifiedDirect,
+          pendingEvidenceFile: verifiedDirect.selectedImage?.file || '',
+          diagnostics: {
+            ...(verifiedDirect.diagnostics || {}),
+            mode: 'verified-game-ui-crop',
+            sourceImage: verifiedPanel.sourceImage,
+            crop: verifiedPanel.crop
+          }
+        };
+        return applyTimedSpecialWeatherHints(verifiedDirect, postText);
+      }
+    }
+  } catch (error) {
+    verifiedPanel = { ready:false, reason:'verifiedPanelPipelineError', message:String(error?.message || error) };
+  }
+
   let capture = null;
   try { capture = JSON.parse(await readFile(path.join(captureDir, 'capture.json'), 'utf8')); } catch {}
   let daily = null;
@@ -249,6 +280,12 @@ export async function inspectUnifiedCapture({ captureDir, targetDate, repoRoot =
     ...direct,
     diagnostics: {
       ...(direct?.diagnostics || {}),
+      verifiedPanel: {
+        ready: verifiedPanel?.ready === true,
+        reason: verifiedPanel?.reason || '',
+        directReady: verifiedDirect?.ready === true,
+        direct: verifiedDirect?.diagnostics || null
+      },
       splitFallback: {
         dailyReady: daily?.ready === true,
         weeklyReady: weekly?.ready === true,

@@ -77,7 +77,7 @@ async function inspectScreenshot(page, imageDataUrl, templates) {
         const lowerTop=Math.round(top+panelH*.53),lowerBottom=Math.round(top+panelH*.98);let light=0,total=0;
         for(let y=lowerTop;y<lowerBottom;y+=2)for(let x=left+Math.round(panelW*.04);x<left+Math.round(panelW*.96);x+=2){const i=(y*full.width+x)*4,hsv=rgbToHsv(pixels[i],pixels[i+1],pixels[i+2]);total++;if(hsv.v>=.68&&hsv.s<=.30)light++;}
         const lightRatio=total?light/total:0;if(lightRatio<.48)continue;
-        const size=Math.max(14,Math.min(30,Math.round(panelW*.085))),centerX=left+panelW*.84;
+        const size=Math.max(14,Math.min(60,Math.round(panelW*.085))),centerX=left+panelW*.84;
         const boxes=[.60,.68,.76,.84,.92].map(rel=>({x:Math.max(0,Math.round(centerX-size/2)),y:Math.max(0,Math.round(top+panelH*rel-size/2)),size}));
         const result=finalize(classifyBoxes(boxes),{mode:'embedded-game-panel',embeddedPanel:{x:left,y:top,w:panelW,h:panelH},purpleComponent:purple,panelBackgroundRatio:lightRatio});
         if(result.ready)return result;
@@ -123,7 +123,10 @@ async function inspectScreenshot(page, imageDataUrl, templates) {
     const centerX=header.x+header.w*1.02;
     const size=Math.max(14,Math.min(28,Math.round(header.w*.10)));
     const scores=classifyBoxes(centersY.map(cy=>({x:Math.max(0,Math.round(centerX-size/2)),y:Math.max(0,Math.round(cy-size/2)),size})));
-    return finalize(scores,{header,panelBackgroundRatio,mode:'legacy-weekly-header'});
+    const legacy=finalize(scores,{header,panelBackgroundRatio,mode:'legacy-weekly-header'});
+    if(legacy.ready)return legacy;
+    const embedded=inspectEmbeddedGamePanel();if(embedded)return embedded;
+    return legacy;
   }, { imageDataUrl, templates });
 }
 
@@ -136,7 +139,8 @@ export async function inspectWeeklyScreenshot({ captureDir, targetDate, repoRoot
   if(!postDates.includes(targetDate)) return {ready:false,reason:'targetDateNotConfirmed',postDates};
 
   const candidates=[];
-  for(const media of Array.isArray(capture.rawMedia)?capture.rawMedia.slice(0,4):[]) {
+  const weeklyRaw = Array.isArray(capture.rawMedia) ? (capture.adapter==='x-official-embed' ? capture.rawMedia.filter(media=>media?.sourceScope==='exact-status') : capture.rawMedia) : [];
+  for(const media of weeklyRaw.slice(0,4)) {
     if(media?.file&&media?.sha256&&media?.mimeType) candidates.push({file:media.file,sha256:media.sha256,mimeType:media.mimeType,kind:'raw-media'});
   }
   if(capture.evidence?.file&&capture.evidence?.sha256&&capture.evidence?.mimeType) {

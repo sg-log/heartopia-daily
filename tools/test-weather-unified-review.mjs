@@ -37,11 +37,12 @@ test('recovers daily only when all five weather slots came from the image', () =
     diagnostics:{
       ocrAttempts:[{
         file:'raw-media-0.jpg', highCount:0,
-        slots:Array.from({length:5},()=>({value:'晴',confidence:'medium',bestScore:.67,margin:.16}))
+        slots:Array.from({length:5},()=>({value:'晴',confidence:'medium',bestScore:.67,margin:.16})),
+        ocr:{ times:['06','12','','00',''] }
       }]
     }
   };
-  const capture = { rawMedia:[{file:'raw-media-0.jpg',mimeType:'image/jpeg',sha256:'a'.repeat(64)}] };
+  const capture = { adapter:'public-url', rawMedia:[{file:'raw-media-0.jpg',mimeType:'image/jpeg',sha256:'a'.repeat(64)}] };
   const recovered = recoverVisualDailyWithTextStartSlot(daily, '06:00～翌05:59　晴れ', capture);
   assert.equal(recovered.ready, true);
   assert.equal(recovered.interpretation.startSlot, '06');
@@ -52,6 +53,14 @@ test('recovers daily only when all five weather slots came from the image', () =
   const incomplete = structuredClone(daily);
   incomplete.diagnostics.ocrAttempts[0].slots[4].value = '';
   assert.equal(recoverVisualDailyWithTextStartSlot(incomplete, '06:00～翌05:59　晴れ', capture).ready, false);
+
+  const mapLike = structuredClone(daily);
+  mapLike.diagnostics.ocrAttempts[0].ocr = { times:['','','','',''] };
+  assert.equal(recoverVisualDailyWithTextStartSlot(mapLike, '06:00～翌05:59　晴れ', capture).ready, false);
+
+  const xCapture = structuredClone(capture);
+  xCapture.adapter = 'x-official-embed';
+  assert.equal(recoverVisualDailyWithTextStartSlot(daily, '06:00～翌05:59　晴れ', xCapture).ready, false);
 });
 
 test('combines daily and weekly evidence from separate captured images', () => {
