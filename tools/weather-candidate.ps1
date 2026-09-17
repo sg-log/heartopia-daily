@@ -102,9 +102,11 @@ function ConvertTo-WeatherReportDryRun {
     $slots = [ordered]@{}
     $timeline = @()
     $count = 0
-    # observedDate is a game date; its 00:00 occurs on the following calendar day.
+    # API/public storage uses Heartopia's game date (06:00 boundary).
+    # Calendar timestamps remain real-world timestamps for diagnostics only.
     $apiDate = $date
-    if ($start -eq '00' -and $date -ne [datetime]::MinValue) { $apiDate = $date.AddDays(1) }
+    $timelineDate = $date
+    if ($start -eq '00' -and $date -ne [datetime]::MinValue) { $timelineDate = $date.AddDays(1) }
     for ($i = 0; $i -lt 5; $i++) {
         $key = "slot$i"
         $slot = $Candidate.slots.$key
@@ -137,7 +139,7 @@ function ConvertTo-WeatherReportDryRun {
         }
         $slots[$key] = @($values)
         if ($date -ne [datetime]::MinValue -and $start -in $starts) {
-            $at = $apiDate.AddHours([int]$start + 6 * $i)
+            $at = $timelineDate.AddHours([int]$start + 6 * $i)
             $timeline += [pscustomobject]@{ slot = $key; calendarTime = $at.ToString('yyyy-MM-dd HH:mm'); gameDate = $at.AddHours(-6).ToString('yyyy-MM-dd') }
         }
     }
