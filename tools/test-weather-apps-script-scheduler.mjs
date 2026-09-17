@@ -91,14 +91,13 @@ vm.runInContext(source, context, { filename: 'weather-scheduler.gs' });
 function setClock(date, hour, minute) {
   clock = { date, hour, minute };
 }
-
-function dispatchedSlot(index) {
-  return JSON.parse(requests[index].options.payload).inputs.slot;
+function dispatchedInputs(index) {
+  return JSON.parse(requests[index].options.payload).inputs;
 }
-
-function dispatchedDate(index) {
-  return JSON.parse(requests[index].options.payload).inputs.target_date;
-}
+function dispatchedSlot(index) { return dispatchedInputs(index).slot; }
+function dispatchedDate(index) { return dispatchedInputs(index).target_date; }
+function dispatchedOrigin(index) { return dispatchedInputs(index).trigger_origin; }
+function dispatchedKind(index) { return dispatchedInputs(index).attempt_kind; }
 
 context.runWeatherScheduler();
 assert.equal(requests.length, 0, 'before 07:00 should do nothing');
@@ -108,6 +107,8 @@ context.runWeatherScheduler();
 assert.equal(requests.length, 1);
 assert.equal(dispatchedSlot(0), 'morning');
 assert.equal(dispatchedDate(0), '2026-09-17');
+assert.equal(dispatchedOrigin(0), 'apps-script');
+assert.equal(dispatchedKind(0), 'primary');
 assert.equal(properties.get('WEATHER_SCHEDULER_MORNING_PRIMARY_DATE'), '2026-09-17');
 
 setClock('2026-09-17', 7, 7);
@@ -118,6 +119,8 @@ setClock('2026-09-17', 7, 12);
 context.runWeatherScheduler();
 assert.equal(requests.length, 2);
 assert.equal(dispatchedSlot(1), 'morning');
+assert.equal(dispatchedOrigin(1), 'apps-script');
+assert.equal(dispatchedKind(1), 'retry');
 assert.equal(properties.get('WEATHER_SCHEDULER_MORNING_RETRY_DATE'), '2026-09-17');
 
 setClock('2026-09-17', 7, 20);
@@ -128,12 +131,14 @@ setClock('2026-09-17', 19, 2);
 context.runWeatherScheduler();
 assert.equal(requests.length, 3);
 assert.equal(dispatchedSlot(2), 'evening');
+assert.equal(dispatchedKind(2), 'primary');
 assert.equal(properties.get('WEATHER_SCHEDULER_EVENING_PRIMARY_DATE'), '2026-09-17');
 
 setClock('2026-09-17', 19, 12);
 context.runWeatherScheduler();
 assert.equal(requests.length, 4);
 assert.equal(dispatchedSlot(3), 'evening');
+assert.equal(dispatchedKind(3), 'retry');
 assert.equal(properties.get('WEATHER_SCHEDULER_EVENING_RETRY_DATE'), '2026-09-17');
 
 responseCode = 500;
@@ -146,21 +151,32 @@ responseCode = 204;
 setClock('2026-09-18', 7, 7);
 context.runWeatherScheduler();
 assert.equal(requests.length, 6);
+assert.equal(dispatchedKind(5), 'primary');
 assert.equal(properties.get('WEATHER_SCHEDULER_MORNING_PRIMARY_DATE'), '2026-09-18');
 
 setClock('2026-09-19', 7, 22);
 context.runWeatherScheduler();
 assert.equal(requests.length, 7, 'late heartbeat must catch the primary attempt');
 assert.equal(dispatchedSlot(6), 'morning');
+assert.equal(dispatchedKind(6), 'primary');
 setClock('2026-09-19', 7, 27);
 context.runWeatherScheduler();
 assert.equal(requests.length, 8, 'next heartbeat must catch the retry attempt');
 assert.equal(dispatchedSlot(7), 'morning');
+assert.equal(dispatchedKind(7), 'retry');
 
 setClock('2026-09-20', 19, 30);
 context.runWeatherScheduler();
 assert.equal(requests.length, 9, 'evening should not backfill a missed morning attempt');
 assert.equal(dispatchedSlot(8), 'evening');
+assert.equal(dispatchedKind(8), 'primary');
+
+assert.deepEqual(context.dispatchWeatherAutomationFromScheduler_('2026-09-20', 'evening', 'bogus'), {
+  ok:false,
+  error:'天気自動更新の試行種別が不正です。',
+  failureCode:'githubAutomationAttemptInvalid'
+});
+assert.equal(requests.length, 9, 'invalid attempt kind must not call GitHub');
 
 triggers.push(trigger('runWeatherScheduler'));
 triggers.push(trigger('otherFunction'));
