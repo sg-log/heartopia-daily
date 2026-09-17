@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/weather-safe-source-pool-dryrun.yml'
       - 'tools/apply-weather-authoritative-fix-v3.py'
+      - 'tools/weather-public-discovery.mjs'
 
 permissions:
   contents: read
@@ -28,9 +29,21 @@ jobs:
         run: python tools/apply-weather-authoritative-fix-v3.py
       - name: Regression tests
         run: node --test tools/test-weather-unified-review.mjs tools/test-weather-x-embed-evidence.mjs
-      - name: Discover candidates
+      - name: Discover WEB candidates only
         run: node tools/weather-public-discovery.mjs --target-date 2026-09-17 --out /tmp/discovery.json
-      - name: Try diversified public sources without submitting
+      - name: Assert X and Yahoo realtime are excluded
+        shell: pwsh
+        run: |
+          $discovery = Get-Content /tmp/discovery.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $badProvider = @($discovery.attempts | Where-Object { [string]$_.provider -eq 'yahoo-realtime' })
+          $badCandidate = @($discovery.candidates | Where-Object {
+            $u = [string]$_.sourceUrl
+            [string]$_.sourceType -eq 'x' -or $u -match '^https://(www\.)?(x\.com|twitter\.com)/'
+          })
+          if ($badProvider.Count -gt 0) { throw 'Yahoo realtime must not be queried' }
+          if ($badCandidate.Count -gt 0) { throw 'X/Twitter must not enter the candidate pool' }
+          Write-Host ('WEB_ONLY_OK candidates=' + @($discovery.candidates).Count)
+      - name: Try diversified WEB sources without submitting
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
@@ -45,21 +58,17 @@ jobs:
             New-Item -ItemType Directory -Path $dir -Force | Out-Null
             $captureOk = $false
             try {
-              if ([string]$candidate.sourceType -eq 'x') {
-                & node tools/weather-x-embed-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
-              } else {
-                & node tools/weather-cloud-url-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
-              }
+              & node tools/weather-cloud-url-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
               $captureOk = ($LASTEXITCODE -eq 0)
             } catch {}
             if (-not $captureOk) {
-              $results += [pscustomobject]@{ index=$i; url=[string]$candidate.sourceUrl; type=[string]$candidate.sourceType; capture=$false; ready=$false; reason='capture-failed' }
+              $results += [pscustomobject]@{ index=$i; url=[string]$candidate.sourceUrl; platform=[string]$candidate.sourcePlatform; capture=$false; ready=$false; reason='capture-failed' }
               continue
             }
             try {
               ./tools/weather-cloud-discovery.ps1 -CapturePath (Join-Path $dir 'capture.json') -OutputPath (Join-Path $dir 'discovery-candidate.json') -DiscoverySource ([string]$candidate.discoverySource) -SearchQuery ([string]$candidate.searchQuery)
             } catch {
-              $results += [pscustomobject]@{ index=$i; url=[string]$candidate.sourceUrl; type=[string]$candidate.sourceType; capture=$true; ready=$false; reason='discovery-bind-failed' }
+              $results += [pscustomobject]@{ index=$i; url=[string]$candidate.sourceUrl; platform=[string]$candidate.sourcePlatform; capture=$true; ready=$false; reason='discovery-bind-failed' }
               continue
             }
             $out = Join-Path $dir 'review.json'
@@ -72,7 +81,7 @@ jobs:
               $reason = [string]($review.diagnostics.reason)
               if (-not $reason -and $null -ne $review.diagnostics.splitFallback) { $reason = 'split-not-ready' }
             }
-            $results += [pscustomobject]@{ index=$i; url=[string]$candidate.sourceUrl; type=[string]$candidate.sourceType; capture=$true; ready=$ready; reason=$reason; selectedImage=[string]($review.selectedImage.file); startSlot=[string]($review.interpretation.startSlot); slots=@($review.interpretation.slots | ForEach-Object { @($_.weather) -join '+' }); weekly=@($review.interpretation.weeklyDays | ForEach-Object { @($_.weather) -join '+' }) }
+            $results += [pscustomobject]@{ index=$i; url=[string]$candidate.sourceUrl; platform=[string]$candidate.sourcePlatform; capture=$true; ready=$ready; reason=$reason; selectedImage=[string]($review.selectedImage.file); startSlot=[string]($review.interpretation.startSlot); slots=@($review.interpretation.slots | ForEach-Object { @($_.weather) -join '+' }); weekly=@($review.interpretation.weeklyDays | ForEach-Object { @($_.weather) -join '+' }) }
             if ($ready) { $selected = $results[-1]; break }
           }
           $results | ConvertTo-Json -Depth 8 | Set-Content /tmp/source-results.json -Encoding UTF8
