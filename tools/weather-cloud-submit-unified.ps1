@@ -8,6 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/weather-evidence.ps1"
+. "$PSScriptRoot/weather-approved-public-read.ps1"
 
 function Read-UnifiedJson {
     param([Parameter(Mandatory)] [string] $Path)
@@ -186,11 +187,11 @@ try {
         if ($contentPending.Count) {
             $result.duplicate=$true; $result.reportId=[string]$contentPending[0].id; $result.apiSuccess=$true; $result.pendingRegistered=$true; $result.stage='contentDuplicatePending'
         } else {
-            $approvedCall = Invoke-UnifiedPrivateRead -ApiUrl $apiUrl -AdminKey $adminKey -Payload ([ordered]@{action='approved'})
+            $approvedCall = Invoke-WeatherPublicApprovedRead -ApiUrl $apiUrl
             if ($approvedCall.diagnostic.failureCode -or $approvedCall.data.ok -ne $true) { throw 'WEATHER_SAFE:approvedLookupFailed' }
             $contentApproved = @($approvedCall.data.reports | Where-Object { Test-UnifiedWeatherMatch $_ $preview.payload })
             if ($contentApproved.Count) {
-                $result.duplicate=$true; $result.reportId=[string]$contentApproved[0].id; $result.apiSuccess=$true; $result.stage='contentDuplicateApproved'
+                $result.duplicate=$true; $result.reportId=''; $result.apiSuccess=$true; $result.stage='contentDuplicateApproved'
             } else {
                 $result.attempted = $true
                 $result.stage = 'submission'
