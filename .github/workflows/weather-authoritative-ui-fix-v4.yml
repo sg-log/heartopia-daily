@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/weather-authoritative-ui-fix-v4.yml'
       - 'tools/weather-verified-panel-crop.mjs'
+      - 'tools/apply-weather-artifact-crop-fix.py'
 
 permissions:
   contents: write
@@ -39,6 +40,9 @@ jobs:
               p.write_text(s, encoding='utf-8')
           elif new not in s:
               raise SystemExit('scheduled discovery schema gate anchor not found')
+
+      - name: Apply strict verified-crop artifact binding compatibility
+        run: python tools/apply-weather-artifact-crop-fix.py
 
       - name: Run focused fail-closed regression tests
         run: node --test tools/test-weather-unified-review.mjs tools/test-weather-x-embed-evidence.mjs
@@ -149,6 +153,7 @@ jobs:
           PENDING_PREPARED: ${{ steps.bridge.outputs.pending_prepared }}
           CAPTURE_SHA256: ${{ steps.bridge.outputs.capture_sha256 }}
           EVIDENCE_PATH: ${{ steps.bridge.outputs.evidence_path }}
+          REVIEW_SCOPE: ${{ steps.bridge.outputs.review_scope }}
         run: |
           node - <<'NODE'
           const fs=require('fs');
@@ -160,21 +165,25 @@ jobs:
           if(process.env.PENDING_PREPARED!=='true') throw new Error(`Pending preview not prepared: ${process.env.PENDING_PREPARED}`);
           if(process.env.CAPTURE_SHA256!==r.selectedImage.captureSha256) throw new Error('Bridge SHA differs from reviewed crop');
           if(path.basename(process.env.EVIDENCE_PATH||'')!=='verified-weather-panel.jpg') throw new Error(`Bridge evidence path ${process.env.EVIDENCE_PATH}`);
+          if(process.env.REVIEW_SCOPE!=='artifact-captured-visual') throw new Error(`Verified crop must remain captured visual evidence: ${process.env.REVIEW_SCOPE}`);
           if(!candidate.includes('https://x.com/i/status/2100325752185159960')) throw new Error('Candidate lost original source URL');
           if(!preview.includes(r.selectedImage.captureSha256)) throw new Error('Pending preview lost crop SHA');
-          console.log(JSON.stringify({bridgeReady:true,pendingPrepared:true,evidence:path.basename(process.env.EVIDENCE_PATH),sha:process.env.CAPTURE_SHA256}));
+          console.log(JSON.stringify({bridgeReady:true,pendingPrepared:true,evidence:path.basename(process.env.EVIDENCE_PATH),sha:process.env.CAPTURE_SHA256,reviewScope:process.env.REVIEW_SCOPE}));
           NODE
 
-      - name: Commit scheduled discovery schema compatibility
+      - name: Commit tested production compatibility
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .github/workflows/weather-scheduled-run.yml
+          git add \
+            .github/workflows/weather-scheduled-run.yml \
+            tools/weather-artifact-review-request.ps1 \
+            tools/weather-artifact-review-bridge.ps1
           git diff --cached --check
           if git diff --cached --quiet; then
-            echo 'Scheduled schema compatibility already committed.'
+            echo 'Production compatibility already committed.'
           else
-            git commit -m 'Accept current weather discovery schema'
+            git commit -m 'Bind verified weather crop through artifact review'
             git push origin HEAD:fix/weather-authoritative-ui-gate-20260917
           fi
