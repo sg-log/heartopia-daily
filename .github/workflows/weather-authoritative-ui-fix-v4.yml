@@ -1,0 +1,104 @@
+name: Weather authoritative UI fix v4
+
+on:
+  push:
+    branches:
+      - fix/weather-authoritative-ui-gate-20260917
+    paths:
+      - '.github/workflows/weather-authoritative-ui-fix-v4.yml'
+      - 'tools/apply-weather-authoritative-fix-v4.py'
+      - 'tools/weather-verified-panel-crop.mjs'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/weather-authoritative-ui-gate-20260917
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+
+      - name: Apply fail-closed production patches
+        run: |
+          python tools/apply-weather-authoritative-fix-v3.py
+          python tools/apply-weather-authoritative-fix-v4.py
+
+      - name: Run focused regression tests
+        run: node --test tools/test-weather-unified-review.mjs tools/test-weather-x-embed-evidence.mjs
+
+      - name: Capture known real weather post
+        shell: bash
+        run: |
+          rm -rf /tmp/weather-v4
+          mkdir -p /tmp/weather-v4
+          node tools/weather-x-embed-evidence.mjs \
+            --url https://x.com/i/status/2100325752185159960 \
+            --output-dir /tmp/weather-v4
+
+      - name: Run unified strict review
+        shell: bash
+        run: |
+          node tools/weather-unified-review.mjs \
+            --mode inspect \
+            --capture-dir /tmp/weather-v4 \
+            --target-date 2026-09-17 \
+            --output /tmp/weather-v4-review.json
+          cat /tmp/weather-v4-review.json
+
+      - name: Assert exact verified panel evidence and values
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const crypto=require('crypto');
+          const r=JSON.parse(fs.readFileSync('/tmp/weather-v4-review.json','utf8'));
+          const expectedDaily=['雨','晴','晴','晴','晴'];
+          const expectedWeekly=['晴','晴','虹','晴','晴'];
+          const daily=r.interpretation?.slots?.map(s=>s.weather?.[0]);
+          const weekly=r.interpretation?.weeklyDays?.map(d=>d.weather?.[0]);
+          if(!r.ready) throw new Error('Unified verified-panel review is not ready');
+          if(r.selectedImage?.file!=='verified-weather-panel.jpg') throw new Error(`Expected verified crop evidence, got ${r.selectedImage?.file}`);
+          if(r.pendingEvidenceFile!=='verified-weather-panel.jpg') throw new Error(`Pending evidence is not the verified crop: ${r.pendingEvidenceFile}`);
+          if(r.diagnostics?.mode!=='verified-game-ui-crop') throw new Error(`Unexpected review mode ${r.diagnostics?.mode}`);
+          const observed=Number(r.diagnostics?.inferred?.observed||0);
+          if(observed<2) throw new Error(`Strict time-label gate failed: observed=${observed}`);
+          if(r.interpretation?.startSlot!=='00') throw new Error(`Expected start 00, got ${r.interpretation?.startSlot}`);
+          if(JSON.stringify(daily)!==JSON.stringify(expectedDaily)) throw new Error(`Daily mismatch ${JSON.stringify(daily)}`);
+          if(JSON.stringify(weekly)!==JSON.stringify(expectedWeekly)) throw new Error(`Weekly mismatch ${JSON.stringify(weekly)}`);
+          const bytes=fs.readFileSync('/tmp/weather-v4/verified-weather-panel.jpg');
+          const sha=crypto.createHash('sha256').update(bytes).digest('hex');
+          if(sha!==r.selectedImage?.captureSha256) throw new Error(`Crop SHA mismatch ${sha} != ${r.selectedImage?.captureSha256}`);
+          const original=JSON.parse(fs.readFileSync('/tmp/weather-v4/capture.json','utf8'));
+          if(original.evidence?.sha256===sha) throw new Error('Verified crop unexpectedly equals the whole embed evidence');
+          console.log(JSON.stringify({selected:r.selectedImage.file,sha,observed,start:r.interpretation.startSlot,daily,weekly,crop:r.diagnostics?.crop}));
+          NODE
+
+      - name: Check scheduled-run discovery schema compatibility
+        shell: bash
+        run: |
+          grep -F "![1,3].includes(result.schemaVersion)" .github/workflows/weather-scheduled-run.yml
+
+      - name: Commit tested production integration
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            tools/weather-deterministic-review.mjs \
+            tools/weather-unified-review.mjs \
+            tools/weather-direct-panel-review.mjs \
+            tools/weather-weekly-screenshot-review.mjs \
+            tools/weather-x-embed-evidence.mjs \
+            tools/test-weather-unified-review.mjs
+          git diff --cached --check
+          git commit -m 'Use verified game weather UI crop'
+          git push origin HEAD:fix/weather-authoritative-ui-gate-20260917
