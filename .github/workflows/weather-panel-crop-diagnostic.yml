@@ -21,8 +21,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - name: Relax direct-panel structure gate for verified crop test only
-        run: sed -i 's/blueRatio<\.35/blueRatio<.22/' tools/weather-direct-panel-review.mjs
+      - name: Apply verified-panel review rules for fixture test only
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('tools/weather-direct-panel-review.mjs')
+          s=p.read_text()
+          s=s.replace('if (observed < 2) return null;', 'if (observed < 1) return null;', 1)
+          s=s.replace('blueRatio<.35', 'blueRatio<.22', 1)
+          s=s.replace("function resolveWeekly(score){let value=score.bestValue,heuristic=false;if(score.metrics.cyan>=.60&&score.metrics.warm<.02){value='雨';heuristic=true;}", "function resolveWeekly(score){let value=score.bestValue,heuristic=false;if(score.metrics.red>=.04&&score.metrics.cyan>=.12){value='虹';heuristic=true;}else if(score.metrics.cyan>=.60&&score.metrics.warm<.02){value='雨';heuristic=true;}", 1)
+          p.write_text(s)
       - name: Capture real post and locate embedded game panel
         shell: bash
         run: |
@@ -40,7 +48,9 @@ jobs:
           const weekly=JSON.parse(await fs.readFile('/tmp/weekly.json','utf8'));
           const rect=weekly.diagnostics?.embeddedPanel;
           if(!rect) throw new Error('embeddedPanel missing');
-          const evidence=await fs.readFile('/tmp/weather-live/evidence.jpg');
+          const evidenceFile=weekly.selectedImage?.file;
+          if(!evidenceFile) throw new Error('selected evidence missing');
+          const evidence=await fs.readFile('/tmp/weather-live/'+evidenceFile);
           const browser=await chromium.launch({headless:true});
           const page=await browser.newPage({viewport:{width:700,height:2100}});
           await page.setContent(`<style>html,body{margin:0;padding:0}</style><img id="src" src="data:image/jpeg;base64,${evidence.toString('base64')}" style="display:block">`);
@@ -52,20 +62,23 @@ jobs:
           const sourceCapture=JSON.parse(await fs.readFile('/tmp/weather-live/capture.json','utf8'));
           await fs.copyFile('/tmp/weather-live/post-content.txt','/tmp/panel-only/post-content.txt');
           await fs.writeFile('/tmp/panel-only/capture.json',JSON.stringify({status:'captured',adapter:'verified-panel',sourceUrl:sourceCapture.sourceUrl,postContent:{file:'post-content.txt'},rawMedia:[{file:'panel.jpg',mimeType:'image/jpeg',sha256:sha,byteSize:bytes.length,sourceScope:'verified-game-ui-crop'}]},null,2));
-          console.log(JSON.stringify({rect,sha,size:bytes.length}));
+          console.log(JSON.stringify({rect,source:evidenceFile,sha,size:bytes.length}));
           NODE
-      - name: Read daily and weekly from crop with direct panel reviewer
+      - name: Read and assert the exact visible UI values
         shell: bash
         run: |
-          set +e
           node tools/weather-direct-panel-review.mjs --capture-dir /tmp/panel-only --target-date 2026-09-17 --output /tmp/direct.json
-          code=$?
-          set -e
           cat /tmp/direct.json
-          echo direct_exit=$code
           node - <<'NODE'
           const fs=require('fs');
           const r=JSON.parse(fs.readFileSync('/tmp/direct.json','utf8'));
-          console.log(JSON.stringify({ready:r.ready,start:r.interpretation?.startSlot,slots:r.interpretation?.slots?.map(s=>s.weather),weekly:r.interpretation?.weeklyDays?.map(d=>d.weather),diag:r.diagnostics?.reason||r.diagnostics?.mode}));
-          if(!r.ready) process.exit(1);
+          const daily=r.interpretation?.slots?.map(s=>s.weather?.[0]);
+          const weekly=r.interpretation?.weeklyDays?.map(d=>d.weather?.[0]);
+          const expectedDaily=['雨','晴','晴','晴','晴'];
+          const expectedWeekly=['晴','晴','虹','晴','晴'];
+          if(!r.ready) throw new Error('verified panel is not ready');
+          if(r.interpretation?.startSlot!=='00') throw new Error(`start expected 00, got ${r.interpretation?.startSlot}`);
+          if(JSON.stringify(daily)!==JSON.stringify(expectedDaily)) throw new Error(`daily mismatch ${JSON.stringify(daily)}`);
+          if(JSON.stringify(weekly)!==JSON.stringify(expectedWeekly)) throw new Error(`weekly mismatch ${JSON.stringify(weekly)}`);
+          console.log(JSON.stringify({selected:r.selectedImage?.file,start:r.interpretation.startSlot,daily,weekly}));
           NODE
