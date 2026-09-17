@@ -326,7 +326,11 @@ function submit_(body) {
         references = [Object.assign({fileId:file.getId()}, evidence.meta)];
       }
       storageStage = "pendingSave";
-      sheet.appendRow(row.concat([sourceUrl, JSON.stringify(sourceImageUrls), sourceType, retrievedAt, file ? "saved" : "missing", JSON.stringify(references)]));
+      const pendingRow = row.concat([sourceUrl, JSON.stringify(sourceImageUrls), sourceType, retrievedAt, file ? "saved" : "missing", JSON.stringify(references)]);
+      const pendingRowIndex = sheet.getLastRow() + 1;
+      if (pendingRowIndex > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), pendingRowIndex - sheet.getMaxRows());
+      sheet.getRange(pendingRowIndex, HEADERS.indexOf("date") + 1).setNumberFormat("@");
+      sheet.getRange(pendingRowIndex, 1, 1, pendingRow.length).setValues([pendingRow]);
     } catch (error) {
       if (file) {
         // appendRow may have committed before reporting an error. Remove only this UUID.
@@ -388,6 +392,7 @@ function saveApproved_(body) {
         createdAt: String(values[i][HEADERS.indexOf("createdAt")] || now),
         approvedAt: now
       });
+      sheet.getRange(i + 1, dateColumn + 1).setNumberFormat("@");
       sheet.getRange(i + 1, 1, 1, HEADERS.length).setValues([row]);
       updated++;
     }
@@ -407,7 +412,10 @@ function saveApproved_(body) {
       createdAt: now,
       approvedAt: now
     });
-    sheet.appendRow(row);
+    const approvedRowIndex = sheet.getLastRow() + 1;
+    if (approvedRowIndex > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), approvedRowIndex - sheet.getMaxRows());
+    sheet.getRange(approvedRowIndex, dateColumn + 1).setNumberFormat("@");
+    sheet.getRange(approvedRowIndex, 1, 1, row.length).setValues([row]);
     return json_({ ok: true, id: row[0], status: "approved", mode: "created" });
   });
 }
@@ -1209,6 +1217,7 @@ function getSheet_() {
   if (HEADERS.some(function(header, index) { return String(currentHeaders[index]) !== header; })) {
     throw new Error("1行目の列名をREADME記載の順番に合わせてください");
   }
+  sheet.getRange(1, HEADERS.indexOf("date") + 1, Math.max(sheet.getMaxRows(), 1), 1).setNumberFormat("@");
   sheet.getRange(1, HEADERS.indexOf("startSlot") + 1, Math.max(sheet.getMaxRows(), 1), 1).setNumberFormat("@");
   return sheet;
 }
