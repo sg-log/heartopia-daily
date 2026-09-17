@@ -28,16 +28,30 @@ jobs:
       - name: Capture candidate
         run: node tools/weather-x-embed-evidence.mjs --url 'https://x.com/i/status/2100325752185159960' --output-dir "$RUNNER_TEMP/capture"
       - name: Run unified review and print diagnostics
+        id: review
         shell: bash
         run: |
           set +e
           node tools/weather-unified-review.mjs --mode inspect --capture-dir "$RUNNER_TEMP/capture" --target-date '2026-09-17' --output "$RUNNER_TEMP/review.json"
           rc=$?
           echo "review_exit=$rc"
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
           echo '--- files ---'
           find "$RUNNER_TEMP/capture" -maxdepth 1 -type f -printf '%f %s bytes\n' | sort
           echo '--- post content ---'
           cat "$RUNNER_TEMP/capture/post-content.txt" || true
           echo '--- review ---'
           cat "$RUNNER_TEMP/review.json" || true
-          exit $rc
+          exit 0
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weather-candidate-diagnostic-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/capture
+            ${{ runner.temp }}/review.json
+          retention-days: 2
+      - name: Require reviewer success
+        if: ${{ steps.review.outputs.rc != '0' }}
+        run: exit 2
