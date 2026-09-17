@@ -6,6 +6,7 @@ on:
     branches: [fix/weather-authoritative-ui-gate-20260917]
     paths:
       - '.github/workflows/weather-production-pipeline-dryrun.yml'
+      - 'tools/weather-artifact-review-bridge.ps1'
 
 permissions:
   contents: read
