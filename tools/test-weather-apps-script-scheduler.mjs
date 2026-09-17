@@ -171,11 +171,10 @@ assert.equal(requests.length, 9, 'evening should not backfill a missed morning a
 assert.equal(dispatchedSlot(8), 'evening');
 assert.equal(dispatchedKind(8), 'primary');
 
-assert.deepEqual(context.dispatchWeatherAutomationFromScheduler_('2026-09-20', 'evening', 'bogus'), {
-  ok:false,
-  error:'天気自動更新の試行種別が不正です。',
-  failureCode:'githubAutomationAttemptInvalid'
-});
+const invalidAttempt = context.dispatchWeatherAutomationFromScheduler_('2026-09-20', 'evening', 'bogus');
+assert.equal(invalidAttempt.ok, false);
+assert.equal(invalidAttempt.error, '天気自動更新の試行種別が不正です。');
+assert.equal(invalidAttempt.failureCode, 'githubAutomationAttemptInvalid');
 assert.equal(requests.length, 9, 'invalid attempt kind must not call GitHub');
 
 triggers.push(trigger('runWeatherScheduler'));
