@@ -1,0 +1,41 @@
+name: Weather private API diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/weather-private-api-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pending-read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read pending API without mutation
+        shell: pwsh
+        env:
+          WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
+          API_URL: https://script.google.com/macros/s/AKfycbwoPLuj0rSsennsx01-B-6UxqBjqnPieocgVLQnJMKEgRw6fZziV5ZGVA3SusjVLF3o/exec
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $payload = @{ action='pending'; adminKey=$env:WEATHER_ADMIN_KEY } | ConvertTo-Json -Compress
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          try {
+            $response = Invoke-WebRequest -Uri $env:API_URL -Method Post -UseBasicParsing -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($payload)) -TimeoutSec 90
+            $sw.Stop()
+            $data = $response.Content | ConvertFrom-Json
+            $count = if ($null -ne $data.reports) { @($data.reports).Count } else { -1 }
+            $authFailure = ($data.ok -eq $false -and [string]$data.error -match '認証|管理キー|admin')
+            Write-Host ('PENDING_API_DIAGNOSTIC http=' + [int]$response.StatusCode + ' elapsedMs=' + $sw.ElapsedMilliseconds + ' ok=' + [string]$data.ok + ' reportCount=' + $count + ' authFailure=' + $authFailure)
+            if ($data.ok -ne $true) { throw 'Pending API returned ok=false.' }
+          } catch {
+            if ($sw.IsRunning) { $sw.Stop() }
+            Write-Host ('PENDING_API_DIAGNOSTIC_FAILED elapsedMs=' + $sw.ElapsedMilliseconds + ' type=' + $_.Exception.GetType().Name)
+            throw
+          } finally {
+            $env:WEATHER_ADMIN_KEY = $null
+            $payload = $null
+          }
