@@ -4,9 +4,12 @@ from pathlib import Path
 def replace_once(path, old, new):
     p = Path(path)
     text = p.read_text(encoding='utf-8')
-    if old not in text:
-        raise SystemExit(f'missing artifact crop patch anchor in {path}')
-    p.write_text(text.replace(old, new, 1), encoding='utf-8')
+    if old in text:
+        p.write_text(text.replace(old, new, 1), encoding='utf-8')
+        return
+    if new in text:
+        return
+    raise SystemExit(f'missing artifact crop patch anchor in {path}')
 
 
 request = 'tools/weather-artifact-review-request.ps1'
