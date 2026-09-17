@@ -48,19 +48,22 @@ test("collects visible DOM or observed network X post media URLs and excludes av
     { index: 0, url: "https://pbs.twimg.com/profile_images/avatar.jpg", alt: "avatar", width: 400, height: 400, naturalWidth: 400, naturalHeight: 400, visible: true, inViewport: true },
     { index: 1, url: "https://pbs.twimg.com/media/example?format=jpg&name=small", alt: "weather", width: 500, height: 300, naturalWidth: 1000, naturalHeight: 600, visible: true, inViewport: true },
     { index: 2, url: "https://example.org/media/unsafe.jpg", alt: "weather", width: 600, height: 400, naturalWidth: 1200, naturalHeight: 800, visible: true, inViewport: true },
-    { index: 3, url: "https://pbs.twimg.com/media/compact?format=png&name=small", alt: "compact weather", width: 1, height: 1, naturalWidth: 1, naturalHeight: 1, visible: true, inViewport: true }
+    { index: 3, url: "https://pbs.twimg.com/media/compact?format=png&name=small", alt: "compact weather", width: 1, height: 1, naturalWidth: 1, naturalHeight: 1, visible: true, inViewport: true },
+    { index: 4, url: "https://pbs.twimg.com/media/embedThumb?format=jpg&name=360x360", alt: "", width: 1, height: 1, naturalWidth: 1, naturalHeight: 1, visible: true, inViewport: true }
   ]);
-  assert.equal(media.length, 2);
+  assert.equal(media.length, 3);
   assert.equal(media[0].index, 1);
   assert.equal(media[1].index, 3);
+  assert.equal(media[2].url, "https://pbs.twimg.com/media/embedThumb?format=jpg&name=small");
 });
 
-test("strictly validates original public X media URLs", () => {
+test("strictly validates original public X media URLs and normalizes embed thumbnail renditions", () => {
   assert.equal(parseXPublicMediaUrl("https://pbs.twimg.com/media/example?format=png&name=large").hostname, "pbs.twimg.com");
+  assert.equal(parseXPublicMediaUrl("https://pbs.twimg.com/media/example?format=jpg&name=360x360").searchParams.get("name"), "small");
+  assert.equal(parseXPublicMediaUrl("https://pbs.twimg.com/media/example?format=webp&name=small").searchParams.get("format"), "jpg");
   for (const value of [
     "http://pbs.twimg.com/media/example?format=jpg&name=small",
     "https://pbs.twimg.com/profile_images/avatar.jpg",
-    "https://pbs.twimg.com/media/example?format=webp&name=small",
     "https://pbs.twimg.com/media/example?format=jpg&name=unknown",
     "https://pbs.twimg.com.evil.example/media/example.jpg"
   ]) assert.throws(() => parseXPublicMediaUrl(value), WeatherCloudError);
