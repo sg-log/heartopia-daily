@@ -1,8 +1,9 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { bindReviewEnvelope } from './weather-deterministic-review.mjs';
+import { bindReviewEnvelope, inspectCapture } from './weather-deterministic-review.mjs';
 import { inspectDirectPanelCapture } from './weather-direct-panel-review.mjs';
+import { inspectWeeklyScreenshot } from './weather-weekly-screenshot-review.mjs';
 
 const START_SLOTS = ['00', '06', '12', '18'];
 
@@ -98,12 +99,85 @@ export function applyTimedSpecialWeatherHints(result, postText) {
   return clone;
 }
 
+function uniqueReviewedImages(images) {
+  const seen = new Set();
+  const out = [];
+  for (const image of images || []) {
+    if (!image?.file || !image?.mimeType || !image?.captureSha256) continue;
+    const key = `${image.file}\n${image.captureSha256}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ file: String(image.file), mimeType: String(image.mimeType), captureSha256: String(image.captureSha256) });
+  }
+  return out;
+}
+
+export function combineDailyWeeklyReviews(daily, weekly, directFailure = null) {
+  if (!daily?.ready || daily.interpretation?.ready !== true || !daily.selectedImage) return null;
+  if (!weekly?.ready || weekly.interpretation?.ready !== true || !weekly.selectedImage) return null;
+  if (String(daily.targetDate || '') !== String(weekly.targetDate || '')) return null;
+  const days = weekly.interpretation.days;
+  if (!Array.isArray(days) || days.length < 5 || days.length > 7) return null;
+  if (days.some(day => day?.visible !== true || day?.confidence !== 'high' || !Array.isArray(day?.weather) || !day.weather.length)) return null;
+
+  const reviewedImages = uniqueReviewedImages([daily.selectedImage, weekly.selectedImage]);
+  if (!reviewedImages.length || reviewedImages.length > 4) return null;
+  const primary = reviewedImages.find(image => image.file === daily.selectedImage.file && image.captureSha256 === daily.selectedImage.captureSha256) || reviewedImages[0];
+  const summary = `${String(daily.interpretation.summary || '').trim()} 週間欄は同じ公開投稿の取得済み証拠画像から別途判読。`.trim();
+
+  return {
+    schemaVersion: 2,
+    ready: true,
+    targetDate: daily.targetDate,
+    selectedImage: primary,
+    reviewedImages,
+    pendingEvidenceFile: primary.file,
+    interpretation: {
+      ...daily.interpretation,
+      weeklyDays: days,
+      confidence: 'high',
+      summary,
+      unresolved: []
+    },
+    diagnostics: {
+      mode: 'split-daily-weekly-evidence',
+      directAttempt: directFailure?.diagnostics || null,
+      daily: daily.diagnostics || null,
+      weekly: weekly.diagnostics || null,
+      reviewedImages
+    }
+  };
+}
+
 export async function inspectUnifiedCapture({ captureDir, targetDate, repoRoot = path.resolve('.') }) {
-  const result = await inspectDirectPanelCapture({ captureDir, targetDate, repoRoot });
-  if (!result?.ready) return result;
+  const direct = await inspectDirectPanelCapture({ captureDir, targetDate, repoRoot });
   let postText = '';
   try { postText = await readFile(path.join(captureDir, 'post-content.txt'), 'utf8'); } catch {}
-  return applyTimedSpecialWeatherHints(result, postText);
+  if (direct?.ready) return applyTimedSpecialWeatherHints(direct, postText);
+
+  let daily = null;
+  let weekly = null;
+  try { daily = await inspectCapture({ captureDir, targetDate, repoRoot }); } catch (error) {
+    daily = { ready:false, diagnostics:{ reason:'dailyFallbackError', message:String(error?.message || error) } };
+  }
+  try { weekly = await inspectWeeklyScreenshot({ captureDir, targetDate, repoRoot }); } catch (error) {
+    weekly = { ready:false, diagnostics:{ reason:'weeklyFallbackError', message:String(error?.message || error) } };
+  }
+  const combined = combineDailyWeeklyReviews(daily, weekly, direct);
+  if (combined) return applyTimedSpecialWeatherHints(combined, postText);
+
+  return {
+    ...direct,
+    diagnostics: {
+      ...(direct?.diagnostics || {}),
+      splitFallback: {
+        dailyReady: daily?.ready === true,
+        weeklyReady: weekly?.ready === true,
+        daily: daily?.diagnostics || null,
+        weekly: weekly?.diagnostics || null
+      }
+    }
+  };
 }
 
 export function bindUnifiedReviewEnvelope(draft, artifact) {
@@ -132,7 +206,7 @@ async function main() {
       repoRoot: path.resolve(args['repo-root'] || '.')
     });
     await writeFile(path.resolve(args.output), `${JSON.stringify(result, null, 2)}\n`, 'utf8');
-    process.stdout.write(`${JSON.stringify({ ready: result.ready, selectedImage: result.selectedImage?.file || '', startSlot: result.interpretation?.startSlot || '', weeklyCount: result.interpretation?.weeklyDays?.length || 0 })}\n`);
+    process.stdout.write(`${JSON.stringify({ ready: result.ready, selectedImage: result.selectedImage?.file || '', reviewedImageCount: result.reviewedImages?.length || (result.selectedImage ? 1 : 0), startSlot: result.interpretation?.startSlot || '', weeklyCount: result.interpretation?.weeklyDays?.length || 0 })}\n`);
     if (!result.ready) process.exitCode = 2;
     return;
   }

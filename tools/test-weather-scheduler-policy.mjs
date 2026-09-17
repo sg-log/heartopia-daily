@@ -4,11 +4,16 @@ import fs from 'node:fs'
 
 const workflow = fs.readFileSync('.github/workflows/weather-scheduled-run.yml', 'utf8')
 
-test('scheduler has primary, snooze, and manual triggers', () => {
-  for (const cron of ["0 22 * * *", "10 22 * * *", "0 10 * * *", "10 10 * * *"]) {
-    assert.ok(workflow.includes(`cron: '${cron}'`), `missing cron ${cron}`)
+test('Apps Script is primary clock and GitHub cron is delayed backup', () => {
+  for (const cron of ["30 22 * * *", "30 10 * * *"]) {
+    assert.ok(workflow.includes(`cron: '${cron}'`), `missing backup cron ${cron}`)
+  }
+  for (const oldCron of ["    - cron: '0 22 * * *'", "    - cron: '10 22 * * *'", "    - cron: '0 10 * * *'", "    - cron: '10 10 * * *'"]) {
+    assert.equal(workflow.includes(oldCron), false, `legacy cron must not remain scheduled: ${oldCron}`)
   }
   assert.match(workflow, /workflow_dispatch:/)
+  assert.match(workflow, /trigger_origin:/)
+  assert.match(workflow, /attempt_kind:/)
   assert.match(workflow, /group: weather-scheduled-run/)
 })
 
@@ -31,15 +36,19 @@ test('scheduler connects public Web and X through unified daily plus weekly revi
   assert.doesNotMatch(workflow, /OPENAI_API_KEY/)
 })
 
-test('no usable public candidates fail so the independent snooze can retry', () => {
+test('failed primary stays quiet while Apps Script retry is the terminal notification point', () => {
   assert.match(workflow, /No public weather candidates found/)
   assert.match(workflow, /No supported public evidence candidate found/)
   assert.match(workflow, /core\.setFailed/)
-  assert.match(workflow, /steps\.slot\.outputs\.is_snooze == 'true'/)
+  assert.match(workflow, /origin === 'apps-script' && attemptKind === 'retry'/)
+  assert.match(workflow, /notify_failure/)
 })
 
-test('snooze and manual failures include one-click manual recovery links', () => {
-  assert.match(workflow, /Notify Discord after snooze or manual run fails/)
+test('terminal failures include one-click manual recovery without duplicate backup alerts', () => {
+  assert.match(workflow, /Notify Discord after terminal failure/)
+  assert.match(workflow, /steps\.finalize\.outputs\.notify_failure == 'true'/)
+  assert.match(workflow, /heartopia-weather-failure:/)
+  assert.match(workflow, /apps-script:retry/)
   assert.match(workflow, /actions\/workflows\/weather-scheduled-run\.yml/)
-  assert.match(workflow, /次の定時更新を待つか、手動で再実行できます/)
+  assert.match(workflow, /手動で再実行できます/)
 })
