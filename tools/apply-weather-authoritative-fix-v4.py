@@ -50,6 +50,20 @@ replace_once(
     'const size=Math.max(14,Math.min(60,Math.round(panelW*.085)))'
 )
 
+# A decorative/footer component can resemble the legacy weekly header. If that legacy
+# path does not produce five confident days, continue to the stricter embedded game
+# weather panel detector instead of letting the false header block it.
+replace_once(
+    'tools/weather-weekly-screenshot-review.mjs',
+    '''    const scores=classifyBoxes(centersY.map(cy=>({x:Math.max(0,Math.round(centerX-size/2)),y:Math.max(0,Math.round(cy-size/2)),size})));
+    return finalize(scores,{header,panelBackgroundRatio,mode:'legacy-weekly-header'});''',
+    '''    const scores=classifyBoxes(centersY.map(cy=>({x:Math.max(0,Math.round(centerX-size/2)),y:Math.max(0,Math.round(cy-size/2)),size})));
+    const legacy=finalize(scores,{header,panelBackgroundRatio,mode:'legacy-weekly-header'});
+    if(legacy.ready)return legacy;
+    const embedded=inspectEmbeddedGamePanel();if(embedded)return embedded;
+    return legacy;'''
+)
+
 # Integrate verified panel extraction into the unified production review. It runs only
 # after the original direct path fails, requires weekly embedded-panel structure, crops
 # that exact rectangle, then applies the strict direct reader including >=2 time labels.
