@@ -26,7 +26,7 @@ jobs:
       - name: Unit regression
         run: node --test tools/test-weather-unified-review.mjs tools/test-weather-deterministic-review.mjs
       - name: Capture candidate
-        run: node tools/weather-x-embed-evidence.mjs --url 'https://x.com/i/status/2100325752185159960' --output-dir "$RUNNER_TEMP/capture"
+        run: node tools/weather-x-embed-evidence.mjs --url 'https://x.com/i/status/2100330655741845809' --output-dir "$RUNNER_TEMP/capture"
       - name: Run unified review and print diagnostics
         id: review
         shell: bash
