@@ -1,0 +1,69 @@
+name: Weather verified panel crop diagnostic
+
+on:
+  push:
+    branches: [fix/weather-authoritative-ui-gate-20260917]
+    paths: ['.github/workflows/weather-panel-crop-diagnostic.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/weather-authoritative-ui-gate-20260917
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Capture real post and locate embedded game panel
+        shell: bash
+        run: |
+          rm -rf /tmp/weather-live /tmp/panel-only
+          mkdir -p /tmp/weather-live /tmp/panel-only
+          node tools/weather-x-embed-evidence.mjs --url https://x.com/i/status/2100325752185159960 --output-dir /tmp/weather-live
+          node tools/weather-weekly-screenshot-review.mjs --capture-dir /tmp/weather-live --target-date 2026-09-17 --output /tmp/weekly.json
+      - name: Crop the verified game UI panel
+        shell: bash
+        run: |
+          node --input-type=module - <<'NODE'
+          import fs from 'node:fs/promises';
+          import crypto from 'node:crypto';
+          import { chromium } from 'playwright';
+          const weekly=JSON.parse(await fs.readFile('/tmp/weekly.json','utf8'));
+          const rect=weekly.diagnostics?.embeddedPanel;
+          if(!rect) throw new Error('embeddedPanel missing');
+          const evidence=await fs.readFile('/tmp/weather-live/evidence.jpg');
+          const browser=await chromium.launch({headless:true});
+          const page=await browser.newPage({viewport:{width:700,height:2100}});
+          await page.setContent(`<style>html,body{margin:0;padding:0}</style><img id="src" src="data:image/jpeg;base64,${evidence.toString('base64')}" style="display:block">`);
+          await page.locator('#src').waitFor({state:'visible'});
+          await page.screenshot({path:'/tmp/panel-only/panel.jpg',type:'jpeg',quality:95,clip:{x:rect.x,y:rect.y,width:rect.w,height:rect.h}});
+          await browser.close();
+          const bytes=await fs.readFile('/tmp/panel-only/panel.jpg');
+          const sha=crypto.createHash('sha256').update(bytes).digest('hex');
+          const sourceCapture=JSON.parse(await fs.readFile('/tmp/weather-live/capture.json','utf8'));
+          await fs.copyFile('/tmp/weather-live/post-content.txt','/tmp/panel-only/post-content.txt');
+          await fs.writeFile('/tmp/panel-only/capture.json',JSON.stringify({status:'captured',adapter:'verified-panel',sourceUrl:sourceCapture.sourceUrl,postContent:{file:'post-content.txt'},rawMedia:[{file:'panel.jpg',mimeType:'image/jpeg',sha256:sha,byteSize:bytes.length,sourceScope:'verified-game-ui-crop'}]},null,2));
+          console.log(JSON.stringify({rect,sha,size:bytes.length}));
+          NODE
+      - name: Read daily and weekly from crop with direct panel reviewer
+        shell: bash
+        run: |
+          set +e
+          node tools/weather-direct-panel-review.mjs --capture-dir /tmp/panel-only --target-date 2026-09-17 --output /tmp/direct.json
+          code=$?
+          set -e
+          cat /tmp/direct.json
+          echo direct_exit=$code
+          node - <<'NODE'
+          const fs=require('fs');
+          const r=JSON.parse(fs.readFileSync('/tmp/direct.json','utf8'));
+          console.log(JSON.stringify({ready:r.ready,start:r.interpretation?.startSlot,slots:r.interpretation?.slots?.map(s=>s.weather),weekly:r.interpretation?.weeklyDays?.map(d=>d.weather),diag:r.diagnostics?.reason||r.diagnostics?.mode}));
+          if(!r.ready) process.exit(1);
+          NODE
