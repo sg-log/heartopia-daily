@@ -1,0 +1,33 @@
+name: Weather final live diagnostic
+
+on:
+  push:
+    branches:
+      - 'fix/weather-final-completion-20260917'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Capture current public weather post
+        run: node tools/weather-x-embed-evidence.mjs --url 'https://x.com/i/status/2100325752185159960' --output-dir "$RUNNER_TEMP/capture"
+      - name: Run unified review
+        shell: bash
+        run: |
+          set +e
+          node tools/weather-unified-review.mjs --mode inspect --capture-dir "$RUNNER_TEMP/capture" --target-date '2026-09-17' --output "$RUNNER_TEMP/review.json"
+          rc=$?
+          cat "$RUNNER_TEMP/review.json"
+          echo "review_exit=$rc"
+          exit 0

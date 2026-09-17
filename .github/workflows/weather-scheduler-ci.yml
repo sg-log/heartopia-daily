@@ -13,6 +13,9 @@ on:
       - 'tools/test-weather-deterministic-review.mjs'
       - 'tools/weather-unified-review.mjs'
       - 'tools/test-weather-unified-review.mjs'
+      - 'tools/weather-evidence-recovery.mjs'
+      - 'tools/test-weather-evidence-recovery.mjs'
+      - 'tools/weather-weekly-screenshot-review.mjs'
       - 'tools/weather-cloud-submit-unified.ps1'
       - 'tools/weather-cloud-url-evidence.mjs'
       - 'tools/README-weather-admin-trigger.md'
@@ -47,6 +50,8 @@ jobs:
         run: node --test tools/test-weather-public-discovery.mjs
       - name: Validate deterministic image review helpers
         run: node --test tools/test-weather-deterministic-review.mjs
+      - name: Validate image-first evidence recovery helpers
+        run: node --test tools/test-weather-evidence-recovery.mjs
       - name: Validate unified daily and weekly review helpers
         run: node --test tools/test-weather-unified-review.mjs
       - name: Parse unified PowerShell submitter

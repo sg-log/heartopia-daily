@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { bindReviewEnvelope, inspectCapture } from './weather-deterministic-review.mjs';
 import { inspectDirectPanelCapture } from './weather-direct-panel-review.mjs';
 import { inspectWeeklyScreenshot } from './weather-weekly-screenshot-review.mjs';
+import { inspectWeeklyAcrossCapturedMedia, recoverDailyFromImageAndPost } from './weather-evidence-recovery.mjs';
 
 const START_SLOTS = ['00', '06', '12', '18'];
 
@@ -160,9 +161,21 @@ export async function inspectUnifiedCapture({ captureDir, targetDate, repoRoot =
   try { daily = await inspectCapture({ captureDir, targetDate, repoRoot }); } catch (error) {
     daily = { ready:false, diagnostics:{ reason:'dailyFallbackError', message:String(error?.message || error) } };
   }
+  if (!daily?.ready) {
+    try { daily = await recoverDailyFromImageAndPost({ daily, captureDir, targetDate, postText }); } catch (error) {
+      daily = { ...daily, diagnostics:{ ...(daily?.diagnostics || {}), recoveryError:String(error?.message || error) } };
+    }
+  }
+
   try { weekly = await inspectWeeklyScreenshot({ captureDir, targetDate, repoRoot }); } catch (error) {
     weekly = { ready:false, diagnostics:{ reason:'weeklyFallbackError', message:String(error?.message || error) } };
   }
+  if (!weekly?.ready) {
+    try { weekly = await inspectWeeklyAcrossCapturedMedia({ captureDir, targetDate, repoRoot, currentWeekly: weekly }); } catch (error) {
+      weekly = { ...weekly, diagnostics:{ ...(weekly?.diagnostics || {}), rawMediaRecoveryError:String(error?.message || error) } };
+    }
+  }
+
   const combined = combineDailyWeeklyReviews(daily, weekly, direct);
   if (combined) return applyTimedSpecialWeatherHints(combined, postText);
 
