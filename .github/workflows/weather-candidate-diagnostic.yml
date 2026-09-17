@@ -56,3 +56,5 @@ jobs:
       - name: Require reviewer success
         if: ${{ steps.review.outputs.rc != '0' }}
         run: exit 2
+
+# retest embedded in-game weekly panel detector
