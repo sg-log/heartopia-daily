@@ -21,6 +21,18 @@ test('scheduler guards only a fully successful date-slot and does not short-circ
   assert.match(workflow, /heartopia-weather-scheduled-success:/)
   assert.match(workflow, /already_succeeded/)
   assert.doesNotMatch(workflow, /heartopia-weather-source-success:/)
+  const guard = workflow.indexOf('- name: Check whether this update slot already succeeded')
+  const discovery = workflow.indexOf('- name: Discover public weather candidates')
+  assert.ok(guard >= 0 && discovery > guard, 'success-marker guard must run before discovery')
+  assert.match(workflow, /if \(process\.env\.ALREADY_SUCCEEDED === 'true'\) \{[\s\S]*?core\.setOutput\('notify_failure', 'false'\)[\s\S]*?return/)
+})
+
+test('scheduler derives schedule dates from the intended cron time and manual dates from the 06:00 game day', () => {
+  assert.match(workflow, /\$scheduledUtc = \[DateTimeOffset\]::new/)
+  assert.match(workflow, /if \(\$scheduledUtc -gt \$nowUtc\) \{ \$scheduledUtc = \$scheduledUtc\.AddDays\(-1\) \}/)
+  assert.match(workflow, /\$scheduledUtc\.ToOffset\(\[TimeSpan\]::FromHours\(9\)\)\.AddHours\(-6\)/)
+  assert.match(workflow, /\$nowJst\.AddHours\(-6\)/)
+  assert.match(workflow, /\$nowJst\.Hour -ge 6 -and \$nowJst\.Hour -lt 13/)
 })
 
 test('scheduler connects public Web and X through unified daily plus weekly review and one pending submit', () => {

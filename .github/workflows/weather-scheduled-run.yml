@@ -14,7 +14,7 @@ on:
         options: [auto, morning, evening]
         default: auto
       target_date:
-        description: 'JST target date (YYYY-MM-DD); blank means today'
+        description: 'Heartopia game date (YYYY-MM-DD); blank uses the current 06:00-based game date'
         required: false
         type: string
         default: ''
@@ -59,8 +59,20 @@ jobs:
           MANUAL_ORIGIN: ${{ inputs.trigger_origin }}
           MANUAL_ATTEMPT_KIND: ${{ inputs.attempt_kind }}
         run: |
-          $now = [DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(9))
-          $targetDate = $now.ToString('yyyy-MM-dd')
+          $nowUtc = if ([string]::IsNullOrWhiteSpace([string]$env:WEATHER_RESOLVE_NOW_UTC)) {
+            [DateTimeOffset]::UtcNow
+          } else {
+            try {
+              [DateTimeOffset]::Parse(
+                [string]$env:WEATHER_RESOLVE_NOW_UTC,
+                [Globalization.CultureInfo]::InvariantCulture,
+                [Globalization.DateTimeStyles]::AssumeUniversal -bor [Globalization.DateTimeStyles]::AdjustToUniversal
+              )
+            } catch { throw 'Invalid weather resolver UTC clock.' }
+          }
+          $nowUtc = $nowUtc.ToUniversalTime()
+          $nowJst = $nowUtc.ToOffset([TimeSpan]::FromHours(9))
+          $targetDate = $nowJst.AddHours(-6).ToString('yyyy-MM-dd')
           $slot = ''
           $isSnooze = 'false'
           $origin = ''
@@ -79,9 +91,26 @@ jobs:
               '10 10 * * *' { $slot = 'evening'; $origin = 'github-legacy' }
               default { throw "Unknown schedule: $env:EVENT_SCHEDULE" }
             }
+            $cronParts = @(([string]$env:EVENT_SCHEDULE -split '\s+') | Where-Object { $_ })
+            if ($cronParts.Count -ne 5) { throw "Invalid schedule: $env:EVENT_SCHEDULE" }
+            $scheduledMinute = [int]$cronParts[0]
+            $scheduledHour = [int]$cronParts[1]
+            $scheduledUtc = [DateTimeOffset]::new(
+              $nowUtc.Year,
+              $nowUtc.Month,
+              $nowUtc.Day,
+              $scheduledHour,
+              $scheduledMinute,
+              0,
+              [TimeSpan]::Zero
+            )
+            if ($scheduledUtc -gt $nowUtc) { $scheduledUtc = $scheduledUtc.AddDays(-1) }
+            $targetDate = $scheduledUtc.ToOffset([TimeSpan]::FromHours(9)).AddHours(-6).ToString('yyyy-MM-dd')
           } else {
             $slot = [string]$env:MANUAL_SLOT
-            if ([string]::IsNullOrWhiteSpace($slot) -or $slot -eq 'auto') { $slot = if ($now.Hour -lt 13) { 'morning' } else { 'evening' } }
+            if ([string]::IsNullOrWhiteSpace($slot) -or $slot -eq 'auto') {
+              $slot = if ($nowJst.Hour -ge 6 -and $nowJst.Hour -lt 13) { 'morning' } else { 'evening' }
+            }
             if ($slot -notin @('morning','evening')) { throw 'Invalid manual slot.' }
             if (-not [string]::IsNullOrWhiteSpace([string]$env:MANUAL_TARGET_DATE)) {
               try { [void][datetime]::ParseExact([string]$env:MANUAL_TARGET_DATE, 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture) }
