@@ -162,6 +162,10 @@ if ($ready) {
     Write-Json $PendingPreviewPath ([ordered]@{ status='not-ready'; sent=$false; artifact=$candidate.aiReview.artifact })
 }
 
+if (-not $ready -or -not $pendingPrepared) {
+    throw 'Verified weather candidate did not produce a pending preview; fail closed.'
+}
+
 if ($env:GITHUB_OUTPUT) {
     $outputs = @(
         'sha256_match=true'
