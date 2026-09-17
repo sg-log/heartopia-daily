@@ -54,7 +54,7 @@ foreach ($image in @($review.reviewedImages)) {
     $file = [string]$image.file
     $mimeType = [string]$image.mimeType
     $sha256 = [string]$image.captureSha256
-    if ($file -notmatch '^(?:raw-media-[0-3]\.(?:jpg|png)|evidence\.jpg)$' -or
+    if ($file -notmatch '^(?:raw-media-[0-3]\.(?:jpg|png)|evidence\.jpg|verified-weather-panel\.jpg)$' -or
         $mimeType -notin @('image/jpeg','image/png') -or
         ($mimeType -ceq 'image/jpeg' -and $file -notmatch '\.jpg$') -or
         ($mimeType -ceq 'image/png' -and $file -notmatch '\.png$') -or
@@ -64,7 +64,7 @@ foreach ($image in @($review.reviewedImages)) {
     }
     if ($file -ceq [string]$review.pendingEvidenceFile) { $pendingEvidence = $image }
 }
-if ([string]$review.pendingEvidenceFile -notmatch '^(?:raw-media-[0-3]\.(?:jpg|png)|evidence\.jpg)$' -or $null -eq $pendingEvidence) {
+if ([string]$review.pendingEvidenceFile -notmatch '^(?:raw-media-[0-3]\.(?:jpg|png)|evidence\.jpg|verified-weather-panel\.jpg)$' -or $null -eq $pendingEvidence) {
     throw 'Invalid artifact review pending evidence selection.'
 }
 
@@ -96,7 +96,7 @@ if ($interpretation.summary -isnot [string] -or
     throw 'Invalid artifact weather interpretation.'
 }
 
-$reviewMode = if ([string]$pendingEvidence.file -ceq 'evidence.jpg') { 'artifact-captured-visual' } else { 'artifact-raw-media-visual' }
+$reviewMode = if ([string]$pendingEvidence.file -in @('evidence.jpg','verified-weather-panel.jpg')) { 'artifact-captured-visual' } else { 'artifact-raw-media-visual' }
 
 $parent = Split-Path -Parent $ReviewPath
 if ($parent) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
