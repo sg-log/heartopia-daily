@@ -52,7 +52,29 @@ export async function createVerifiedPanelCapture({ captureDir, targetDate, repoR
 
   const panelBytes = await readFile(panelPath);
   const panelSha256 = sha256(panelBytes);
-  const originalCapture = JSON.parse(await readFile(path.join(captureDir, 'capture.json'), 'utf8'));
+  const capturePath = path.join(captureDir, 'capture.json');
+  const originalCapture = JSON.parse(await readFile(capturePath, 'utf8'));
+  const panelMedia = {
+    file: panelFile,
+    mimeType: 'image/jpeg',
+    byteSize: panelBytes.length,
+    sha256: panelSha256,
+    sourceScope: 'verified-game-ui-crop',
+    derivedFrom: source.file,
+    derivedFromSha256: source.captureSha256,
+    crop: rect
+  };
+
+  // The later immutable-artifact bridge verifies reviewed files against capture.json.
+  // Register the derived crop there without replacing the original source evidence.
+  // Replace by filename to keep repeated local reviews idempotent.
+  const originalRawMedia = Array.isArray(originalCapture.rawMedia) ? originalCapture.rawMedia : [];
+  originalCapture.rawMedia = [
+    ...originalRawMedia.filter((item) => String(item?.file || '') !== panelFile),
+    panelMedia
+  ];
+  await writeFile(capturePath, `${JSON.stringify(originalCapture, null, 2)}\n`, 'utf8');
+
   const captureFile = 'verified-panel-capture.json';
   const derivedCapture = {
     status: 'captured',
@@ -63,16 +85,7 @@ export async function createVerifiedPanelCapture({ captureDir, targetDate, repoR
     sourceId: originalCapture.sourceId || null,
     capturedAt: originalCapture.capturedAt || new Date().toISOString(),
     postContent: originalCapture.postContent || { file: 'post-content.txt' },
-    rawMedia: [{
-      file: panelFile,
-      mimeType: 'image/jpeg',
-      byteSize: panelBytes.length,
-      sha256: panelSha256,
-      sourceScope: 'verified-game-ui-crop',
-      derivedFrom: source.file,
-      derivedFromSha256: source.captureSha256,
-      crop: rect
-    }],
+    rawMedia: [panelMedia],
     evidence: {
       file: panelFile,
       mimeType: 'image/jpeg',
