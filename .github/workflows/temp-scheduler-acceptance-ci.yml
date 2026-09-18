@@ -20,4 +20,4 @@ jobs:
       - run: node tools/test-weather-apps-script-scheduler.mjs
       - run: node tools/test-clasp-scheduler-include.mjs
 
-# rerun after test fix
+# rerun after test fix 2
