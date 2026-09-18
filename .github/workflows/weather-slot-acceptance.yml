@@ -33,13 +33,18 @@ jobs:
           if (stale.startSlotMatched) throw new Error('stale 00 start matched morning');
           console.log({queries:q, current:r, stale});
           NODE
-      - name: Dispatch production morning acceptance
+      - run: npx playwright install --with-deps chromium
+      - name: Verify real 06-start daily-only post
+        shell: pwsh
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: >
-          gh workflow run weather-scheduled-run.yml
-          --ref main
-          -f slot=morning
-          -f target_date=2026-09-18
-          -f trigger_origin=manual
-          -f attempt_kind=manual
+          SOURCE_URL: https://x.com/i/status/2100739618446684218
+          CAPTURE_DIR: ${{ runner.temp }}/daily-only-acceptance
+          REVIEW_PATH: ${{ runner.temp }}/daily-only-review.json
+        run: |
+          New-Item -ItemType Directory -Path $env:CAPTURE_DIR -Force | Out-Null
+          node tools/weather-x-embed-evidence.mjs --url "$env:SOURCE_URL" --output-dir "$env:CAPTURE_DIR"
+          if ($LASTEXITCODE -ne 0) { throw 'capture failed' }
+          node tools/weather-direct-daily-panel-review.mjs --capture-dir "$env:CAPTURE_DIR" --target-date "2026-09-18" --output "$env:REVIEW_PATH"
+          if ($LASTEXITCODE -ne 0) { throw 'daily-only review failed' }
+          $r = Get-Content -LiteralPath $env:REVIEW_PATH -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($r.ready -ne $true -or [string]$r.interpretation.startSlot -cne '06') { throw 'daily-only acceptance mismatch' }
