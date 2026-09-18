@@ -1,5 +1,5 @@
 name: Weather diagnostic now
-# rerun-after-panel-hue-fix
+# rerun-after-meteor-fix
 
 on:
   push:
@@ -21,6 +21,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: node --test tools/test-weather-unified-review.mjs
       - run: npx playwright install --with-deps chromium
       - name: Capture exact 2026-09-18 top candidate
         shell: pwsh
