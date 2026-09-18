@@ -156,6 +156,10 @@ try {
     $preview.payload.weeks = $weekly.weeks
     $result.weeklyCount = $weekly.count
     $preview.payload.memo = ([string]$preview.payload.memo).Replace('現在・週間:送信対象外', "週間:$($weekly.count)日判読済み")
+    $weeklySourceUrl = if ($null -ne $capture.crossSource) { [string]$capture.crossSource.weeklySourceUrl } else { '' }
+    if (-not [string]::IsNullOrWhiteSpace($weeklySourceUrl)) {
+        $preview.payload.memo = (([string]$preview.payload.memo).Trim() + " 週間出典:" + $weeklySourceUrl).Trim()
+    }
     if (([string]$preview.payload.memo).Length -gt 1000) { throw 'WEATHER_SAFE:memoTooLong' }
 
     $apiUrl = Get-WeatherApiUrlFromSiteConfig
