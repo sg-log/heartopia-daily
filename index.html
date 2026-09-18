@@ -5518,10 +5518,30 @@ function observePendingEvidence(){
 
 let pendingWeatherReportsCache = [];
 
+function pendingUsesSeparateWeeklyEvidence(report){
+  return /(?:^|\s)週間出典:https?:\/\//.test(String(report?.memo || ""));
+}
+function blankWeatherWeeks(){
+  return Object.fromEntries(WEATHER_WEEK_KEYS.map(key => [key, []]));
+}
+function pendingInitialWeeks(report){
+  return pendingUsesSeparateWeeklyEvidence(report) ? blankWeatherWeeks() : normalizeWeatherWeeks(report);
+}
+function pendingApprovedMemo(report){
+  const memo = String(report?.memo || "");
+  if(!pendingUsesSeparateWeeklyEvidence(report)) return memo;
+  return memo
+    .replace(/\s*週間:\d+日判読済み/g, "")
+    .replace(/\s*週間出典:https?:\/\/\S+/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function pendingWeatherCard(r){
   const startSlot = normalizeStartSlot(r.startSlot);
   const slots = normalizeWeatherSlots(r);
-  const weeks = normalizeWeatherWeeks(r);
+  const weeks = pendingInitialWeeks(r);
+  const separateWeeklyEvidence = pendingUsesSeparateWeeklyEvidence(r);
   const reportDate = normalizeApiDate(r.date);
   const source = pendingWeatherEvidenceUrl(r.sourceUrl);
   const images = Array.isArray(r.sourceImageUrls) ? [...new Set(r.sourceImageUrls.map(url => pendingWeatherEvidenceUrl(url, true)).filter(Boolean))].slice(0, 8) : [];
@@ -5530,15 +5550,15 @@ function pendingWeatherCard(r){
   return `<details class="pendingWeatherCard" id="pending-weather-${esc(r.id)}" data-pending-weather-id="${esc(r.id)}" open><summary class="pendingWeatherSummary"><strong>${esc(reportDate)} ／ ${esc(startSlot)}時開始</strong></summary><div class="pendingWeatherCardBody">
     <p class="pendingWeatherEditNote">デイリー。違っていたら、天気アイコンをタップして直してから承認できます。</p>
     <div class="pendingWeatherSlots" data-pending-weather-editor="${esc(r.id)}">${quickWeatherGroupHtml(editPrefix, startSlot)}</div>
-    <h3 class="pendingWeatherSectionTitle">週間予報（修正できます）</h3>
-    <p class="pendingWeatherEditNote">各日は1種類または「—」を選べます。画像にない日は空欄のままで問題ありません。</p>
+    <h3 class="pendingWeatherSectionTitle">${separateWeeklyEvidence ? "週間予報（今回は変更なし）" : "週間予報（修正できます）"}</h3>
+    <p class="pendingWeatherEditNote">${separateWeeklyEvidence ? "このデイリー証拠画像には週間が写っていないため、週間は白＝既存データ維持です。必要な日だけ選ぶと、その日だけ更新します。" : "緑は今回更新する値、白は既存データを維持します。必要な日だけ修正できます。"}</p>
     <div class="pendingWeatherWeeks" data-pending-weather-week-editor="${esc(r.id)}">${weekChipGroupHtml(weekEditPrefix, reportDate, true)}</div>
     ${r.evidenceStatus === 'saved' && r.evidenceImages?.length ? `<div class="pendingWeatherImages" data-weather-evidence="${esc(r.id)}" data-evidence-display><p class="pendingWeatherEvidenceStatus">証拠画像を読み込み待ち…</p></div>` : '<p>保存済み証拠画像なし</p>'}
     ${source ? `<a class="pendingWeatherSourceLink" href="${esc(source)}" target="_blank" rel="noopener noreferrer">元投稿を開く</a>` : "<p>元投稿URLなし</p>"}
     <div class="buttons pendingWeatherActions"><button type="button" data-approve-weather="${esc(r.id)}">この内容で承認</button><button type="button" class="danger" data-reject-weather="${esc(r.id)}">却下</button></div>
     <details class="pendingWeatherDetails"><summary>詳細情報</summary><div class="pendingWeatherDetailsBody">
       <p>取得元：${esc(r.sourceType || '未記録')}<br>取得日時：${esc(r.retrievedAt || '未記録')}</p>
-      ${WEATHER_WEEK_KEYS.some(key => weeks[key]?.length) ? `<div><strong>自動判読時の週間データ</strong>${WEATHER_WEEK_KEYS.map((key, i) => `<div>${esc(weekDateLabel(reportDate, i))}：${esc(simpleWeatherText(weeks[key], "未入力"))}</div>`).join("")}</div>` : ""}
+      ${!separateWeeklyEvidence && WEATHER_WEEK_KEYS.some(key => weeks[key]?.length) ? `<div><strong>自動判読時の週間データ</strong>${WEATHER_WEEK_KEYS.map((key, i) => `<div>${esc(weekDateLabel(reportDate, i))}：${esc(simpleWeatherText(weeks[key], "未入力"))}</div>`).join("")}</div>` : ""}
       ${r.memo ? `<p class="pendingWeatherMemo">${esc(r.memo)}</p>` : ""}
       <p class="pendingWeatherSourceImagesLabel">元投稿画像（参考用・保存済み証拠画像とは別）</p>
       <div class="pendingWeatherImages">${images.length ? images.map((url, i) => `<button type="button" class="pendingWeatherImageButton" data-weather-image-open="${esc(url)}" data-weather-image-alt="元投稿画像 ${i + 1}" data-weather-image-caption="元投稿画像（参考） ${i + 1}"><img src="${esc(url)}" alt="元画像 ${i + 1}" loading="lazy" referrerpolicy="no-referrer"><span>元画像${i + 1}を拡大</span></button>`).join("") : "<p>元画像情報なし</p>"}</div>
@@ -5630,7 +5650,7 @@ async function fetchPendingWeatherReports(){
     E.pendingWeatherReports.innerHTML = reports.map(pendingWeatherCard).join("");
     reports.forEach(report => {
       setChipSelections(`pending-edit-${report.id}`, normalizeWeatherSlots(report));
-      setWeekSelections(`pending-week-${report.id}`, normalizeWeatherWeeks(report));
+      setWeekSelections(`pending-week-${report.id}`, pendingInitialWeeks(report));
     });
     observePendingEvidence();
     focusPendingWeatherDeepLink();
@@ -5654,20 +5674,22 @@ async function approveWeatherReport(id){
     if(WEATHER_WEEK_KEYS.some(key => weatherValues(editedWeeks[key]).length > 1)){
       throw new Error("週間予報は各日1つまで選んでください。");
     }
+
     const originalSlots = normalizeWeatherSlots(report);
-    const originalWeeks = normalizeWeatherWeeks(report);
+    const initialWeeks = pendingInitialWeeks(report);
     const slotsChanged = WEATHER_SLOT_KEYS.some(key => {
       const before = [...weatherValues(originalSlots[key])].sort();
       const after = [...weatherValues(editedSlots[key])].sort();
       return JSON.stringify(before) !== JSON.stringify(after);
     });
     const weeksChanged = WEATHER_WEEK_KEYS.some(key => {
-      const before = [...weatherValues(originalWeeks[key])].sort();
+      const before = [...weatherValues(initialWeeks[key])].sort();
       const after = [...weatherValues(editedWeeks[key])].sort();
       return JSON.stringify(before) !== JSON.stringify(after);
     });
+    const hasWhiteWeeks = WEATHER_WEEK_KEYS.some(key => !weatherValues(editedWeeks[key]).length);
 
-    if(!slotsChanged && !weeksChanged){
+    if(!slotsChanged && !weeksChanged && !hasWhiteWeeks){
       const result = await apiPost({action:"approve", id, adminKey:adminKeyValue()});
       if(result.ok === false) throw new Error(result.error || "APIエラー");
       await fetchPendingWeatherReports();
@@ -5675,14 +5697,24 @@ async function approveWeatherReport(id){
       return;
     }
 
+    let existingWeeks = blankWeatherWeeks();
+    if(hasWhiteWeeks){
+      await fetchApprovedWeather({admin:true});
+      existingWeeks = normalizeWeatherWeeks(weatherData(normalizeApiDate(report.date)) || {});
+    }
+    const mergedWeeks = Object.fromEntries(WEATHER_WEEK_KEYS.map(key => {
+      const selected = weatherValues(editedWeeks[key]);
+      return [key, selected.length ? selected : weatherValues(existingWeeks[key])];
+    }));
+
     const item = {
       date:normalizeApiDate(report.date),
       startSlot:normalizeStartSlot(report.startSlot),
       slots:editedSlots,
-      weeks:editedWeeks,
-      memo:String(report.memo || "")
+      weeks:mergedWeeks,
+      memo:pendingApprovedMemo(report)
     };
-    E.pendingWeatherStatus.textContent = "訂正版を保存中です…";
+    E.pendingWeatherStatus.textContent = "承認内容を保存中です…";
     await saveApprovedWeatherToApi(item);
     upsertWeather(item);
     save();
@@ -5690,12 +5722,12 @@ async function approveWeatherReport(id){
 
     const cleanup = await apiPost({action:"reject", id, adminKey:adminKeyValue()});
     if(cleanup.ok === false){
-      E.pendingWeatherStatus.textContent = `訂正版は保存済みですが、元のpendingを片付けられませんでした：${cleanup.error || "APIエラー"}`;
-      toast("訂正版は保存しました");
+      E.pendingWeatherStatus.textContent = `承認内容は保存済みですが、元のpendingを片付けられませんでした：${cleanup.error || "APIエラー"}`;
+      toast("承認内容は保存しました");
       return;
     }
     await fetchPendingWeatherReports();
-    toast("訂正して承認しました");
+    toast(slotsChanged || weeksChanged ? "修正して承認しました" : "天気報告を承認しました");
   }catch(error){
     E.pendingWeatherStatus.textContent = `承認できませんでした：${error.message}`;
   }
