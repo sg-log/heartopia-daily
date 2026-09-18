@@ -154,28 +154,39 @@ assert.equal(requests.length, 6);
 assert.equal(dispatchedKind(5), 'primary');
 assert.equal(properties.get('WEATHER_SCHEDULER_MORNING_PRIMARY_DATE'), '2026-09-18');
 
+setClock('2026-09-18', 12, 42);
+context.runWeatherScheduler();
+assert.equal(requests.length, 7, 'one-time acceptance heartbeat must dispatch');
+assert.equal(dispatchedSlot(8), 'morning');
+assert.equal(dispatchedOrigin(6), 'apps-script');
+assert.equal(dispatchedKind(7), 'primary');
+assert.equal(properties.get('WEATHER_SCHEDULER_ACCEPTANCE_20260918'), '2026-09-18');
+setClock('2026-09-18', 12, 47);
+context.runWeatherScheduler();
+assert.equal(requests.length, 7, 'acceptance heartbeat must not repeat');
+
 setClock('2026-09-19', 7, 22);
 context.runWeatherScheduler();
-assert.equal(requests.length, 7, 'late heartbeat must catch the primary attempt');
+assert.equal(requests.length, 8, 'late heartbeat must catch the primary attempt');
 assert.equal(dispatchedSlot(6), 'morning');
 assert.equal(dispatchedKind(6), 'primary');
 setClock('2026-09-19', 7, 27);
 context.runWeatherScheduler();
-assert.equal(requests.length, 8, 'next heartbeat must catch the retry attempt');
+assert.equal(requests.length, 9, 'next heartbeat must catch the retry attempt');
 assert.equal(dispatchedSlot(7), 'morning');
-assert.equal(dispatchedKind(7), 'retry');
+assert.equal(dispatchedKind(8), 'retry');
 
 setClock('2026-09-20', 19, 30);
 context.runWeatherScheduler();
-assert.equal(requests.length, 9, 'evening should not backfill a missed morning attempt');
-assert.equal(dispatchedSlot(8), 'evening');
-assert.equal(dispatchedKind(8), 'primary');
+assert.equal(requests.length, 10, 'evening should not backfill a missed morning attempt');
+assert.equal(dispatchedSlot(9), 'evening');
+assert.equal(dispatchedKind(9), 'primary');
 
 const invalidAttempt = context.dispatchWeatherAutomationFromScheduler_('2026-09-20', 'evening', 'bogus');
 assert.equal(invalidAttempt.ok, false);
 assert.equal(invalidAttempt.error, '天気自動更新の試行種別が不正です。');
 assert.equal(invalidAttempt.failureCode, 'githubAutomationAttemptInvalid');
-assert.equal(requests.length, 9, 'invalid attempt kind must not call GitHub');
+assert.equal(requests.length, 10, 'invalid attempt kind must not call GitHub');
 
 triggers.push(trigger('runWeatherScheduler'));
 triggers.push(trigger('otherFunction'));
