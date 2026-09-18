@@ -138,8 +138,14 @@ jobs:
         uses: actions/github-script@v7
         env:
           RUN_KEY: ${{ steps.slot.outputs.run_key }}
+          ORIGIN: ${{ steps.slot.outputs.origin }}
         with:
           script: |
+            if (process.env.ORIGIN === 'manual') {
+              core.setOutput('already_succeeded', 'false')
+              core.notice(`Manual retry for ${process.env.RUN_KEY}; existing success markers do not block re-review.`)
+              return
+            }
             const marker = `<!-- heartopia-weather-scheduled-success:${process.env.RUN_KEY} -->`
             const { data } = await github.rest.issues.listForRepo({ ...context.repo, state:'all', per_page:100, sort:'created', direction:'desc' })
             const found = data.some(issue => !issue.pull_request && typeof issue.body === 'string' && issue.body.includes(marker))
@@ -170,7 +176,8 @@ jobs:
         env:
           TARGET_DATE: ${{ steps.slot.outputs.target_date }}
           RESULT_PATH: ${{ runner.temp }}/weather-public-discovery.json
-        run: node tools/weather-public-discovery.mjs --target-date "$TARGET_DATE" --out "$RESULT_PATH"
+          RUN_SLOT: ${{ steps.slot.outputs.slot }}
+        run: node tools/weather-public-discovery.mjs --target-date "$TARGET_DATE" --slot "$RUN_SLOT" --out "$RESULT_PATH"
 
       - name: Prepare public evidence candidates
         id: publish
@@ -191,7 +198,7 @@ jobs:
               if (!c || !['x','web'].includes(c.sourceType)) return false
               if (c.sourceType === 'x') return /^https:\/\/x\.com\/i\/status\/\d+$/.test(c.sourceUrl || '')
               return /^https:\/\//.test(c.sourceUrl || '')
-            }).slice(0, 16)
+            }).slice(0, 24)
             fs.writeFileSync(process.env.CANDIDATE_PATH, JSON.stringify(usable), 'utf8')
             core.setOutput('candidate_count', String(result.candidates.length))
             core.setOutput('usable_candidate_count', String(usable.length))
@@ -207,8 +214,10 @@ jobs:
           TARGET_DATE: ${{ steps.slot.outputs.target_date }}
           SELECTED_DIR: ${{ runner.temp }}/weather-selected-evidence
           REVIEW_DRAFT: ${{ runner.temp }}/weather-unified-review.json
+          RUN_SLOT: ${{ steps.slot.outputs.slot }}
         run: |
           $ErrorActionPreference = 'Continue'
+          $expectedStartSlot = if ($env:RUN_SLOT -eq 'morning') { '06' } elseif ($env:RUN_SLOT -eq 'evening') { '18' } else { throw 'Invalid run slot.' }
           $candidates = @(Get-Content -LiteralPath $env:CANDIDATE_PATH -Raw -Encoding UTF8 | ConvertFrom-Json)
           $selected = $null
           for ($i = 0; $i -lt $candidates.Count; $i++) {
@@ -234,6 +243,17 @@ jobs:
               Copy-Item -LiteralPath $env:REVIEW_DRAFT -Destination (Join-Path $dir 'review.json') -Force
             }
             if ($LASTEXITCODE -eq 0) {
+              try {
+                $review = Get-Content -LiteralPath $env:REVIEW_DRAFT -Raw -Encoding UTF8 | ConvertFrom-Json
+                $actualStartSlot = [string]$review.interpretation.startSlot
+              } catch {
+                Write-Host "Reject candidate: review payload could not be read."
+                continue
+              }
+              if ($actualStartSlot -cne $expectedStartSlot) {
+                Write-Host "Reject candidate due to stale start slot: expected=$expectedStartSlot actual=$actualStartSlot source=$([string]$candidate.sourceUrl)"
+                continue
+              }
               if (Test-Path $env:SELECTED_DIR) { Remove-Item -Recurse -Force $env:SELECTED_DIR }
               Move-Item -LiteralPath $dir -Destination $env:SELECTED_DIR
               $selected = $candidate
