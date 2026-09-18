@@ -2,4 +2,7 @@
 !weather-api.gs
 !weather-review-image.gs
 !weather-scheduler.gs
+!gift-code-config.gs
+!gift-code-parser.gs
+!gift-code-storage.gs
 !appsscript.json

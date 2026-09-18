@@ -13,7 +13,10 @@
   "filePushOrder": [
     "apps-script/weather-api.gs",
     "apps-script/weather-review-image.gs",
-    "apps-script/weather-scheduler.gs"
+    "apps-script/weather-scheduler.gs",
+    "apps-script/gift-code-config.gs",
+    "apps-script/gift-code-parser.gs",
+    "apps-script/gift-code-storage.gs"
   ],
   "skipSubdirectories": true
 }
