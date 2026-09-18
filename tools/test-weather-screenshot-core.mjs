@@ -42,6 +42,35 @@ test('dailyの晴・雨・虹・流星群・猛暑を本番ヒューリスティ
   assert.equal(core.resolveDailyScore({...base,bestValue:'猛暑',metrics:{warm:.08}}).value,'猛暑');
 });
 
+test('紫背景と暖色だけでは晴テンプレートを流星群へ上書きしない', () => {
+  const result=core.resolveDailyScore({
+    bestValue:'晴',bestScore:.58,secondValue:'流星群',secondScore:.49,margin:.09,
+    metrics:{purple:.42,warm:.08,cyan:0,red:0}
+  });
+  assert.equal(result.value,'晴');
+  assert.equal(result.heuristic,'晴テンプレート照合');
+});
+
+test('流星群は紫背景ではなく流星群テンプレートの形状一致を必須にする', () => {
+  const backgroundOnly=core.resolveDailyScore({
+    bestValue:'流星群',bestScore:.44,secondValue:'晴',secondScore:.431,margin:.009,
+    metrics:{purple:.48,warm:.04,cyan:0,red:0}
+  });
+  const weakShapeOnly=core.resolveDailyScore({
+    bestValue:'流星群',bestScore:.44,secondValue:'晴',secondScore:.431,margin:.009,
+    metrics:{purple:.48,warm:.01,cyan:0,red:0}
+  });
+  const genuine=core.resolveDailyScore({
+    bestValue:'流星群',bestScore:.62,secondValue:'晴',secondScore:.46,margin:.16,
+    metrics:{purple:.18,warm:.03,cyan:0,red:0}
+  });
+  assert.equal(backgroundOnly.value,'晴');
+  assert.equal(weakShapeOnly.value,'');
+  assert.equal(weakShapeOnly.high,false);
+  assert.equal(genuine.value,'流星群');
+  assert.equal(genuine.heuristic,'流星群テンプレート照合');
+});
+
 test('daily-onlyはdaily候補を返しweeklyを空にする', () => {
   const review = core.buildManualReview({
     panelConfirmed:true,

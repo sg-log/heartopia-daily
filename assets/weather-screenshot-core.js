@@ -23,26 +23,35 @@
     return matches.length === 1 ? {...matches[0], mapped:[...values], observed} : null;
   }
 
-  // Daily thresholds and weather-specific helpers are intentionally identical to
-  // weather-direct-daily-panel-review.mjs. A low result stays unresolved.
+  // Manual screenshot crops include more of the purple in-game panel than the
+  // scheduled-review crops. Purple is therefore diagnostic only; a meteor
+  // result must be backed by a strong meteor template match.
   function resolveDailyScore(score={}){
     const metrics = score.metrics || {};
     const warm = Number(metrics.warm) || 0;
     const cyan = Number(metrics.cyan) || 0;
-    const purple = Number(metrics.purple) || 0;
     const red = Number(metrics.red) || 0;
     const bestScore = Number(score.bestScore) || 0;
     const margin = Number(score.margin) || 0;
+    const templateStrong = bestScore >= .43 && margin >= .008;
+    const meteorTemplateStrong = score.bestValue === "流星群"
+      && bestScore >= .46
+      && margin >= .02;
     let value = score.bestValue || "";
     let heuristic = "";
     if(red >= .04 && cyan >= .12){ value = "虹"; heuristic = "虹色比率"; }
-    else if(purple >= .10 && warm >= .02){ value = "流星群"; heuristic = "紫色・暖色比率"; }
     else if(cyan >= .58 && warm < .02){ value = "雨"; heuristic = "シアン比率"; }
+    else if(meteorTemplateStrong){ value = "流星群"; heuristic = "流星群テンプレート照合"; }
+    else if(value === "流星群"){
+      value = warm >= .025 ? "晴" : "";
+      heuristic = value ? "暖色比率" : "";
+    }
+    else if(value === "晴" && templateStrong){ value = "晴"; heuristic = "晴テンプレート照合"; }
     else if(warm >= .025 && value !== "猛暑"){ value = "晴"; heuristic = "暖色比率"; }
-    const high = (bestScore >= .43 && margin >= .008)
+    const high = Boolean(value) && (templateStrong
       || warm >= .025
       || (cyan >= .58 && warm < .02)
-      || (red >= .04 && cyan >= .12);
+      || (red >= .04 && cyan >= .12));
     return {value:high ? value : "", suggestedValue:value, high, heuristic};
   }
 

@@ -3892,6 +3892,7 @@ function classifyWeatherCrop(canvas, templates=[]){
     secondValue,
     secondScore,
     margin:bestScore - secondScore,
+    scores,
     metrics
   };
 }
@@ -4070,6 +4071,63 @@ function thresholdWeatherTimeCanvas(base,threshold){
   }
   ctx.putImageData(imageData,0,0);return canvas;
 }
+function normalizeWeatherTimeOcrText(value){
+  return String(value||"")
+    .toUpperCase()
+    .replace(/[OQD]/g,"0")
+    .replace(/[IL|]/g,"1")
+    .replace(/S/g,"5")
+    .replace(/B/g,"8");
+}
+function extractWeatherTimeValues(value){
+  const normalized=normalizeWeatherTimeOcrText(value);
+  return [...normalized.matchAll(/(?:^|\D)(00|06|12|18)(?=\D|$)/g)].map(match=>match[1]);
+}
+function trimWeatherTimeCanvas(source,padding=4){
+  const ctx=source.getContext("2d",{willReadFrequently:true});
+  const data=ctx.getImageData(0,0,source.width,source.height).data;
+  let minX=source.width,minY=source.height,maxX=-1,maxY=-1;
+  for(let y=0;y<source.height;y++) for(let x=0;x<source.width;x++){
+    const i=(y*source.width+x)*4,r=data[i],g=data[i+1],b=data[i+2];
+    const hsv=rgbToHsv(r,g,b),lum=.299*r+.587*g+.114*b;
+    if(lum<150||hsv.s>.48) continue;
+    minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);
+  }
+  if(maxX<minX||maxY<minY) return source;
+  const x=Math.max(0,minX-padding),y=Math.max(0,minY-padding);
+  const width=Math.min(source.width-x,maxX-minX+1+padding*2);
+  const height=Math.min(source.height-y,maxY-minY+1+padding*2);
+  const canvas=document.createElement("canvas");canvas.width=width;canvas.height=height;
+  canvas.getContext("2d").drawImage(source,x,y,width,height,0,0,width,height);
+  return canvas;
+}
+function weatherTimeCrop(panel,layout,left,right){
+  const iconBottom=layout.iconY+layout.iconSize/2;
+  const topRatio=Math.max(
+    layout.labelY-(layout.mode==="daily-only"?.008:0),
+    iconBottom-(layout.mode==="combined"?.003:0)
+  );
+  const bottomRatio=Math.min(
+    layout.labelY+layout.labelHeight+(layout.mode==="daily-only"?.025:.005),
+    layout.lightRegion?.y||1
+  );
+  const y=Math.max(0,Math.round(panel.height*topRatio));
+  const bottom=Math.min(panel.height,Math.round(panel.height*bottomRatio));
+  const x=Math.max(0,Math.round(left));
+  const width=Math.max(1,Math.min(panel.width,Math.round(right))-x);
+  const source=document.createElement("canvas");source.width=width;source.height=Math.max(1,bottom-y);
+  source.getContext("2d",{willReadFrequently:true}).drawImage(panel,x,y,width,source.height,0,0,width,source.height);
+  const trimmed=trimWeatherTimeCanvas(source,Math.max(3,Math.round(panel.width*.006)));
+  const scale=Math.max(2,Math.min(6,Math.round(112/Math.max(1,trimmed.height))));
+  const canvas=document.createElement("canvas");canvas.width=trimmed.width*scale;canvas.height=trimmed.height*scale;
+  const ctx=canvas.getContext("2d",{willReadFrequently:true});ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
+  ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(trimmed,0,0,canvas.width,canvas.height);
+  return canvas;
+}
+function weatherTimeVariants(base){
+  return [base,145,165,185,205,225].map(value=>typeof value==="number"?thresholdWeatherTimeCanvas(base,value):value);
+}
 async function readWeatherScreenshotStartSlot(panel,layout){
   const mapped=Array(5).fill(""),attempts=[];
   let worker=null;
@@ -4077,22 +4135,38 @@ async function readWeatherScreenshotStartSlot(panel,layout){
     const Tesseract=await loadTesseract();
     worker=await Tesseract.createWorker("eng",1,{logger:()=>{}});
     await worker.setParameters({tessedit_char_whitelist:"0123456789",tessedit_pageseg_mode:"7"});
+    const firstCenter=panel.width*layout.x[0],lastCenter=panel.width*layout.x[layout.x.length-1];
+    const rowPadding=panel.width*layout.labelWidth*.58;
+    const rowBase=weatherTimeCrop(panel,layout,firstCenter-rowPadding,lastCenter+rowPadding);
+    const rowAttempts=[];
+    const rowVariants=weatherTimeVariants(rowBase);
+    for(let variantIndex=0;variantIndex<rowVariants.length;variantIndex++){
+      const result=await worker.recognize(rowVariants[variantIndex]);
+      const raw=String(result?.data?.text||"").trim();
+      const values=extractWeatherTimeValues(raw);
+      rowAttempts.push({variantIndex,raw,values});
+      if(values.length===5&&WeatherScreenshotCore.inferStartSlot(values,5)){
+        values.forEach((value,index)=>{mapped[index]=value;});
+        break;
+      }
+    }
+    attempts.push({kind:"row",value:mapped.every(Boolean)?mapped.join("/"):"",attempts:rowAttempts});
     for(let index=0;index<layout.x.length;index++){
-      const width=Math.round(panel.width*layout.labelWidth),height=Math.round(panel.height*layout.labelHeight);
-      const x=Math.max(0,Math.round(panel.width*layout.x[index]-width/2)),y=Math.round(panel.height*layout.labelY),scale=layout.mode==="daily-only"?9:10;
-      const base=document.createElement("canvas");base.width=width*scale;base.height=height*scale;
-      const ctx=base.getContext("2d",{willReadFrequently:true});ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
-      ctx.drawImage(panel,x,y,width,height,0,0,base.width,base.height);
-      const variants=[base,...(layout.mode==="daily-only"?[155,185,210]:[165,195]).map(value=>thresholdWeatherTimeCanvas(base,value))];
+      if(mapped[index]){attempts.push({kind:"cell",index,value:mapped[index],attempts:[]});continue;}
+      const halfWidth=panel.width*layout.labelWidth*.58;
+      const center=panel.width*layout.x[index];
+      const base=weatherTimeCrop(panel,layout,center-halfWidth,center+halfWidth);
+      const variants=weatherTimeVariants(base);
       const cell=[];
       for(let variantIndex=0;variantIndex<variants.length;variantIndex++){
         const result=await worker.recognize(variants[variantIndex]);
-        const raw=String(result?.data?.text||"").replace(/\s+/g,"");
-        const value=WEATHER_START_SLOTS.find(allowed=>raw.includes(allowed))||"";
+        const raw=String(result?.data?.text||"").trim();
+        const values=extractWeatherTimeValues(raw);
+        const value=values.length===1?values[0]:"";
         cell.push({variantIndex,raw,value});
         if(value){mapped[index]=value;break;}
       }
-      attempts.push({index,value:mapped[index],attempts:cell});
+      attempts.push({kind:"cell",index,value:mapped[index],attempts:cell});
     }
   }catch(error){
     return {startSlot:"",mapped,attempts,warning:"開始時刻は自動判定できませんでした"};

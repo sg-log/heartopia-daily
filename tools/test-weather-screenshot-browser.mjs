@@ -64,3 +64,94 @@ test('ブラウザ判定は全画面内のdailyパネルとパネル切り抜き
     await new Promise(resolve=>server.close(resolve));
   }
 });
+
+test('実スクショ相当fixtureはdaily晴5枠・00開始・weekly既存判定を維持する', async t => {
+  const server=await startStaticServer();
+  const browser=await chromium.launch({headless:true});
+  try{
+    const page=await browser.newPage();
+    const address=server.address();
+    await page.goto(`http://127.0.0.1:${address.port}/index.html`, {waitUntil:'domcontentloaded'});
+    await page.waitForFunction(() => Boolean(window.WeatherScreenshotCore && window.locateWeatherPanel));
+    const result=await page.evaluate(async () => {
+      const {templates}=await loadWeatherTemplates();
+      const image=await new Promise((resolve,reject)=>{
+        const value=new Image();value.onload=()=>resolve(value);value.onerror=reject;
+        value.src='tools/fixtures/weather-manual-sunny-purple.png';
+      });
+      const panel=locateWeatherPanel(image,templates);
+      if(!panel) return {found:false};
+      // CI is offline. The crop/preprocessing path is exercised here with a
+      // deterministic worker; the same fixture is also suitable for live OCR.
+      window.loadTesseract=async()=>({createWorker:async()=>({
+        setParameters:async()=>{},
+        recognize:async canvas=>({data:{text:canvas.width/canvas.height>4?'00 06 12 18 00':'00'}}),
+        terminate:async()=>{}
+      })});
+      const start=await readWeatherScreenshotStartSlot(panel.panel,panel.layout);
+      const review=WeatherScreenshotCore.buildManualReview({
+        panelConfirmed:true,
+        dailyScores:panel.dailyScores,
+        mappedTimes:start.mapped,
+        weeklyPanelConfirmed:panel.weeklyPanelConfirmed,
+        weeklyScores:panel.weeklyScores
+      });
+      return {
+        found:true,
+        mode:panel.layout.mode,
+        mapped:start.mapped,
+        startSlot:review.startSlot,
+        daily:review.slots.map(item=>item.value),
+        weekly:review.weeks.map(item=>item.value),
+        diagnostics:review.slots.map((item,index)=>({
+          slot:index,
+          bestValue:item.bestValue,
+          bestScore:Number(item.bestScore.toFixed(3)),
+          secondValue:item.secondValue,
+          margin:Number(item.margin.toFixed(3)),
+          warm:Number((item.metrics.warm||0).toFixed(3)),
+          cyan:Number((item.metrics.cyan||0).toFixed(3)),
+          purple:Number((item.metrics.purple||0).toFixed(3)),
+          red:Number((item.metrics.red||0).toFixed(3)),
+          box:item.box
+        }))
+      };
+    });
+    t.diagnostic(`daily crop metrics: ${JSON.stringify(result.diagnostics)}`);
+    assert.equal(result.found,true);
+    assert.equal(result.mode,'combined');
+    assert.deepEqual(result.mapped,['00','06','12','18','00']);
+    assert.equal(result.startSlot,'00');
+    assert.deepEqual(result.daily,['晴','晴','晴','晴','晴']);
+    assert.deepEqual(result.weekly,['虹','流星群','晴','晴','晴']);
+  } finally {
+    await browser.close();
+    await new Promise(resolve=>server.close(resolve));
+  }
+});
+
+test('実テンプレートfixtureで流星群・虹・雨・猛暑を維持する', async () => {
+  const server=await startStaticServer();
+  const browser=await chromium.launch({headless:true});
+  try{
+    const page=await browser.newPage();
+    const address=server.address();
+    await page.goto(`http://127.0.0.1:${address.port}/index.html`, {waitUntil:'domcontentloaded'});
+    await page.waitForFunction(() => Boolean(window.WeatherScreenshotCore && window.classifyWeatherCrop));
+    const result=await page.evaluate(async () => {
+      const {templates}=await loadWeatherTemplates();
+      return Object.fromEntries(await Promise.all(['流星群','虹','雨','猛暑'].map(async weather=>{
+        const template=templates.find(item=>item.weather===weather);
+        const image=await new Promise((resolve,reject)=>{const value=new Image();value.onload=()=>resolve(value);value.onerror=reject;value.src=template.path;});
+        const canvas=document.createElement('canvas');canvas.width=canvas.height=56;
+        canvas.getContext('2d').drawImage(image,0,0,56,56);
+        const score=classifyWeatherCrop(canvas,templates);
+        return [weather,WeatherScreenshotCore.resolveDailyScore(score).value];
+      })));
+    });
+    assert.deepEqual(result,{'流星群':'流星群','虹':'虹','雨':'雨','猛暑':'猛暑'});
+  } finally {
+    await browser.close();
+    await new Promise(resolve=>server.close(resolve));
+  }
+});
