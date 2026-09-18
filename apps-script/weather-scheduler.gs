@@ -86,16 +86,18 @@ function nextWeatherSchedulerAttempt_(date, minuteOfDay) {
   if (
     date === WEATHER_SCHEDULER_ACCEPTANCE_TEST.date &&
     minuteOfDay >= WEATHER_SCHEDULER_ACCEPTANCE_TEST.dueMinute &&
-    minuteOfDay < 19 * 60 &&
-    String(props.getProperty(WEATHER_SCHEDULER_ACCEPTANCE_TEST.propertyName) || "") !== date
+    minuteOfDay < 19 * 60
   ) {
-    return {
-      name: "morning-acceptance-test",
-      kind: "primary",
-      slot: "morning",
-      dueMinute: WEATHER_SCHEDULER_ACCEPTANCE_TEST.dueMinute,
-      propertyName: WEATHER_SCHEDULER_ACCEPTANCE_TEST.propertyName
-    };
+    if (String(props.getProperty(WEATHER_SCHEDULER_ACCEPTANCE_TEST.propertyName) || "") !== date) {
+      return {
+        name: "morning-acceptance-test",
+        kind: "primary",
+        slot: "morning",
+        dueMinute: WEATHER_SCHEDULER_ACCEPTANCE_TEST.dueMinute,
+        propertyName: WEATHER_SCHEDULER_ACCEPTANCE_TEST.propertyName
+      };
+    }
+    return null;
   }
 
   const attempts = minuteOfDay < 19 * 60
