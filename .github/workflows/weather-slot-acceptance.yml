@@ -1,0 +1,45 @@
+name: Weather slot acceptance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/weather-slot-acceptance.yml'
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  accept:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Verify slot-aware discovery helpers
+        run: |
+          node --input-type=module - <<'NODE'
+          import { buildQueries, candidateRelevance } from './tools/weather-public-discovery.mjs';
+          const q = buildQueries('2026-09-18','morning');
+          if (!q.some(x => x.includes('06:00'))) throw new Error('morning query lacks 06:00');
+          const r = candidateRelevance('ハートピア お天気予報 9月18日 06:00～ 晴れ','2026-09-18','morning');
+          if (!r.relevant || !r.dateMatched || !r.startSlotMatched) throw new Error('morning relevance mismatch');
+          const stale = candidateRelevance('ハートピア お天気予報 9月18日 00:00～ 晴れ','2026-09-18','morning');
+          if (stale.startSlotMatched) throw new Error('stale 00 start matched morning');
+          console.log({queries:q, current:r, stale});
+          NODE
+      - name: Dispatch production morning acceptance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh workflow run weather-scheduled-run.yml
+          --ref main
+          -f slot=morning
+          -f target_date=2026-09-18
+          -f trigger_origin=manual
+          -f attempt_kind=manual
