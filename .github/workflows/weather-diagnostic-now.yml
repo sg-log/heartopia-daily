@@ -1,0 +1,48 @@
+name: Weather diagnostic now
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/weather-diagnostic-now.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Capture exact 2026-09-18 top candidate
+        shell: pwsh
+        env:
+          SOURCE_URL: https://x.com/i/status/2100687420958339120
+          TARGET_DATE: 2026-09-18
+          CAPTURE_DIR: ${{ runner.temp }}/weather-diagnostic-capture
+          REVIEW_PATH: ${{ runner.temp }}/weather-diagnostic-review.json
+        run: |
+          $ErrorActionPreference = 'Continue'
+          New-Item -ItemType Directory -Path $env:CAPTURE_DIR -Force | Out-Null
+          node tools/weather-x-embed-evidence.mjs --url "$env:SOURCE_URL" --output-dir "$env:CAPTURE_DIR"
+          if ($LASTEXITCODE -ne 0) { throw 'capture failed' }
+          ./tools/weather-cloud-discovery.ps1 -CapturePath "$env:CAPTURE_DIR/capture.json" -OutputPath "$env:CAPTURE_DIR/discovery-candidate.json" -DiscoverySource "diagnostic" -SearchQuery "2026-09-18 exact candidate"
+          node tools/weather-unified-review.mjs --mode inspect --capture-dir "$env:CAPTURE_DIR" --target-date "$env:TARGET_DATE" --output "$env:REVIEW_PATH"
+          $code = $LASTEXITCODE
+          Copy-Item -LiteralPath "$env:REVIEW_PATH" -Destination "$env:CAPTURE_DIR/review.json" -Force
+          if ($code -ne 0) { Write-Host "Review returned not-ready as expected for diagnosis." }
+      - name: Upload diagnostic artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: weather-diagnostic-${{ github.run_id }}
+          path: ${{ runner.temp }}/weather-diagnostic-capture
+          if-no-files-found: error
+          retention-days: 3
