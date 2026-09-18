@@ -1641,6 +1641,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
 <div id="toast" class="toast"></div>
 
 <script src="assets/puzzles/puzzles-data.js"></script>
+<script src="assets/weather-screenshot-core.js"></script>
 <script>
 const WEATHER_API_URL = "https://script.google.com/macros/s/AKfycbwoPLuj0rSsennsx01-B-6UxqBjqnPieocgVLQnJMKEgRw6fZziV5ZGVA3SusjVLF3o/exec";
 const WEATHER_OPTIONS = [
@@ -1671,31 +1672,20 @@ const WEATHER_ICON_TEMPLATES = [
   { weather:"雨", path:"assets/weather-templates/rain.png" }
 ];
 const WEATHER_SCREENSHOT_LAYOUT = {
-  top:{aspect:497/661,tolerance:.18},
-  bottom:{aspect:495/126,tolerance:.42},
-  slotIcons:[
-    {key:"slot0",x:.080,y:.418,w:.105,h:.070},
-    {key:"slot1",x:.294,y:.418,w:.105,h:.070},
-    {key:"slot2",x:.471,y:.418,w:.105,h:.070},
-    {key:"slot3",x:.650,y:.418,w:.105,h:.070},
-    {key:"slot4",x:.829,y:.418,w:.105,h:.070}
-  ],
-  timeStrip:{x:.075,y:.490,w:.850,h:.065},
-  weekTop:[
-    {key:"week1",x:.837,y:.557,w:.080,h:.064},
-    {key:"week2",x:.833,y:.635,w:.089,h:.067},
-    {key:"week3",x:.833,y:.720,w:.091,h:.057},
-    {key:"week4",x:.833,y:.800,w:.091,h:.067},
-    {key:"week5",x:.833,y:.878,w:.089,h:.067}
-  ],
-  weekBottom:[
-    {key:"week6",x:.836,y:.151,w:.089,h:.333},
-    {key:"week7",x:.836,y:.556,w:.089,h:.365}
-  ],
-  confidenceThreshold:.58,
-  marginThreshold:.10,
-  searchPixels:4,
-  searchStep:2
+  dailyOnly:{
+    mode:"daily-only", minWidth:420, minHeight:420, minAspect:.84, maxAspect:1.16,
+    x:[.17,.335,.50,.67,.835], iconY:.725, labelY:.785,
+    iconSize:.105, labelWidth:.14, labelHeight:.085,
+    blueRegion:{x:.06,y:.08,w:.88,h:.83}, blueThreshold:.34
+  },
+  combined:{
+    mode:"combined", minWidth:190, minHeight:230, minAspect:.72, maxAspect:1.02,
+    x:[.18,.325,.47,.655,.81], iconY:.455, labelY:.485,
+    iconSize:.115, labelWidth:.13, labelHeight:.075,
+    blueRegion:{x:.05,y:.10,w:.90,h:.43}, blueThreshold:.22,
+    lightRegion:{x:.05,y:.55,w:.89,h:.43}, lightThreshold:.55,
+    weekX:.815, weekY:[.594,.674,.754,.836,.916], weekIconSize:.095
+  }
 };
 const SUNNY_ICONS = {
   "00":"🌙",
@@ -3754,11 +3744,13 @@ function fileToImage(file){
   });
 }
 function rectToPixels(image, rect){
+  const width = image.naturalWidth || image.width;
+  const height = image.naturalHeight || image.height;
   return {
-    x:Math.round(image.naturalWidth * rect.x),
-    y:Math.round(image.naturalHeight * rect.y),
-    w:Math.max(1, Math.round(image.naturalWidth * rect.w)),
-    h:Math.max(1, Math.round(image.naturalHeight * rect.h))
+    x:Math.round(width * rect.x),
+    y:Math.round(height * rect.y),
+    w:Math.max(1, Math.round(width * rect.w)),
+    h:Math.max(1, Math.round(height * rect.h))
   };
 }
 function pixelRectToCanvas(image, p, size=56){
@@ -3775,10 +3767,6 @@ function cropImageToCanvas(image, rect, size=56){
   const p = rectToPixels(image, rect);
   return pixelRectToCanvas(image, p, size);
 }
-function layoutMatches(image, layout){
-  const aspect = image.naturalWidth / image.naturalHeight;
-  return Math.abs(aspect - layout.aspect) <= layout.tolerance;
-}
 function rgbToHsv(r,g,b){
   r /= 255; g /= 255; b /= 255;
   const max = Math.max(r,g,b), min = Math.min(r,g,b);
@@ -3792,63 +3780,6 @@ function rgbToHsv(r,g,b){
     if(h < 0) h += 360;
   }
   return {h, s:max ? d / max : 0, v:max};
-}
-function weatherCropFeature(canvas){
-  const ctx = canvas.getContext("2d", {willReadFrequently:true});
-  const {width,height} = canvas;
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const data = imageData.data;
-  const corner = [[1,1],[width-2,1],[1,height-2],[width-2,height-2]]
-    .map(([x,y]) => {
-      const i = (y * width + x) * 4;
-      return [data[i], data[i + 1], data[i + 2]];
-    });
-  const bg = corner.reduce((acc, rgb) => [acc[0]+rgb[0], acc[1]+rgb[1], acc[2]+rgb[2]], [0,0,0]).map(v => v / corner.length);
-  const bins = Array(12).fill(0);
-  let count = 0, sat = 0, bright = 0, dark = 0, yellow = 0, orange = 0, red = 0, green = 0, blue = 0, cyan = 0, purple = 0, edge = 0;
-  for(let y = 1; y < height - 1; y++){
-    for(let x = 1; x < width - 1; x++){
-      const i = (y * width + x) * 4;
-      const r = data[i], g = data[i + 1], b = data[i + 2];
-      const dist = Math.hypot(r - bg[0], g - bg[1], b - bg[2]);
-      const hsv = rgbToHsv(r,g,b);
-      if(dist < 22 && hsv.s < .18) continue;
-      count++;
-      sat += hsv.s;
-      if(hsv.v > .72) bright++;
-      if(hsv.v < .32) dark++;
-      if(hsv.h < 25 || hsv.h >= 345) red++;
-      if(hsv.h >= 25 && hsv.h < 52) orange++;
-      if(hsv.h >= 52 && hsv.h < 78) yellow++;
-      if(hsv.h >= 78 && hsv.h < 165) green++;
-      if(hsv.h >= 165 && hsv.h < 205) cyan++;
-      if(hsv.h >= 205 && hsv.h < 265) blue++;
-      if(hsv.h >= 265 && hsv.h < 330) purple++;
-      bins[Math.min(11, Math.floor(hsv.h / 30))]++;
-      const left = ((y * width + x - 1) * 4);
-      const up = (((y - 1) * width + x) * 4);
-      if(Math.abs(r - data[left]) + Math.abs(g - data[left + 1]) + Math.abs(b - data[left + 2])
-        + Math.abs(r - data[up]) + Math.abs(g - data[up + 1]) + Math.abs(b - data[up + 2]) > 110) edge++;
-    }
-  }
-  const denom = Math.max(1, count);
-  const usedBins = bins.filter(v => v / denom > .035).length;
-  return {
-    bins:bins.map(v => v / denom),
-    countRatio:count / (width * height),
-    sat:sat / denom,
-    bright:bright / denom,
-    dark:dark / denom,
-    yellow:yellow / denom,
-    orange:orange / denom,
-    red:red / denom,
-    green:green / denom,
-    blue:blue / denom,
-    cyan:cyan / denom,
-    purple:purple / denom,
-    edge:edge / denom,
-    diversity:usedBins / bins.length
-  };
 }
 function weatherPixelSignature(canvas){
   const ctx = canvas.getContext("2d", {willReadFrequently:true});
@@ -3869,33 +3800,12 @@ function weatherPixelSignature(canvas){
       const r = data[i], g = data[i + 1], b = data[i + 2];
       const hsv = rgbToHsv(r,g,b);
       const dist = Math.hypot(r - bg[0], g - bg[1], b - bg[2]);
-      const foreground = dist >= 22 || hsv.s >= .18;
+      const foreground = dist >= 18 || hsv.s >= .15;
       mask.push(foreground ? 1 : 0);
       pixels.push([r,g,b]);
     }
   }
   return {pixels, mask};
-}
-function heuristicWeatherScores(feature){
-  const scores = {
-    "晴": Math.max(feature.yellow * .9 + feature.orange * .35 + feature.bright * .28 - feature.dark * .18, feature.bright * .42 + (1 - feature.sat) * .14),
-    "猛暑": feature.yellow * .6 + feature.orange * .75 + feature.dark * .28 + feature.edge * .12,
-    "虹": feature.diversity * .55 + feature.red * .35 + feature.green * .35 + (feature.blue + feature.cyan) * .28,
-    "流星群": feature.purple * .55 + feature.blue * .45 + feature.bright * .18 + feature.edge * .18,
-    "雨": feature.blue * .65 + feature.cyan * .55 + feature.sat * .18
-  };
-  if(feature.countRatio < .04) Object.keys(scores).forEach(key => scores[key] *= .45);
-  return scores;
-}
-function featureSimilarity(a,b){
-  const hist = a.bins.reduce((sum, value, index) => sum + Math.min(value, b.bins[index] || 0), 0);
-  const scalar = 1 - Math.min(1, (
-    Math.abs(a.sat - b.sat) +
-    Math.abs(a.bright - b.bright) +
-    Math.abs(a.dark - b.dark) +
-    Math.abs(a.edge - b.edge)
-  ) / 4);
-  return hist * .72 + scalar * .28;
 }
 function pixelSimilarity(a,b){
   let union = 0, intersection = 0, color = 0, colorCount = 0;
@@ -3912,7 +3822,40 @@ function pixelSimilarity(a,b){
   }
   const maskScore = union ? intersection / union : 0;
   const colorScore = colorCount ? color / colorCount : 0;
-  return maskScore * .38 + colorScore * .62;
+  return maskScore * .42 + colorScore * .58;
+}
+function weatherColorMetrics(canvas){
+  const ctx = canvas.getContext("2d", {willReadFrequently:true});
+  const {width,height} = canvas;
+  const data = ctx.getImageData(0, 0, width, height).data;
+  const corners = [[1,1],[width-2,1],[1,height-2],[width-2,height-2]].map(([x,y]) => {
+    const i = (y * width + x) * 4;
+    return [data[i],data[i+1],data[i+2]];
+  });
+  const bg = corners.reduce((a,p) => [a[0]+p[0],a[1]+p[1],a[2]+p[2]], [0,0,0]).map(value => value / corners.length);
+  let foreground=0, warm=0, yellowOrange=0, cyan=0, purple=0, red=0, palePurple=0;
+  for(let y=0;y<height;y++) for(let x=0;x<width;x++){
+    const i=(y*width+x)*4, r=data[i], g=data[i+1], b=data[i+2];
+    const hsv=rgbToHsv(r,g,b), dist=Math.hypot(r-bg[0],g-bg[1],b-bg[2]);
+    if(dist<18 && hsv.s<.15) continue;
+    foreground++;
+    if(hsv.h>=28&&hsv.h<=82&&hsv.s>=.18&&hsv.v>=.55) warm++;
+    if(hsv.h>=20&&hsv.h<=82&&hsv.s>=.16) yellowOrange++;
+    if(hsv.h>=165&&hsv.h<205&&hsv.s>=.12) cyan++;
+    if(hsv.h>=235&&hsv.h<=315&&hsv.s>=.10) purple++;
+    if((hsv.h<20||hsv.h>=345)&&hsv.s>=.16) red++;
+    if(hsv.h>=235&&hsv.h<=300&&hsv.s>=.03&&hsv.v>=.70) palePurple++;
+  }
+  const denominator=Math.max(1,foreground);
+  return {
+    foregroundRatio:foreground/(width*height),
+    warm:warm/denominator,
+    yellowOrange:yellowOrange/denominator,
+    cyan:cyan/denominator,
+    purple:purple/denominator,
+    red:red/denominator,
+    palePurple:palePurple/(width*height)
+  };
 }
 async function loadWeatherTemplates(){
   const loaded = await Promise.all(WEATHER_ICON_TEMPLATES.map(config => new Promise(resolve => {
@@ -3922,7 +3865,7 @@ async function loadWeatherTemplates(){
       canvas.width = canvas.height = 56;
       const ctx = canvas.getContext("2d", {willReadFrequently:true});
       ctx.drawImage(img, 0, 0, 56, 56);
-      resolve({...config, feature:weatherCropFeature(canvas), signature:weatherPixelSignature(canvas)});
+      resolve({...config, signature:weatherPixelSignature(canvas)});
     };
     img.onerror = () => resolve({missing:config});
     img.src = config.path;
@@ -3933,89 +3876,243 @@ async function loadWeatherTemplates(){
   return {templates, missing};
 }
 function classifyWeatherCrop(canvas, templates=[]){
-  const feature = weatherCropFeature(canvas);
   const signature = weatherPixelSignature(canvas);
-  const scores = heuristicWeatherScores(feature);
+  const metrics = weatherColorMetrics(canvas);
+  const scores = {};
   templates.forEach(template => {
-    const featureScore = featureSimilarity(feature, template.feature);
-    const pixelScore = pixelSimilarity(signature, template.signature);
-    const score = pixelScore * .58 + featureScore * .32 + (scores[template.weather] || 0) * .10;
+    const score = pixelSimilarity(signature, template.signature);
     scores[template.weather] = Math.max(scores[template.weather] || 0, score);
   });
   const ranked = Object.entries(scores).sort((a,b) => b[1] - a[1]);
   const [bestValue, bestScore] = ranked[0] || ["", 0];
   const [secondValue, secondScore] = ranked[1] || ["", 0];
-  const ok = bestScore >= WEATHER_SCREENSHOT_LAYOUT.confidenceThreshold
-    && bestScore - secondScore >= WEATHER_SCREENSHOT_LAYOUT.marginThreshold;
-  const reason = ok ? "" : (
-    bestScore < WEATHER_SCREENSHOT_LAYOUT.confidenceThreshold
-      ? "1位scoreが基準未満"
-      : "1位と2位のscore差が基準未満"
-  );
   return {
-    value:ok ? bestValue : "",
-    score:bestScore,
     bestValue,
     bestScore,
     secondValue,
     secondScore,
     margin:bestScore - secondScore,
-    reason,
-    confidence:ok ? (bestScore >= .72 ? "高" : "中") : "未判定"
+    metrics
   };
 }
-function classifyWeatherRect(image, rect, templates=[]){
-  const base = rectToPixels(image, rect);
-  const search = WEATHER_SCREENSHOT_LAYOUT.searchPixels;
-  const step = WEATHER_SCREENSHOT_LAYOUT.searchStep;
-  let best = null;
-  for(let dy = -search; dy <= search; dy += step){
-    for(let dx = -search; dx <= search; dx += step){
-      const shifted = {
-        x:Math.max(0, Math.min(image.naturalWidth - base.w, base.x + dx)),
-        y:Math.max(0, Math.min(image.naturalHeight - base.h, base.y + dy)),
-        w:base.w,
-        h:base.h
-      };
-      const canvas = pixelRectToCanvas(image, shifted);
-      const detected = classifyWeatherCrop(canvas, templates);
-      if(!best || detected.bestScore > best.bestScore){
-        best = {...detected, canvas, rect:shifted, offset:{dx, dy}};
+function imageDimensions(image){
+  return {width:image.naturalWidth || image.width, height:image.naturalHeight || image.height};
+}
+function clipPixelRect(rect, width, height){
+  const left=Math.round(rect.x),top=Math.round(rect.y);
+  const right=Math.round(rect.x+rect.w),bottom=Math.round(rect.y+rect.h);
+  const x=Math.max(0,Math.min(width-1,left));
+  const y=Math.max(0,Math.min(height-1,top));
+  return {
+    x,y,
+    w:Math.max(1,Math.min(width,right)-x),
+    h:Math.max(1,Math.min(height,bottom)-y)
+  };
+}
+function canvasFromPixelRect(image, rect){
+  const {width,height}=imageDimensions(image);
+  const clipped=clipPixelRect(rect,width,height);
+  const canvas=document.createElement("canvas");
+  canvas.width=clipped.w;
+  canvas.height=clipped.h;
+  const ctx=canvas.getContext("2d",{willReadFrequently:true});
+  ctx.drawImage(image,clipped.x,clipped.y,clipped.w,clipped.h,0,0,canvas.width,canvas.height);
+  return {canvas,rect:clipped};
+}
+function panelRegionRatio(canvas, region, predicate){
+  const p=rectToPixels(canvas,region);
+  const data=canvas.getContext("2d",{willReadFrequently:true}).getImageData(0,0,canvas.width,canvas.height).data;
+  let hits=0,total=0;
+  for(let y=p.y;y<Math.min(canvas.height,p.y+p.h);y+=3) for(let x=p.x;x<Math.min(canvas.width,p.x+p.w);x+=3){
+    const i=(y*canvas.width+x)*4;
+    total++;
+    if(predicate(data[i],data[i+1],data[i+2])) hits++;
+  }
+  return total ? hits/total : 0;
+}
+function inspectPanelStructure(panel, layout){
+  const aspect=panel.width/panel.height;
+  if(panel.width<layout.minWidth||panel.height<layout.minHeight||aspect<layout.minAspect||aspect>layout.maxAspect){
+    return {confirmed:false,reason:"panelGeometryMismatch",aspect};
+  }
+  const blueRatio=panelRegionRatio(panel,layout.blueRegion,(r,g,b)=>{
+    const hsv=rgbToHsv(r,g,b);
+    return hsv.h>=175&&hsv.h<=260&&hsv.s>=.15&&hsv.v>=.42;
+  });
+  if(blueRatio<layout.blueThreshold) return {confirmed:false,reason:"panelBlueStructureMismatch",aspect,blueRatio};
+  let lightRatio=null;
+  if(layout.lightRegion){
+    lightRatio=panelRegionRatio(panel,layout.lightRegion,(r,g,b)=>{
+      const hsv=rgbToHsv(r,g,b);
+      return hsv.v>=.72&&hsv.s<=.25;
+    });
+    if(lightRatio<layout.lightThreshold) return {confirmed:false,reason:"panelWeeklyStructureMismatch",aspect,blueRatio,lightRatio};
+  }
+  return {confirmed:true,aspect,blueRatio,lightRatio};
+}
+function findWeatherBlueComponents(image){
+  const source=imageDimensions(image);
+  const scale=Math.min(1,1400/Math.max(source.width,source.height));
+  const canvas=document.createElement("canvas");
+  canvas.width=Math.max(1,Math.round(source.width*scale));
+  canvas.height=Math.max(1,Math.round(source.height*scale));
+  const ctx=canvas.getContext("2d",{willReadFrequently:true});
+  ctx.drawImage(image,0,0,canvas.width,canvas.height);
+  const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+  const step=4,gw=Math.ceil(canvas.width/step),gh=Math.ceil(canvas.height/step),grid=new Uint8Array(gw*gh);
+  for(let gy=0;gy<gh;gy++) for(let gx=0;gx<gw;gx++){
+    let hits=0,total=0;
+    for(let y=gy*step;y<Math.min(canvas.height,(gy+1)*step);y+=2) for(let x=gx*step;x<Math.min(canvas.width,(gx+1)*step);x+=2){
+      const i=(y*canvas.width+x)*4,r=pixels[i],g=pixels[i+1],b=pixels[i+2];
+      total++;
+      if(b>80&&b>r*1.15&&b>g*1.03&&r<145&&g<160) hits++;
+    }
+    if(hits>=Math.max(1,Math.ceil(total*.40))) grid[gy*gw+gx]=1;
+  }
+  const seen=new Uint8Array(grid.length),components=[];
+  for(let gy=0;gy<gh;gy++) for(let gx=0;gx<gw;gx++){
+    const start=gy*gw+gx;
+    if(!grid[start]||seen[start]) continue;
+    const queue=[start];seen[start]=1;
+    let qi=0,minX=gx,maxX=gx,minY=gy,maxY=gy,count=0;
+    while(qi<queue.length){
+      const at=queue[qi++],x=at%gw,y=Math.floor(at/gw);count++;
+      minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);
+      for(const next of [at-1,at+1,at-gw,at+gw]){
+        if(next<0||next>=grid.length||seen[next]||!grid[next]) continue;
+        const nx=next%gw,ny=Math.floor(next/gw);
+        if(Math.abs(nx-x)+Math.abs(ny-y)!==1) continue;
+        seen[next]=1;queue.push(next);
       }
     }
+    const rect={x:minX*step/scale,y:minY*step/scale,w:(maxX-minX+1)*step/scale,h:(maxY-minY+1)*step/scale,count};
+    if(rect.w>=120&&rect.h>=80) components.push(rect);
   }
-  return best;
+  return components.sort((a,b)=>b.count-a.count).slice(0,8);
 }
-async function readWeatherScreenshotStartSlot(image){
-  const rect = WEATHER_SCREENSHOT_LAYOUT.timeStrip;
-  const p = rectToPixels(image, rect);
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, p.w * 3);
-  canvas.height = Math.max(1, p.h * 3);
-  const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(image, p.x, p.y, p.w, p.h, 0, 0, canvas.width, canvas.height);
-  try{
-    const Tesseract = await loadTesseract();
-    const result = await Tesseract.recognize(canvas, "eng", {
-      tessedit_char_whitelist:"0123456789",
-      logger:()=>{}
+function weatherPanelRegionCandidates(image){
+  const {width,height}=imageDimensions(image);
+  const candidates=[{x:0,y:0,w:width,h:height,source:"画像全体"}];
+  findWeatherBlueComponents(image).forEach((component,index)=>{
+    const cx=component.x+component.w/2,cy=component.y+component.h/2;
+    [1,1.08,1.18].forEach(scale=>{
+      const side=Math.max(component.w,component.h)*scale;
+      candidates.push({x:cx-side/2,y:cy-side/2,w:side,h:side,source:`青色領域${index+1}`});
     });
-    const times = (result?.data?.text || "").match(/\d{1,2}/g)?.map(value => pad(value).slice(-2)) || [];
-    const valid = times.filter(value => WEATHER_START_SLOTS.includes(value)).slice(0, 5);
-    if(valid.length === 5 && valid.every((value, index) => value === slotHourAt(valid[0], index))){
-      return {startSlot:valid[0], warning:""};
+    const combinedWidth=component.w*1.20;
+    candidates.push({
+      x:component.x-component.w*.12,
+      y:component.y-component.w*.015,
+      w:combinedWidth,
+      h:combinedWidth*1.13,
+      source:`週間付き領域${index+1}`
+    });
+    [1.04,1.12].forEach(scale=>candidates.push({
+      x:cx-component.w*scale/2,
+      y:cy-component.h*scale/2,
+      w:component.w*scale,
+      h:component.h*scale,
+      source:`青色矩形${index+1}`
+    }));
+  });
+  const unique=new Map();
+  candidates.forEach(candidate=>{
+    const clipped=clipPixelRect(candidate,width,height);
+    const key=[clipped.x,clipped.y,clipped.w,clipped.h].map(v=>Math.round(v/8)).join(":");
+    if(!unique.has(key)) unique.set(key,{...clipped,source:candidate.source});
+  });
+  return [...unique.values()].slice(0,40);
+}
+function classifyWeatherPosition(panel,cx,cy,size,templates){
+  const pixelSize=Math.max(14,Math.round(size));
+  const box=clipPixelRect({x:cx-pixelSize/2,y:cy-pixelSize/2,w:pixelSize,h:pixelSize},panel.width,panel.height);
+  const canvas=pixelRectToCanvas(panel,box,56);
+  return {...classifyWeatherCrop(canvas,templates),box,canvas};
+}
+function inspectWeatherPanelCandidate(image,region,layout,templates,preparedCrop=null){
+  const cropped=preparedCrop||canvasFromPixelRect(image,region);
+  const panel=cropped.canvas;
+  const structure=inspectPanelStructure(panel,layout);
+  if(!structure.confirmed) return null;
+  const iconSize=Math.max(layout.mode==="daily-only"?44:20,panel.width*layout.iconSize);
+  const dailyScores=layout.x.map(x=>classifyWeatherPosition(panel,panel.width*x,panel.height*layout.iconY,iconSize,templates));
+  const resolved=dailyScores.map(score=>WeatherScreenshotCore.resolveDailyScore(score));
+  const dailyHighCount=resolved.filter(item=>item.high&&item.value).length;
+  const weeklyScores=layout.weekY?.map(y=>classifyWeatherPosition(panel,panel.width*layout.weekX,panel.height*y,Math.max(16,panel.width*layout.weekIconSize),templates))||[];
+  return {
+    structureConfirmed:true,
+    structureScore:structure.blueRatio+(structure.lightRatio||0),
+    dailyHighCount,
+    dailyScore:dailyScores.reduce((sum,item)=>sum+item.bestScore,0),
+    dailyScores,weeklyScores,
+    weeklyPanelConfirmed:Boolean(layout.weekY&&structure.lightRatio>=layout.lightThreshold),
+    layout,panel,rect:cropped.rect,source:region.source,structure
+  };
+}
+function locateWeatherPanel(image,templates){
+  const inspected=[];
+  for(const region of weatherPanelRegionCandidates(image)){
+    const cropped=canvasFromPixelRect(image,region);
+    for(const layout of [WEATHER_SCREENSHOT_LAYOUT.dailyOnly,WEATHER_SCREENSHOT_LAYOUT.combined]){
+      const candidate=inspectWeatherPanelCandidate(image,region,layout,templates,cropped);
+      if(candidate) inspected.push(candidate);
     }
-    if(valid.length >= 3 && WEATHER_START_SLOTS.includes(valid[0])){
-      const matches = valid.filter((value, index) => value === slotHourAt(valid[0], index)).length;
-      if(matches >= 3) return {startSlot:valid[0], warning:""};
+  }
+  return WeatherScreenshotCore.selectPanelCandidate(inspected);
+}
+function thresholdWeatherTimeCanvas(base,threshold){
+  const canvas=document.createElement("canvas");canvas.width=base.width;canvas.height=base.height;
+  const ctx=canvas.getContext("2d",{willReadFrequently:true});ctx.drawImage(base,0,0);
+  const imageData=ctx.getImageData(0,0,canvas.width,canvas.height);
+  for(let i=0;i<imageData.data.length;i+=4){
+    const lum=.299*imageData.data[i]+.587*imageData.data[i+1]+.114*imageData.data[i+2],value=lum>=threshold?0:255;
+    imageData.data[i]=value;imageData.data[i+1]=value;imageData.data[i+2]=value;imageData.data[i+3]=255;
+  }
+  ctx.putImageData(imageData,0,0);return canvas;
+}
+async function readWeatherScreenshotStartSlot(panel,layout){
+  const mapped=Array(5).fill(""),attempts=[];
+  let worker=null;
+  try{
+    const Tesseract=await loadTesseract();
+    worker=await Tesseract.createWorker("eng",1,{logger:()=>{}});
+    await worker.setParameters({tessedit_char_whitelist:"0123456789",tessedit_pageseg_mode:"7"});
+    for(let index=0;index<layout.x.length;index++){
+      const width=Math.round(panel.width*layout.labelWidth),height=Math.round(panel.height*layout.labelHeight);
+      const x=Math.max(0,Math.round(panel.width*layout.x[index]-width/2)),y=Math.round(panel.height*layout.labelY),scale=layout.mode==="daily-only"?9:10;
+      const base=document.createElement("canvas");base.width=width*scale;base.height=height*scale;
+      const ctx=base.getContext("2d",{willReadFrequently:true});ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
+      ctx.drawImage(panel,x,y,width,height,0,0,base.width,base.height);
+      const variants=[base,...(layout.mode==="daily-only"?[155,185,210]:[165,195]).map(value=>thresholdWeatherTimeCanvas(base,value))];
+      const cell=[];
+      for(let variantIndex=0;variantIndex<variants.length;variantIndex++){
+        const result=await worker.recognize(variants[variantIndex]);
+        const raw=String(result?.data?.text||"").replace(/\s+/g,"");
+        const value=WEATHER_START_SLOTS.find(allowed=>raw.includes(allowed))||"";
+        cell.push({variantIndex,raw,value});
+        if(value){mapped[index]=value;break;}
+      }
+      attempts.push({index,value:mapped[index],attempts:cell});
     }
-  }catch(error){}
-  return {startSlot:"", warning:"最初の時間を正確に読み取れませんでした。"};
+  }catch(error){
+    return {startSlot:"",mapped,attempts,warning:"開始時刻は自動判定できませんでした"};
+  }finally{
+    if(worker) try{await worker.terminate();}catch(error){}
+  }
+  const inferred=WeatherScreenshotCore.inferStartSlot(mapped,3);
+  return {
+    startSlot:inferred?.startSlot||"",
+    mapped,attempts,
+    warning:inferred?"":"開始時刻は自動判定できませんでした"
+  };
 }
 function weatherCandidateLabel(item){
-  if(item.kind === "slot") return slotLabel(item.key, weatherScreenshotCandidates?.startSlot || E.quickWeatherStartSlot.value);
+  if(item.kind === "slot"){
+    const index=WEATHER_SLOT_KEYS.indexOf(item.key);
+    return weatherScreenshotCandidates?.startSlot
+      ? slotLabel(item.key,weatherScreenshotCandidates.startSlot)
+      : `${index+1}枠目（開始時刻未確認）`;
+  }
   const index = WEATHER_WEEK_KEYS.indexOf(item.key);
   return weekDateLabel(weatherScreenshotCandidates?.baseDate || E.quickWeatherDate.value, index);
 }
@@ -4034,7 +4131,10 @@ function renderWeatherScreenshotConfirm(){
     E.weatherScreenshotConfirm.hidden = true;
     return;
   }
-  const section = (title, items) => `
+  const section = (title, items) => !items.length ? `
+    <h3>${esc(title)}</h3>
+    <p class="small">この画像では週間予報は読み取っていません。</p>
+  ` : `
     <h3>${esc(title)}</h3>
     <div class="weatherCandidateList">
       ${items.map(item => `
@@ -4050,14 +4150,16 @@ function renderWeatherScreenshotConfirm(){
       <summary>判定詳細</summary>
       <div class="tableWrap">
         <table>
-          <thead><tr><th>枠</th><th>1位</th><th>score</th><th>2位</th><th>score</th><th>差</th><th>offset</th><th>理由</th></tr></thead>
-          <tbody>${items.map(item => `<tr><td>${esc(weatherCandidateLabel(item))}</td><td>${esc(item.bestValue || "—")}</td><td>${esc(scoreText(item.bestScore))}</td><td>${esc(item.secondValue || "—")}</td><td>${esc(scoreText(item.secondScore))}</td><td>${esc(scoreText(item.margin))}</td><td>${esc(item.offset ? `${item.offset.dx},${item.offset.dy}` : "—")}</td><td>${esc(item.reason || "採用")}</td></tr>`).join("")}</tbody>
+          <thead><tr><th>枠</th><th>1位</th><th>score</th><th>2位</th><th>score</th><th>差</th><th>切り抜き</th><th>理由</th></tr></thead>
+          <tbody>${items.map(item => `<tr><td>${esc(weatherCandidateLabel(item))}</td><td>${esc(item.bestValue || "—")}</td><td>${esc(scoreText(item.bestScore))}</td><td>${esc(item.secondValue || "—")}</td><td>${esc(scoreText(item.secondScore))}</td><td>${esc(scoreText(item.margin))}</td><td>${esc(item.box ? `${item.box.x},${item.box.y},${item.box.size||item.box.w}` : "—")}</td><td>${esc(item.reason || "採用")}</td></tr>`).join("")}</tbody>
         </table>
       </div>
     </details>
   `;
   E.weatherScreenshotConfirm.innerHTML = `
-    ${data.startSlot ? `<p class="small">最初の時間候補：<strong>${esc(data.startSlot)}時</strong></p>` : ""}
+    ${data.startSlot
+      ? `<p class="small">開始時刻（自動判定）：<strong>${esc(data.startSlot)}時</strong></p>`
+      : `<p class="small">開始時刻は自動判定できませんでした。上の「最初の時間」で手動選択してください。</p>`}
     ${section("時間別天気", data.slots)}
     ${section("週間予報", data.weeks)}
     <div class="buttons"><button type="button" id="applyWeatherScreenshotCandidatesBtn">候補を天気フォームへ反映</button></div>
@@ -4070,7 +4172,10 @@ function renderWeatherScreenshotConfirm(){
       const item = list.find(candidate => candidate.key === key);
       if(item){
         item.value = select.value;
-        item.confidence = select.value ? "手動" : item.confidence;
+        item.confidence = select.value ? "手動修正" : "未判定";
+        const row=select.closest(".weatherCandidateRow");
+        const label=row?.querySelector(".weatherCandidateConfidence");
+        if(label) label.textContent=item.confidence;
       }
     };
   });
@@ -4084,46 +4189,45 @@ async function analyzeWeatherScreenshot(){
   E.weatherScreenshotStatus.textContent = "解析中です…";
   E.analyzeWeatherScreenshotBtn.disabled = true;
   try{
-    const topImage = await fileToImage(weatherScreenshotFiles.top);
-    if(!layoutMatches(topImage, WEATHER_SCREENSHOT_LAYOUT.top)){
-      E.weatherScreenshotStatus.textContent = "対応している天気画面のスクショではない可能性があります。";
-      return;
-    }
-    const bottomImage = weatherScreenshotFiles.bottom ? await fileToImage(weatherScreenshotFiles.bottom) : null;
-    if(bottomImage && !layoutMatches(bottomImage, WEATHER_SCREENSHOT_LAYOUT.bottom)){
-      E.weatherScreenshotStatus.textContent = "対応している天気画面のスクショではない可能性があります。";
-      return;
-    }
+    const topImage=await fileToImage(weatherScreenshotFiles.top);
     const templateResult = await loadWeatherTemplates();
     const templates = templateResult.templates;
-    const start = await readWeatherScreenshotStartSlot(topImage);
-    const startSlot = start.startSlot || E.quickWeatherStartSlot.value;
-    const slots = WEATHER_SCREENSHOT_LAYOUT.slotIcons.map(rect => {
-      const detected = classifyWeatherRect(topImage, rect, templates);
-      return {kind:"slot", key:rect.key, thumb:detected.canvas.toDataURL("image/png"), ...detected};
-    });
-    const weeks = WEATHER_SCREENSHOT_LAYOUT.weekTop.map(rect => {
-      const detected = classifyWeatherRect(topImage, rect, templates);
-      return {kind:"week", key:rect.key, thumb:detected.canvas.toDataURL("image/png"), ...detected};
-    });
-    if(bottomImage){
-      WEATHER_SCREENSHOT_LAYOUT.weekBottom.forEach(rect => {
-        const detected = classifyWeatherRect(bottomImage, rect, templates);
-        weeks.push({kind:"week", key:rect.key, thumb:detected.canvas.toDataURL("image/png"), ...detected});
-      });
-    }else{
-      weeks.push(
-        {kind:"week", key:"week6", value:"", score:0, confidence:"未読取", thumb:""},
-        {kind:"week", key:"week7", value:"", score:0, confidence:"未読取", thumb:""}
-      );
+    const panel=locateWeatherPanel(topImage,templates);
+    if(!panel){
+      weatherScreenshotCandidates=null;
+      E.weatherScreenshotConfirm.hidden=true;
+      E.weatherScreenshotStatus.textContent="天気パネルを自動で特定できませんでした。ゲーム内の天気画面が写っているスクショを確認してください。";
+      return;
     }
-    weatherScreenshotCandidates = {baseDate:E.quickWeatherDate.value, startSlot, slots, weeks};
+    const start=await readWeatherScreenshotStartSlot(panel.panel,panel.layout);
+    let weeklyPanel=panel;
+    if((!panel.weeklyPanelConfirmed||!panel.weeklyScores.length)&&weatherScreenshotFiles.bottom){
+      const bottomImage=await fileToImage(weatherScreenshotFiles.bottom);
+      const locatedBottom=locateWeatherPanel(bottomImage,templates);
+      if(locatedBottom?.weeklyPanelConfirmed&&locatedBottom.weeklyScores.length===5) weeklyPanel=locatedBottom;
+    }
+    const review=WeatherScreenshotCore.buildManualReview({
+      panelConfirmed:true,
+      dailyScores:panel.dailyScores,
+      mappedTimes:start.mapped,
+      weeklyPanelConfirmed:weeklyPanel.weeklyPanelConfirmed,
+      weeklyScores:weeklyPanel.weeklyScores
+    });
+    const slots=review.slots.map((item,index)=>({...item,thumb:panel.dailyScores[index].canvas.toDataURL("image/png")}));
+    const weeks=review.weeks.map((item,index)=>({...item,thumb:weeklyPanel.weeklyScores[index].canvas.toDataURL("image/png")}));
+    weatherScreenshotCandidates={
+      baseDate:E.quickWeatherDate.value,
+      startSlot:review.startSlot,
+      slots,weeks,
+      panel:{mode:panel.layout.mode,rect:panel.rect,source:panel.source,structure:panel.structure},
+      ocr:{mapped:start.mapped,attempts:start.attempts}
+    };
     renderWeatherScreenshotConfirm();
     const warnings = [];
     if(templateResult.missing.length) warnings.push(`一部のテンプレート画像を読み込めませんでした：${templateResult.missing.join(", ")}。読み込めないテンプレートだけ除外して解析しました。`);
     if(start.warning) warnings.push(start.warning);
-    if(!bottomImage) warnings.push("続き画像がないためweek6、week7は未読取です。");
-    if([...slots, ...weeks].some(item => item.confidence === "未判定")) warnings.push("判定できない天気があります。");
+    if(!weeks.length) warnings.push("この画像では週間予報は読み取っていません。");
+    if(slots.some(item => item.confidence === "未判定")) warnings.push("未判定の時間枠は、スクショを確認して手動修正してください。");
     E.weatherScreenshotStatus.textContent = ["解析候補を作成しました。内容を確認してからフォームへ反映してください。", ...warnings].join("\n");
   }catch(error){
     E.weatherScreenshotStatus.textContent = `解析に失敗しました：${error.message}`;
@@ -4152,7 +4256,9 @@ function applyWeatherScreenshotCandidates(){
   });
   setChipSelections("quick-weather", slots);
   setWeekSelections("quick-week", weeks);
-  E.weatherScreenshotStatus.textContent = "候補を天気フォームへ反映しました。確認してから保存してください。";
+  E.weatherScreenshotStatus.textContent = data.startSlot
+    ? "候補を天気フォームへ反映しました。確認してから保存してください。"
+    : "天気候補を反映しました。開始時刻は自動判定できなかったため、手動で確認してください。";
 }
 function showWeatherScreenshotImage(kind, file){
   if(!file || !file.type.startsWith("image/")){

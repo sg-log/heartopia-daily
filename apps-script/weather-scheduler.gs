@@ -1,11 +1,6 @@
 const WEATHER_SCHEDULER_TRIGGER_FUNCTION = "runWeatherScheduler";
 const WEATHER_SCHEDULER_INTERVAL_MINUTES = 5;
 const WEATHER_SCHEDULER_TIME_ZONE = "Asia/Tokyo";
-const WEATHER_SCHEDULER_ACCEPTANCE_TEST = {
-  date: "2026-09-18",
-  dueMinute: 12 * 60 + 40,
-  propertyName: "WEATHER_SCHEDULER_ACCEPTANCE_20260918"
-};
 const WEATHER_SCHEDULER_ATTEMPT_PROPERTIES = {
   morningPrimary: "WEATHER_SCHEDULER_MORNING_PRIMARY_DATE",
   morningRetry: "WEATHER_SCHEDULER_MORNING_RETRY_DATE",
@@ -82,23 +77,6 @@ function runWeatherScheduler() {
 
 function nextWeatherSchedulerAttempt_(date, minuteOfDay) {
   const props = PropertiesService.getScriptProperties();
-
-  if (
-    date === WEATHER_SCHEDULER_ACCEPTANCE_TEST.date &&
-    minuteOfDay >= WEATHER_SCHEDULER_ACCEPTANCE_TEST.dueMinute &&
-    minuteOfDay < 19 * 60
-  ) {
-    if (String(props.getProperty(WEATHER_SCHEDULER_ACCEPTANCE_TEST.propertyName) || "") !== date) {
-      return {
-        name: "morning-acceptance-test",
-        kind: "primary",
-        slot: "morning",
-        dueMinute: WEATHER_SCHEDULER_ACCEPTANCE_TEST.dueMinute,
-        propertyName: WEATHER_SCHEDULER_ACCEPTANCE_TEST.propertyName
-      };
-    }
-    return null;
-  }
 
   const attempts = minuteOfDay < 19 * 60
     ? [

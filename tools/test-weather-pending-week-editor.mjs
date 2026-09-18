@@ -160,7 +160,7 @@ test('daily-only pending stays white and approval preserves existing approved we
 });
 
 test('acceptance-only scheduler branch is removed while normal four attempts remain', () => {
-  assert.doesNotMatch(scheduler, /test20260917|acceptance-test|2026-09-17/);
+  assert.doesNotMatch(scheduler, /WEATHER_SCHEDULER_ACCEPTANCE_TEST|WEATHER_SCHEDULER_ACCEPTANCE_20260918|morning-acceptance-test|2026-09-18/);
   for (const name of ['morning-primary', 'morning-retry', 'evening-primary', 'evening-retry']) {
     assert.match(scheduler, new RegExp(name));
   }
