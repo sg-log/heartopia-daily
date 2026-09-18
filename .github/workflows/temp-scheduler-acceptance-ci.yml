@@ -19,3 +19,5 @@ jobs:
           node-version: 22
       - run: node tools/test-weather-apps-script-scheduler.mjs
       - run: node tools/test-clasp-scheduler-include.mjs
+
+# rerun after test fix
