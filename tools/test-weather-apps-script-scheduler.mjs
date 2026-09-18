@@ -157,9 +157,9 @@ assert.equal(properties.get('WEATHER_SCHEDULER_MORNING_PRIMARY_DATE'), '2026-09-
 setClock('2026-09-18', 12, 42);
 context.runWeatherScheduler();
 assert.equal(requests.length, 7, 'one-time acceptance heartbeat must dispatch');
-assert.equal(dispatchedSlot(8), 'morning');
+assert.equal(dispatchedSlot(6), 'morning');
 assert.equal(dispatchedOrigin(6), 'apps-script');
-assert.equal(dispatchedKind(7), 'primary');
+assert.equal(dispatchedKind(6), 'primary');
 assert.equal(properties.get('WEATHER_SCHEDULER_ACCEPTANCE_20260918'), '2026-09-18');
 setClock('2026-09-18', 12, 47);
 context.runWeatherScheduler();
@@ -168,12 +168,12 @@ assert.equal(requests.length, 7, 'acceptance heartbeat must not repeat');
 setClock('2026-09-19', 7, 22);
 context.runWeatherScheduler();
 assert.equal(requests.length, 8, 'late heartbeat must catch the primary attempt');
-assert.equal(dispatchedSlot(6), 'morning');
-assert.equal(dispatchedKind(6), 'primary');
+assert.equal(dispatchedSlot(7), 'morning');
+assert.equal(dispatchedKind(7), 'primary');
 setClock('2026-09-19', 7, 27);
 context.runWeatherScheduler();
 assert.equal(requests.length, 9, 'next heartbeat must catch the retry attempt');
-assert.equal(dispatchedSlot(7), 'morning');
+assert.equal(dispatchedSlot(8), 'morning');
 assert.equal(dispatchedKind(8), 'retry');
 
 setClock('2026-09-20', 19, 30);
