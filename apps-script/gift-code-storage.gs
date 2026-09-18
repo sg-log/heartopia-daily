@@ -1,3 +1,73 @@
+function ingestDiscordGiftBatch_(body) {
+  requireKey_(body.postKey, postKey_(), "投稿キー");
+  const result = processDiscordGiftBatch_(body || {});
+  return json_(Object.assign({ ok: true }, result));
+}
+
+function processDiscordGiftBatch_(body) {
+  const props = PropertiesService.getScriptProperties();
+  const configuredChannelId = String(props.getProperty(DISCORD_GIFT_CHANNEL_ID_PROPERTY) || "").trim();
+  const channelId = String(body.channelId || "").trim();
+  const guildId = String(body.guildId || "").trim();
+  const latestMessageId = String(body.latestMessageId || "").trim();
+  const messages = Array.isArray(body.messages) ? body.messages.slice(0, DISCORD_GIFT_POLL_LIMIT) : [];
+
+  if (!/^\d{15,25}$/.test(channelId)) throw new Error("DiscordチャンネルIDが不正です");
+  if (configuredChannelId && channelId !== configuredChannelId) throw new Error("DiscordチャンネルIDが設定値と一致しません");
+  if (!/^\d{15,25}$/.test(guildId)) throw new Error("DiscordサーバーIDが不正です");
+  if (!/^\d{15,25}$/.test(latestMessageId)) throw new Error("Discord最新メッセージIDが不正です");
+
+  props.setProperty(DISCORD_GIFT_GUILD_ID_PROPERTY, guildId);
+  const cursorBefore = String(props.getProperty(DISCORD_GIFT_LAST_MESSAGE_ID_PROPERTY) || "").trim();
+  const bootstrap = !cursorBefore;
+  let cursor = cursorBefore;
+  const counts = {
+    created: 0,
+    updated: 0,
+    duplicate: 0,
+    conflict: 0,
+    review: 0,
+    ignored: 0
+  };
+  const config = {
+    channelId: channelId,
+    guildId: guildId,
+    sourceWebhookId: String(props.getProperty(DISCORD_GIFT_SOURCE_WEBHOOK_ID_PROPERTY) || "").trim()
+  };
+
+  messages.sort(function(a, b) {
+    return compareDiscordSnowflakes_(String(a && a.id || ""), String(b && b.id || ""));
+  });
+
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i] || {};
+    const messageId = String(message.id || "").trim();
+    const messageChannelId = String(message.channel_id || "").trim();
+    if (!/^\d{15,25}$/.test(messageId)) continue;
+    if (messageChannelId && messageChannelId !== channelId) continue;
+    if (cursor && compareDiscordSnowflakes_(messageId, cursor) <= 0) continue;
+
+    message.channel_id = channelId;
+    message.guild_id = guildId;
+    const handled = processDiscordGiftMessage_(message, config, { silent: bootstrap });
+    const mode = String(handled && handled.mode || "ignored");
+    if (Object.prototype.hasOwnProperty.call(counts, mode)) counts[mode]++;
+    else counts.ignored++;
+
+    if (handled && handled.advanceCursor) cursor = messageId;
+  }
+
+  if (!cursor || compareDiscordSnowflakes_(latestMessageId, cursor) > 0) cursor = latestMessageId;
+  props.setProperty(DISCORD_GIFT_LAST_MESSAGE_ID_PROPERTY, cursor);
+
+  return {
+    bootstrap: bootstrap,
+    receivedCandidates: messages.length,
+    lastMessageId: cursor,
+    counts: counts
+  };
+}
+
 function processDiscordGiftMessage_(message, config, options) {
   const silent = Boolean(options && options.silent);
   const text = discordGiftMessageText_(message);
