@@ -5,6 +5,10 @@ on:
     paths:
       - "apps-script/gift-code-*.gs"
       - "tools/test-gift-discord-parser.mjs"
+      - "tools/test-gift-discord-storage.mjs"
+      - "tools/test-gift-discord-poll.mjs"
+      - "tools/gift-discord-poll.mjs"
+      - ".github/workflows/gift-code-discord-poll.yml"
       - "package.json"
       - "README-gift-code-automation.md"
       - ".github/workflows/gift-code-parser-ci.yml"
