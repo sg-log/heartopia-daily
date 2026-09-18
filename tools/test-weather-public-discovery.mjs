@@ -13,11 +13,13 @@ test('normalizes X status URLs without account dependency', () => {
   assert.deepEqual(normalizeCandidateUrl('https://x.com/example/status/2099304671949230199/photo/1?s=20'), {
     url: 'https://x.com/i/status/2099304671949230199',
     sourceType: 'x',
+    sourcePlatform: 'x',
     sourceId: '2099304671949230199'
   });
   assert.deepEqual(normalizeCandidateUrl('https://twitter.com/foo/status/1234567890'), {
     url: 'https://x.com/i/status/1234567890',
     sourceType: 'x',
+    sourcePlatform: 'x',
     sourceId: '1234567890'
   });
 });
@@ -40,6 +42,7 @@ test('preserves generic public HTTPS result URLs', () => {
   assert.deepEqual(normalizeCandidateUrl('https://example.org/weather#today'), {
     url: 'https://example.org/weather',
     sourceType: 'web',
+    sourcePlatform: 'web',
     sourceId: null
   });
 });
@@ -47,9 +50,27 @@ test('preserves generic public HTTPS result URLs', () => {
 test('builds date-specific and broad query variants', () => {
   assert.deepEqual(buildQueries('2026-09-15'), [
     'ハートピア 天気 9月15日',
-    'Heartopia weather 2026-09-15',
-    'ハートピア 天気'
+    'ハートピア スローライフ 天気 9月15日',
+    'Heartopia weather 2026-09-15'
   ]);
+  assert.deepEqual(buildQueries('2026-09-15', 'morning').slice(0, 2), [
+    'ハートピア 天気 9月15日 06:00',
+    'ハートピア お天気予報 9月15日 06:00'
+  ]);
+  assert.deepEqual(buildQueries('2026-09-15', 'evening').slice(0, 2), [
+    'ハートピア 天気 9月15日 18:00',
+    'ハートピア お天気予報 9月15日 18:00'
+  ]);
+});
+
+test('slot-aware relevance rewards only the current start slot', () => {
+  const morning06 = candidateRelevance('ハートピア 天気 9月16日 06:00開始', '2026-09-16', 'morning');
+  const morning00 = candidateRelevance('ハートピア 天気 9月16日 00:00開始', '2026-09-16', 'morning');
+  const evening18 = candidateRelevance('ハートピア 天気 9月16日 18:00開始', '2026-09-16', 'evening');
+  assert.equal(morning06.startSlotMatched, true);
+  assert.equal(morning00.startSlotMatched, false);
+  assert.equal(evening18.startSlotMatched, true);
+  assert.ok(morning06.score > morning00.score);
 });
 
 test('rejects unrelated X search-result text', () => {

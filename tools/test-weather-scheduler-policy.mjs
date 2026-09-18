@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
 const workflow = fs.readFileSync('.github/workflows/weather-scheduled-run.yml', 'utf8')
+const unifiedSubmit = fs.readFileSync('tools/weather-cloud-submit-unified.ps1', 'utf8')
 
 test('Apps Script is primary clock and GitHub cron is delayed backup', () => {
   for (const cron of ["30 22 * * *", "30 10 * * *"]) {
@@ -35,17 +36,46 @@ test('scheduler derives schedule dates from the intended cron time and manual da
   assert.match(workflow, /\$nowJst\.Hour -ge 6 -and \$nowJst\.Hour -lt 13/)
 })
 
-test('scheduler connects public Web and X through unified daily plus weekly review and one pending submit', () => {
+test('scheduler reviews each Web or X candidate as same-image unified first, then daily-only', () => {
   assert.match(workflow, /weather-x-embed-evidence\.mjs/)
   assert.match(workflow, /weather-cloud-url-evidence\.mjs/)
   assert.match(workflow, /sourceType -eq 'x'/)
   assert.match(workflow, /sourceType -eq 'web'/)
   assert.match(workflow, /weather-unified-review\.mjs/)
+  assert.match(workflow, /weather-direct-daily-panel-review\.mjs/)
   assert.match(workflow, /weeklyCount/)
   assert.match(workflow, /weather-artifact-review-bridge\.ps1/)
   assert.match(workflow, /weather-cloud-submit-unified\.ps1/)
-  assert.match(workflow, /デイリー＋週間天気pending/)
+  const unifiedReview = workflow.indexOf('weather-unified-review.mjs')
+  const dailyOnlyReview = workflow.indexOf('weather-direct-daily-panel-review.mjs')
+  assert.ok(unifiedReview >= 0 && dailyOnlyReview > unifiedReview, 'unified review must run before daily-only review for each candidate')
+  assert.match(workflow, /\$selectionMode = 'daily-weekly'[\s\S]*?break[\s\S]*?\$selectionMode = 'daily-only'[\s\S]*?break/)
+  assert.doesNotMatch(workflow, /weather-cross-source-review\.mjs|\$dailyDir|\$weeklyDir|weekly-only-review\.json/)
   assert.doesNotMatch(workflow, /OPENAI_API_KEY/)
+})
+
+test('current-slot and target-date gates reject stale 00 daily evidence', () => {
+  assert.match(workflow, /RUN_SLOT -eq 'morning'\) \{ '06' \} elseif \(\$env:RUN_SLOT -eq 'evening'\) \{ '18' \}/)
+  assert.match(workflow, /\[string\]\$review\.targetDate -ceq \$env:TARGET_DATE/)
+  assert.match(workflow, /\[string\]\$review\.interpretation\.observedDate -ceq \$env:TARGET_DATE/)
+  assert.match(workflow, /\$actualStartSlot -ceq \$expectedStartSlot/)
+  assert.match(workflow, /\[string\]\$dailyReview\.targetDate -ceq \$env:TARGET_DATE/)
+  assert.match(workflow, /\$dailyStart -ceq \$expectedStartSlot/)
+  assert.match(workflow, /\$dailySlots\.Count -eq 5/)
+})
+
+test('daily-only submit stores seven blank weeks while unified submit keeps same-image weeks', () => {
+  assert.match(unifiedSubmit, /1\.\.7 \| ForEach-Object \{ \$weeks\["week\$_"\] = @\(\) \}/)
+  assert.match(unifiedSubmit, /if \(\$days\.Count -eq 0\) \{ return \[pscustomobject\]@\{ weeks = \$weeks; count = 0 \} \}/)
+  assert.match(unifiedSubmit, /デイリーのみ（週間は既存維持）/)
+  assert.doesNotMatch(unifiedSubmit, /crossSource|週間出典:/)
+})
+
+test('failed candidate diagnostics artifact remains enabled', () => {
+  assert.match(workflow, /name: Upload failed candidate diagnostics/)
+  assert.match(workflow, /name: weather-scheduled-failure-\$\{\{ github\.run_id \}\}/)
+  assert.match(workflow, /path: \$\{\{ runner\.temp \}\}\/weather-candidate-\*/)
+  assert.match(workflow, /retention-days: 3/)
 })
 
 test('failed primary stays quiet while Apps Script retry is the terminal notification point', () => {

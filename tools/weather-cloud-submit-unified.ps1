@@ -22,8 +22,8 @@ function Get-UnifiedWeeks {
     param([Parameter(Mandatory)] [object] $Review, [Parameter(Mandatory)] [string] $BaseDate)
     if ($Review.schemaVersion -ne 4 -or $Review.interpretation.ready -ne $true) { throw 'WEATHER_SAFE:weeklyReviewNotReady' }
     if ([string]$Review.interpretation.observedDate -cne $BaseDate) { throw 'WEATHER_SAFE:weeklyBaseDateMismatch' }
-    $days = @($Review.interpretation.weeklyDays)
-    if ($days.Count -lt 5 -or $days.Count -gt 7) { throw 'WEATHER_SAFE:weeklyReviewNotReady' }
+    $days = @($Review.interpretation.weeklyDays | Where-Object { $null -ne $_ })
+    if ($days.Count -gt 0 -and ($days.Count -lt 5 -or $days.Count -gt 7)) { throw 'WEATHER_SAFE:weeklyReviewNotReady' }
     $allowed = @('晴','雨','流星群','虹','猛暑','雪','桜')
     $base = [datetime]::MinValue
     if (-not [datetime]::TryParseExact($BaseDate, 'yyyy-MM-dd', [cultureinfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$base)) {
@@ -31,6 +31,7 @@ function Get-UnifiedWeeks {
     }
     $weeks = [ordered]@{}
     1..7 | ForEach-Object { $weeks["week$_"] = @() }
+    if ($days.Count -eq 0) { return [pscustomobject]@{ weeks = $weeks; count = 0 } }
     for ($index = 0; $index -lt $days.Count; $index++) {
         $day = $days[$index]
         $expected = $base.AddDays($index + 1).ToString('yyyy-MM-dd')
@@ -149,17 +150,14 @@ try {
         throw 'WEATHER_SAFE:evidenceChanged'
     }
     $reviewed = @($review.reviewedImages | Where-Object { [string]$_.file -ceq [string]$review.pendingEvidenceFile })
-    if ($reviewed.Count -ne 1 -or [string]$reviewed[0].captureSha256 -cne [string]$artifact.sha256) { throw 'WEATHER_SAFE:weeklyEvidenceMismatch' }
+    if ($reviewed.Count -ne 1 -or [string]$reviewed[0].captureSha256 -cne [string]$artifact.sha256) { throw 'WEATHER_SAFE:evidenceMismatch' }
 
     $preview = ConvertTo-WeatherEvidencePendingPreview -Candidate $candidate -EvidenceImage $artifact
     $weekly = Get-UnifiedWeeks -Review $review -BaseDate ([string]$candidate.hourlyForecast.observedDate)
     $preview.payload.weeks = $weekly.weeks
     $result.weeklyCount = $weekly.count
-    $preview.payload.memo = ([string]$preview.payload.memo).Replace('現在・週間:送信対象外', "週間:$($weekly.count)日判読済み")
-    $weeklySourceUrl = if ($null -ne $capture.crossSource) { [string]$capture.crossSource.weeklySourceUrl } else { '' }
-    if (-not [string]::IsNullOrWhiteSpace($weeklySourceUrl)) {
-        $preview.payload.memo = (([string]$preview.payload.memo).Trim() + " 週間出典:" + $weeklySourceUrl).Trim()
-    }
+    $weeklyMemo = if ($weekly.count -gt 0) { "週間:$($weekly.count)日判読済み" } else { 'デイリーのみ（週間は既存維持）' }
+    $preview.payload.memo = ([string]$preview.payload.memo).Replace('現在・週間:送信対象外', $weeklyMemo)
     if (([string]$preview.payload.memo).Length -gt 1000) { throw 'WEATHER_SAFE:memoTooLong' }
 
     $apiUrl = Get-WeatherApiUrlFromSiteConfig

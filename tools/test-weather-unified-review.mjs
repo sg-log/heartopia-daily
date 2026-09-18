@@ -1,71 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { combineDailyWeeklyReviews, inferStartSlotFromMappings, extractTimedMeteorIntervals, applyTimedSpecialWeatherHints, extractFullDayStartSlotSupplement, recoverVisualDailyWithTextStartSlot } from './weather-unified-review.mjs';
+import { extractTimedMeteorIntervals, applyTimedSpecialWeatherHints } from './weather-unified-review.mjs';
 import { resolveWeekly } from './weather-direct-panel-review.mjs';
+import { buildUnifiedBindings } from './weather-unified-bind.mjs';
 
-test('recovers a unique 06 start from two positioned labels without guessing weather', () => {
-  const result = inferStartSlotFromMappings([
-    ['06', '', '', '00', ''],
-    ['', '', '', '00', '06']
-  ]);
-  assert.equal(result?.startSlot, '06');
-  assert.deepEqual(result?.expected, ['06', '12', '18', '00', '06']);
-  assert.ok(result.observed >= 2);
-});
-
-test('does not recover a start slot from one label', () => {
-  assert.equal(inferStartSlotFromMappings([['', '', '18', '', '']]), null);
-});
-
-test('rejects conflicting positioned labels rather than forcing a sequence', () => {
-  const result = inferStartSlotFromMappings([
-    ['06', '', '', '18', ''],
-    ['', '12', '', '', '']
-  ]);
-  assert.equal(result, null);
-});
-
-test('accepts text only as an explicit full-day start-slot supplement', () => {
-  assert.deepEqual(extractFullDayStartSlotSupplement('06:00～翌05:59　晴れ'), { startSlot:'06', sourceLine:'06:00～翌05:59　晴れ' });
-  assert.equal(extractFullDayStartSlotSupplement('06:00～17:59　晴れ'), null);
-  assert.equal(extractFullDayStartSlotSupplement('たぶん朝6時から晴れ'), null);
-});
-
-test('recovers daily only when all five weather slots came from the image', () => {
-  const daily = {
-    ready:false,
-    targetDate:'2026-09-17',
-    diagnostics:{
-      ocrAttempts:[{
-        file:'raw-media-0.jpg', highCount:0,
-        slots:Array.from({length:5},()=>({value:'晴',confidence:'medium',bestScore:.67,margin:.16})),
-        ocr:{ times:['06','12','','00',''] }
-      }]
-    }
-  };
-  const capture = { adapter:'public-url', rawMedia:[{file:'raw-media-0.jpg',mimeType:'image/jpeg',sha256:'a'.repeat(64)}] };
-  const recovered = recoverVisualDailyWithTextStartSlot(daily, '06:00～翌05:59　晴れ', capture);
-  assert.equal(recovered.ready, true);
-  assert.equal(recovered.interpretation.startSlot, '06');
-  assert.deepEqual(recovered.interpretation.slots.map(slot=>slot.weather), Array(5).fill(['晴']));
-  assert.equal(recovered.diagnostics.weatherSource, 'image-primary');
-  assert.equal(recovered.diagnostics.textUse, 'start-slot-only');
-
-  const incomplete = structuredClone(daily);
-  incomplete.diagnostics.ocrAttempts[0].slots[4].value = '';
-  assert.equal(recoverVisualDailyWithTextStartSlot(incomplete, '06:00～翌05:59　晴れ', capture).ready, false);
-
-  const mapLike = structuredClone(daily);
-  mapLike.diagnostics.ocrAttempts[0].ocr = { times:['','','','',''] };
-  assert.equal(recoverVisualDailyWithTextStartSlot(mapLike, '06:00～翌05:59　晴れ', capture).ready, false);
-
-  const xCapture = structuredClone(capture);
-  xCapture.adapter = 'x-official-embed';
-  assert.equal(recoverVisualDailyWithTextStartSlot(daily, '06:00～翌05:59　晴れ', xCapture).ready, false);
-});
-
-test('combines daily and weekly evidence from separate captured images', () => {
-  const daily = {
+function readyDraft(weeklyDays) {
+  const draft = {
     schemaVersion: 1,
     ready: true,
     targetDate: '2026-09-17',
@@ -79,41 +19,37 @@ test('combines daily and weekly evidence from separate captured images', () => {
     },
     diagnostics:{mode:'daily'}
   };
-  const weekly = {
-    schemaVersion: 1,
-    ready: true,
-    targetDate: '2026-09-17',
-    selectedImage: { file:'evidence.jpg', mimeType:'image/jpeg', captureSha256:'b'.repeat(64) },
-    interpretation: {
-      ready:true,
-      days:Array.from({length:5},(_,i)=>({date:`2026-09-${String(18+i).padStart(2,'0')}`,weather:['雨'],visible:true,confidence:'high',description:'weekly'})),
-      confidence:'high', summary:'weekly verified', unresolved:[]
-    },
-    diagnostics:{mode:'weekly'}
-  };
-  const combined = combineDailyWeeklyReviews(daily, weekly, {diagnostics:{reason:'single-image-not-ready'}});
-  assert.equal(combined.ready, true);
-  assert.equal(combined.pendingEvidenceFile, 'raw-media-0.jpg');
-  assert.equal(combined.reviewedImages.length, 2);
-  assert.deepEqual(combined.interpretation.slots.map(item=>item.weather), Array(5).fill(['晴']));
-  assert.deepEqual(combined.interpretation.weeklyDays.map(item=>item.weather), Array(5).fill(['雨']));
-  assert.equal(combined.diagnostics.mode, 'split-daily-weekly-evidence');
+  if (weeklyDays !== undefined) draft.interpretation.weeklyDays = weeklyDays;
+  return draft;
+}
+
+test('binds same-image daily plus weekly review as one reviewed image', () => {
+  const weeklyDays = Array.from({length:5},(_,i)=>({
+    date:`2026-09-${String(18+i).padStart(2,'0')}`,
+    weather:['雨'], visible:true, confidence:'high', description:'weekly'
+  }));
+  const bindings = buildUnifiedBindings(readyDraft(weeklyDays), {runId:'123',id:'456',name:'weather-evidence'});
+  assert.equal(bindings.weeklyCount, 5);
+  assert.equal(bindings.fullEnvelope.reviewedImages.length, 1);
+  assert.equal(bindings.fullEnvelope.pendingEvidenceFile, 'raw-media-0.jpg');
+  assert.equal(bindings.fullEnvelope.interpretation.weeklyDays.length, 5);
+  assert.equal('weeklyDays' in bindings.bridgeEnvelope.interpretation, false);
 });
 
-test('does not combine split evidence when weekly data is incomplete', () => {
-  const daily = {
-    ready:true,
-    targetDate:'2026-09-17',
-    selectedImage:{file:'raw-media-0.jpg',mimeType:'image/jpeg',captureSha256:'a'.repeat(64)},
-    interpretation:{ready:true,observedDate:'2026-09-17',startSlot:'06',slots:[],confidence:'high',summary:'daily',unresolved:[]}
-  };
-  const weekly = {
-    ready:true,
-    targetDate:'2026-09-17',
-    selectedImage:{file:'evidence.jpg',mimeType:'image/jpeg',captureSha256:'b'.repeat(64)},
-    interpretation:{ready:true,days:[],confidence:'high',summary:'weekly',unresolved:[]}
-  };
-  assert.equal(combineDailyWeeklyReviews(daily, weekly), null);
+test('binds daily-only review with zero weekly days', () => {
+  const bindings = buildUnifiedBindings(readyDraft(), {runId:'123',id:'456',name:'weather-evidence'});
+  assert.equal(bindings.weeklyCount, 0);
+  assert.equal(bindings.fullEnvelope.reviewedImages.length, 1);
+  assert.equal(bindings.fullEnvelope.interpretation.weeklyDays, undefined);
+});
+
+test('rejects split reviewed images and incomplete weekly data', () => {
+  const split = readyDraft();
+  split.reviewedImages = [split.selectedImage, {file:'weekly.jpg',mimeType:'image/jpeg',captureSha256:'b'.repeat(64)}];
+  assert.throws(() => buildUnifiedBindings(split, {runId:'123',id:'456',name:'weather-evidence'}), /splitReviewedImagesNotSupported/);
+
+  const incomplete = readyDraft([{date:'2026-09-18',weather:['雨'],visible:true,confidence:'high'}]);
+  assert.throws(() => buildUnifiedBindings(incomplete, {runId:'123',id:'456',name:'weather-evidence'}), /unifiedWeeklyNotReady/);
 });
 
 test('stops for review when timed 流星雨 text conflicts with the game UI image', () => {

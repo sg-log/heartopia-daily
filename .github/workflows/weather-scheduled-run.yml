@@ -205,7 +205,7 @@ jobs:
             if (result.candidates.length === 0) core.setFailed('No public weather candidates found.')
             else if (usable.length === 0) core.setFailed('No supported public evidence candidate found.')
 
-      - name: Capture and review daily plus weekly weather
+      - name: Capture and review current-slot weather
         id: capture
         if: ${{ success() && steps.guard.outputs.already_succeeded != 'true' }}
         shell: pwsh
@@ -220,12 +220,7 @@ jobs:
           $expectedStartSlot = if ($env:RUN_SLOT -eq 'morning') { '06' } elseif ($env:RUN_SLOT -eq 'evening') { '18' } else { throw 'Invalid run slot.' }
           $candidates = @(Get-Content -LiteralPath $env:CANDIDATE_PATH -Raw -Encoding UTF8 | ConvertFrom-Json)
           $selected = $null
-          $dailyDir = $null
-          $dailyReviewPath = $null
-          $dailyCandidate = $null
-          $weeklyDir = $null
-          $weeklyReviewPath = $null
-          $weeklyCandidate = $null
+          $selectionMode = ''
 
           for ($i = 0; $i -lt $candidates.Count; $i++) {
             $candidate = $candidates[$i]
@@ -261,79 +256,63 @@ jobs:
                 $actualStartSlot = ''
               }
 
-              if ($null -ne $review -and $actualStartSlot -ceq $expectedStartSlot) {
+              $weeklyDays = if ($null -ne $review) { @($review.interpretation.weeklyDays | Where-Object { $null -ne $_ }) } else { @() }
+              $isCompleteUnified = $null -ne $review -and
+                $review.ready -eq $true -and
+                [string]$review.targetDate -ceq $env:TARGET_DATE -and
+                [string]$review.interpretation.observedDate -ceq $env:TARGET_DATE -and
+                $actualStartSlot -ceq $expectedStartSlot -and
+                $weeklyDays.Count -ge 5 -and $weeklyDays.Count -le 7
+
+              if ($isCompleteUnified) {
                 if (Test-Path $env:SELECTED_DIR) { Remove-Item -Recurse -Force $env:SELECTED_DIR }
                 Copy-Item -LiteralPath $unifiedPath -Destination $env:REVIEW_DRAFT -Force
                 Move-Item -LiteralPath $dir -Destination $env:SELECTED_DIR
                 $selected = $candidate
+                $selectionMode = 'daily-weekly'
                 break
-              }
-
-              if ($null -ne $review -and $null -eq $weeklyDir -and @($review.interpretation.weeklyDays).Count -ge 5) {
-                $weeklyDir = $dir
-                $weeklyReviewPath = $unifiedPath
-                $weeklyCandidate = $candidate
-                Write-Host "Keep same-day weekly evidence from $([string]$candidate.sourceUrl); daily start was $actualStartSlot."
               }
               if ($actualStartSlot) {
                 Write-Host "Reject complete candidate due to stale start slot: expected=$expectedStartSlot actual=$actualStartSlot source=$([string]$candidate.sourceUrl)"
               }
             }
 
-            if ($null -eq $dailyDir) {
-              $dailyOnlyPath = Join-Path $dir 'daily-only-review.json'
-              & node tools/weather-direct-daily-panel-review.mjs --capture-dir $dir --target-date $env:TARGET_DATE --output $dailyOnlyPath
-              if ($LASTEXITCODE -eq 0) {
-                try {
-                  $dailyReview = Get-Content -LiteralPath $dailyOnlyPath -Raw -Encoding UTF8 | ConvertFrom-Json
-                  $dailyStart = [string]$dailyReview.interpretation.startSlot
-                  if ($dailyReview.ready -eq $true -and $dailyStart -ceq $expectedStartSlot) {
-                    $dailyDir = $dir
-                    $dailyReviewPath = $dailyOnlyPath
-                    $dailyCandidate = $candidate
-                    Write-Host "Keep current-slot daily evidence from $([string]$candidate.sourceUrl) start=$dailyStart."
-                  }
-                } catch {}
+            $dailyOnlyPath = Join-Path $dir 'daily-only-review.json'
+            & node tools/weather-direct-daily-panel-review.mjs --capture-dir $dir --target-date $env:TARGET_DATE --output $dailyOnlyPath
+            if ($LASTEXITCODE -eq 0) {
+              try {
+                $dailyReview = Get-Content -LiteralPath $dailyOnlyPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                $dailyStart = [string]$dailyReview.interpretation.startSlot
+                $dailySlots = @($dailyReview.interpretation.slots)
+                $isCurrentDaily = $dailyReview.ready -eq $true -and
+                  [string]$dailyReview.targetDate -ceq $env:TARGET_DATE -and
+                  [string]$dailyReview.interpretation.observedDate -ceq $env:TARGET_DATE -and
+                  $dailyStart -ceq $expectedStartSlot -and
+                  $dailySlots.Count -eq 5 -and
+                  @($dailySlots | Where-Object { $_.visible -ne $true -or $_.confidence -cne 'high' -or @($_.weather | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -lt 1 }).Count -eq 0
+              } catch {
+                Write-Host "Reject candidate: direct daily-only review payload could not be read."
+                $dailyReview = $null
+                $dailyStart = ''
+                $isCurrentDaily = $false
               }
-            }
 
-            if ($null -eq $weeklyDir) {
-              $weeklyOnlyPath = Join-Path $dir 'weekly-only-review.json'
-              & node tools/weather-weekly-screenshot-review.mjs --capture-dir $dir --target-date $env:TARGET_DATE --output $weeklyOnlyPath
-              if ($LASTEXITCODE -eq 0) {
-                try {
-                  $weeklyReview = Get-Content -LiteralPath $weeklyOnlyPath -Raw -Encoding UTF8 | ConvertFrom-Json
-                  if ($weeklyReview.ready -eq $true -and @($weeklyReview.interpretation.days).Count -ge 5) {
-                    $weeklyDir = $dir
-                    $weeklyReviewPath = $weeklyOnlyPath
-                    $weeklyCandidate = $candidate
-                    Write-Host "Keep same-day weekly-only evidence from $([string]$candidate.sourceUrl)."
-                  }
-                } catch {}
-              }
-            }
-
-            if ($null -ne $dailyDir -and $null -ne $weeklyDir) {
-              if (Test-Path $env:SELECTED_DIR) { Remove-Item -Recurse -Force $env:SELECTED_DIR }
-              & node tools/weather-cross-source-review.mjs `
-                --daily-dir $dailyDir `
-                --daily-review $dailyReviewPath `
-                --weekly-dir $weeklyDir `
-                --weekly-review $weeklyReviewPath `
-                --output-dir $env:SELECTED_DIR `
-                --output $env:REVIEW_DRAFT `
-                --expected-start-slot $expectedStartSlot
-              if ($LASTEXITCODE -eq 0) {
-                $selected = $dailyCandidate
-                Write-Host "Combined current daily evidence with same-day weekly evidence."
+              if ($isCurrentDaily) {
+                if (Test-Path $env:SELECTED_DIR) { Remove-Item -Recurse -Force $env:SELECTED_DIR }
+                Copy-Item -LiteralPath $dailyOnlyPath -Destination $env:REVIEW_DRAFT -Force
+                Move-Item -LiteralPath $dir -Destination $env:SELECTED_DIR
+                $selected = $candidate
+                $selectionMode = 'daily-only'
+                Write-Host "Select current-slot daily-only evidence from $([string]$candidate.sourceUrl) start=$dailyStart."
                 break
               }
             }
           }
 
-          if ($null -eq $selected) { throw 'No captured public candidate produced current-slot daily plus same-day weekly weather.' }
+          if ($null -eq $selected) { throw 'No captured public candidate produced current-slot daily weather.' }
           "selected_dir=$env:SELECTED_DIR" >> $env:GITHUB_OUTPUT
           "selected_source_url=$([string]$selected.sourceUrl)" >> $env:GITHUB_OUTPUT
+          "selection_mode=$selectionMode" >> $env:GITHUB_OUTPUT
 
       - name: Upload failed candidate diagnostics
         if: ${{ always() && steps.guard.outputs.already_succeeded != 'true' && steps.capture.outcome == 'failure' }}
@@ -394,7 +373,7 @@ jobs:
             -PendingPreviewPath "$env:RESULT_DIR/pending-preview.json"
           if ("${{ steps.bridge.outputs.pending_prepared }}" -eq 'false') { throw 'Daily pending preview was not prepared.' }
 
-      - name: Register verified daily and weekly weather as one pending
+      - name: Register verified weather as one pending
         id: submit
         if: ${{ success() && steps.bridge.outcome == 'success' }}
         shell: pwsh
@@ -479,7 +458,7 @@ jobs:
             core.setOutput('new_pending', submitSucceeded && process.env.CONTENT_DUPLICATE !== 'true' ? 'true' : 'false')
             core.setOutput('report_id', process.env.REPORT_ID || '')
             core.setOutput('notify_failure', notifyFailure ? 'true' : 'false')
-            if (!terminalSuccess) core.setFailed('Scheduled weather run did not reach a verified daily+weekly pending or known content duplicate.')
+            if (!terminalSuccess) core.setFailed('Scheduled weather run did not reach a verified current-slot pending or known content duplicate.')
 
       - name: Notify Discord about a new pending
         if: ${{ always() && steps.finalize.outputs.new_pending == 'true' && env.WEATHER_DC_WEBHOOK_URL != '' }}
@@ -488,7 +467,7 @@ jobs:
           REPORT_ID: ${{ steps.finalize.outputs.report_id }}
         run: |
           $adminUrl = "https://sg-log.github.io/heartopia-daily/?admin=1&pending=$env:REPORT_ID#pendingWeatherReports"
-          $payload = @{ content = "🌤️ Heartopiaのデイリー＋週間天気pendingが届いたよ。`n確認・承認する ↓`n$adminUrl"; allowed_mentions = @{ parse = @() } } | ConvertTo-Json -Depth 5 -Compress
+          $payload = @{ content = "🌤️ Heartopiaの天気pendingが届いたよ。`n確認・承認する ↓`n$adminUrl"; allowed_mentions = @{ parse = @() } } | ConvertTo-Json -Depth 5 -Compress
           Invoke-RestMethod -Method Post -Uri $env:WEATHER_DC_WEBHOOK_URL -ContentType 'application/json' -Body $payload | Out-Null
 
       - name: Notify Discord after terminal failure

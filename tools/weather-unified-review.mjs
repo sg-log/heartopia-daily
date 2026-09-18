@@ -1,125 +1,11 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { bindReviewEnvelope, inspectCapture } from './weather-deterministic-review.mjs';
+import { bindReviewEnvelope } from './weather-deterministic-review.mjs';
 import { inspectDirectPanelCapture } from './weather-direct-panel-review.mjs';
-import { inspectWeeklyScreenshot } from './weather-weekly-screenshot-review.mjs';
 import { createVerifiedPanelCapture } from './weather-verified-panel-crop.mjs';
 
 const START_SLOTS = ['00', '06', '12', '18'];
-
-export function inferStartSlotFromMappings(mappings) {
-  const normalized = [];
-  for (const mapping of mappings || []) {
-    const values = Array.from({ length: 5 }, (_, index) => {
-      const raw = String(mapping?.[index] || '').trim();
-      if (!raw) return '';
-      const value = raw.padStart(2, '0').slice(-2);
-      return START_SLOTS.includes(value) ? value : '';
-    });
-    if (values.filter(Boolean).length >= 2) normalized.push(values);
-  }
-  if (!normalized.length) return null;
-
-  const merged = Array(5).fill('');
-  for (let index = 0; index < 5; index += 1) {
-    const seen = [...new Set(normalized.map(values => values[index]).filter(Boolean))];
-    if (seen.length === 1) merged[index] = seen[0];
-  }
-  if (merged.filter(Boolean).length >= 2) normalized.push(merged);
-
-  let best = null;
-  for (const mapped of normalized) {
-    const observed = mapped.filter(Boolean).length;
-    const matches = [];
-    for (const startSlot of START_SLOTS) {
-      const startIndex = START_SLOTS.indexOf(startSlot);
-      const expected = Array.from({ length: 5 }, (_, index) => START_SLOTS[(startIndex + index) % START_SLOTS.length]);
-      let mismatch = false;
-      for (let index = 0; index < 5; index += 1) {
-        if (mapped[index] && mapped[index] !== expected[index]) mismatch = true;
-      }
-      if (!mismatch) matches.push({ startSlot, expected });
-    }
-    if (matches.length !== 1) continue;
-    const candidate = { ...matches[0], mapped, observed };
-    if (!best || candidate.observed > best.observed) best = candidate;
-  }
-  return best;
-}
-
-export function extractFullDayStartSlotSupplement(text) {
-  const lines = String(text || '').replace(/\r/g, '').split('\n');
-  for (const rawLine of lines) {
-    const line = rawLine.trim().replace(/：/g, ':').replace(/[〜～]/g, '~');
-    const match = line.match(/^(00|06|12|18):00\s*[~\-]\s*(翌\s*)?(\d{1,2}):59(?:\s|$)/);
-    if (!match) continue;
-    const start = Number(match[1]);
-    const end = Number(match[3]);
-    const expectedEnd = (start + 23) % 24;
-    if (end !== expectedEnd) continue;
-    if (start === 0 && match[2]) continue;
-    if (start !== 0 && !match[2]) continue;
-    return { startSlot: String(start).padStart(2, '0'), sourceLine: rawLine.trim() };
-  }
-  return null;
-}
-
-export function recoverVisualDailyWithTextStartSlot(daily, postText, capture) {
-  if (daily?.ready || !daily?.diagnostics || !capture || !Array.isArray(capture.rawMedia)) return daily;
-  const supplement = extractFullDayStartSlotSupplement(postText);
-  if (!supplement) return daily;
-  const attempts = Array.isArray(daily.diagnostics.ocrAttempts) ? daily.diagnostics.ocrAttempts : [];
-  const candidates = attempts.filter(item => {
-    const slots = Array.isArray(item?.slots) ? item.slots : [];
-    const visualStart = inferStartSlotFromMappings([item?.ocr?.times || item?.ocr?.mapped || []]);
-    return slots.length === 5 &&
-      slots.every(slot => slot?.value && slot?.confidence !== 'low') &&
-      visualStart?.startSlot === supplement.startSlot;
-  });
-  if (!candidates.length) return daily;
-  candidates.sort((a, b) => {
-    const ah = Number(a.highCount || 0), bh = Number(b.highCount || 0);
-    const amin = Math.min(...a.slots.map(slot => Number(slot.margin || 0)));
-    const bmin = Math.min(...b.slots.map(slot => Number(slot.margin || 0)));
-    const aavg = a.slots.reduce((sum, slot) => sum + Number(slot.bestScore || 0), 0) / 5;
-    const bavg = b.slots.reduce((sum, slot) => sum + Number(slot.bestScore || 0), 0) / 5;
-    return bh - ah || bmin - amin || bavg - aavg;
-  });
-  const best = candidates[0];
-  const media = capture.rawMedia.find(item => String(item?.file || '') === String(best.file || ''));
-  if (!media?.file || !media?.mimeType || !media?.sha256) return daily;
-  if (capture.adapter === 'x-official-embed' && media.sourceScope !== 'exact-status') return daily;
-  const slots = best.slots.map((slot, index) => ({
-    slot: `slot${index}`,
-    visible: true,
-    weather: [slot.value],
-    confidence: 'high',
-    description: `画像テンプレート判定 score=${Number(slot.bestScore || 0).toFixed(3)} margin=${Number(slot.margin || 0).toFixed(3)}`
-  }));
-  return {
-    schemaVersion: 1,
-    ready: true,
-    targetDate: daily.targetDate,
-    selectedImage: { file: String(media.file), mimeType: String(media.mimeType), captureSha256: String(media.sha256) },
-    interpretation: {
-      ready: true,
-      observedDate: daily.targetDate,
-      startSlot: supplement.startSlot,
-      slots,
-      confidence: 'high',
-      summary: `元画像の天気5枠を画像判定し、開始時刻だけ投稿本文の明示的な24時間表記（${supplement.sourceLine}）で補完。`,
-      unresolved: []
-    },
-    diagnostics: {
-      ...(daily.diagnostics || {}),
-      startSlotSupplement: supplement,
-      recoveredFromVisualSlots: true,
-      weatherSource: 'image-primary',
-      textUse: 'start-slot-only'
-    }
-  };
-}
 
 export function extractTimedMeteorIntervals(text) {
   const out = [];
@@ -180,56 +66,6 @@ export function applyTimedSpecialWeatherHints(result, postText) {
   return clone;
 }
 
-function uniqueReviewedImages(images) {
-  const seen = new Set();
-  const out = [];
-  for (const image of images || []) {
-    if (!image?.file || !image?.mimeType || !image?.captureSha256) continue;
-    const key = `${image.file}\n${image.captureSha256}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ file: String(image.file), mimeType: String(image.mimeType), captureSha256: String(image.captureSha256) });
-  }
-  return out;
-}
-
-export function combineDailyWeeklyReviews(daily, weekly, directFailure = null) {
-  if (!daily?.ready || daily.interpretation?.ready !== true || !daily.selectedImage) return null;
-  if (!weekly?.ready || weekly.interpretation?.ready !== true || !weekly.selectedImage) return null;
-  if (String(daily.targetDate || '') !== String(weekly.targetDate || '')) return null;
-  const days = weekly.interpretation.days;
-  if (!Array.isArray(days) || days.length < 5 || days.length > 7) return null;
-  if (days.some(day => day?.visible !== true || day?.confidence !== 'high' || !Array.isArray(day?.weather) || !day.weather.length)) return null;
-
-  const reviewedImages = uniqueReviewedImages([daily.selectedImage, weekly.selectedImage]);
-  if (!reviewedImages.length || reviewedImages.length > 4) return null;
-  const primary = reviewedImages.find(image => image.file === daily.selectedImage.file && image.captureSha256 === daily.selectedImage.captureSha256) || reviewedImages[0];
-  const summary = `${String(daily.interpretation.summary || '').trim()} 週間欄は同じ公開投稿の取得済み証拠画像から別途判読。`.trim();
-
-  return {
-    schemaVersion: 2,
-    ready: true,
-    targetDate: daily.targetDate,
-    selectedImage: primary,
-    reviewedImages,
-    pendingEvidenceFile: primary.file,
-    interpretation: {
-      ...daily.interpretation,
-      weeklyDays: days,
-      confidence: 'high',
-      summary,
-      unresolved: []
-    },
-    diagnostics: {
-      mode: 'split-daily-weekly-evidence',
-      directAttempt: directFailure?.diagnostics || null,
-      daily: daily.diagnostics || null,
-      weekly: weekly.diagnostics || null,
-      reviewedImages
-    }
-  };
-}
-
 export async function inspectUnifiedCapture({ captureDir, targetDate, repoRoot = path.resolve('.') }) {
   const direct = await inspectDirectPanelCapture({ captureDir, targetDate, repoRoot });
   let postText = '';
@@ -262,20 +98,6 @@ export async function inspectUnifiedCapture({ captureDir, targetDate, repoRoot =
     verifiedPanel = { ready:false, reason:'verifiedPanelPipelineError', message:String(error?.message || error) };
   }
 
-  let capture = null;
-  try { capture = JSON.parse(await readFile(path.join(captureDir, 'capture.json'), 'utf8')); } catch {}
-  let daily = null;
-  let weekly = null;
-  try { daily = await inspectCapture({ captureDir, targetDate, repoRoot }); } catch (error) {
-    daily = { ready:false, diagnostics:{ reason:'dailyFallbackError', message:String(error?.message || error) } };
-  }
-  daily = recoverVisualDailyWithTextStartSlot(daily, postText, capture);
-  try { weekly = await inspectWeeklyScreenshot({ captureDir, targetDate, repoRoot }); } catch (error) {
-    weekly = { ready:false, diagnostics:{ reason:'weeklyFallbackError', message:String(error?.message || error) } };
-  }
-  const combined = combineDailyWeeklyReviews(daily, weekly, direct);
-  if (combined) return applyTimedSpecialWeatherHints(combined, postText);
-
   return {
     ...direct,
     diagnostics: {
@@ -285,12 +107,6 @@ export async function inspectUnifiedCapture({ captureDir, targetDate, repoRoot =
         reason: verifiedPanel?.reason || '',
         directReady: verifiedDirect?.ready === true,
         direct: verifiedDirect?.diagnostics || null
-      },
-      splitFallback: {
-        dailyReady: daily?.ready === true,
-        weeklyReady: weekly?.ready === true,
-        daily: daily?.diagnostics || null,
-        weekly: weekly?.diagnostics || null
       }
     }
   };
