@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { combineDailyWeeklyReviews, inferStartSlotFromMappings, extractTimedMeteorIntervals, applyTimedSpecialWeatherHints, extractFullDayStartSlotSupplement, recoverVisualDailyWithTextStartSlot } from './weather-unified-review.mjs';
+import { resolveWeekly } from './weather-direct-panel-review.mjs';
 
 test('recovers a unique 06 start from two positioned labels without guessing weather', () => {
   const result = inferStartSlotFromMappings([
@@ -143,4 +144,25 @@ test('stops for review when timed 流星雨 text conflicts with the game UI imag
 test('does not override a slot from an untimed meteor mention', () => {
   const result = {ready:true,interpretation:{ready:true,startSlot:'06',slots:[{slot:'slot0',weather:['晴']}]} };
   assert.equal(applyTimedSpecialWeatherHints(result, '今日は流星群が見たい').interpretation.slots[0].weather[0], '晴');
+});
+
+
+test('weekly heuristic recognizes pale-purple meteor streaks without overriding rainbow', () => {
+  const meteor = resolveWeekly({
+    bestValue:'晴', bestScore:.57, margin:.01,
+    metrics:{red:0,cyan:0,warm:.43,yellowOrange:.47,palePurple:.035}
+  });
+  assert.deepEqual(meteor, {value:'流星群',high:true});
+
+  const rainbow = resolveWeekly({
+    bestValue:'雨', bestScore:.57, margin:.01,
+    metrics:{red:.22,cyan:.34,warm:.06,yellowOrange:.09,palePurple:.03}
+  });
+  assert.deepEqual(rainbow, {value:'虹',high:true});
+
+  const sunny = resolveWeekly({
+    bestValue:'晴', bestScore:.58, margin:.03,
+    metrics:{red:0,cyan:0,warm:.53,yellowOrange:.57,palePurple:0}
+  });
+  assert.deepEqual(sunny, {value:'晴',high:true});
 });
