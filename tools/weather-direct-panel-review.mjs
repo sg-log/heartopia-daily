@@ -52,7 +52,7 @@ async function inspectPanel(page,bytes,mimeType,templates){
     const rgbToHsv=(r,g,b)=>{r/=255;g/=255;b/=255;const max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0;if(d){if(max===r)h=((g-b)/d)%6;else if(max===g)h=(b-r)/d+2;else h=(r-g)/d+4;h*=60;if(h<0)h+=360;}return{h,s:max?d/max:0,v:max};};
     const structural=document.createElement('canvas');structural.width=width;structural.height=height;const sctx=structural.getContext('2d',{willReadFrequently:true});sctx.drawImage(source,0,0);const raw=sctx.getImageData(0,0,width,height).data;
     let blue=0,blueTotal=0,light=0,lightTotal=0;
-    for(let y=Math.round(height*.10);y<Math.round(height*.53);y+=2)for(let x=Math.round(width*.05);x<Math.round(width*.95);x+=2){const i=(y*width+x)*4,hsv=rgbToHsv(raw[i],raw[i+1],raw[i+2]);blueTotal++;if(hsv.h>=175&&hsv.h<=235&&hsv.s>=.20&&hsv.v>=.45)blue++;}
+    for(let y=Math.round(height*.10);y<Math.round(height*.53);y+=2)for(let x=Math.round(width*.05);x<Math.round(width*.95);x+=2){const i=(y*width+x)*4,hsv=rgbToHsv(raw[i],raw[i+1],raw[i+2]);blueTotal++;if(hsv.h>=175&&hsv.h<=260&&hsv.s>=.20&&hsv.v>=.45)blue++;}
     for(let y=Math.round(height*.55);y<Math.round(height*.98);y+=2)for(let x=Math.round(width*.05);x<Math.round(width*.94);x+=2){const i=(y*width+x)*4,hsv=rgbToHsv(raw[i],raw[i+1],raw[i+2]);lightTotal++;if(hsv.v>=.72&&hsv.s<=.25)light++;}
     const blueRatio=blueTotal?blue/blueTotal:0,lightRatio=lightTotal?light/lightTotal:0;
     if(blueRatio<.22||lightRatio<.55)return{ready:false,reason:'directPanelStructureMismatch',width,height,aspect,blueRatio,lightRatio};
