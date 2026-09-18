@@ -1,0 +1,39 @@
+name: Gift code Discord poll
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel_id:
+        description: "Discord channel ID to poll"
+        required: true
+        type: string
+      mode:
+        description: "Connection test or normal poll"
+        required: true
+        type: choice
+        options: [poll, test]
+        default: poll
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gift-code-discord-poll
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Poll Discord gift channel
+        env:
+          DISCORD_GIFT_BOT_TOKEN: ${{ secrets.DISCORD_GIFT_BOT_TOKEN }}
+          WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
+          DISCORD_GIFT_CHANNEL_ID: ${{ inputs.channel_id }}
+          GIFT_POLL_MODE: ${{ inputs.mode }}
+        run: node tools/gift-discord-poll.mjs
