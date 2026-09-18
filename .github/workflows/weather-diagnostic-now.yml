@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   diagnose:
@@ -48,3 +49,15 @@ jobs:
           path: ${{ runner.temp }}/weather-diagnostic-capture
           if-no-files-found: error
           retention-days: 3
+
+      - name: Dispatch corrected production morning run once
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh workflow run weather-scheduled-run.yml
+          --ref main
+          -f slot=morning
+          -f target_date=2026-09-18
+          -f trigger_origin=manual
+          -f attempt_kind=manual
