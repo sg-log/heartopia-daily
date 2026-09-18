@@ -242,3 +242,66 @@ test("unknown reward name is kept in English and marked for later official-name 
   assert.equal(h.rows[1][2], "Mystery Token×5\n染色剤×2");
   assert.match(h.rows[1][5], /日本語名未確認: Mystery Token/);
 });
+
+
+test("GitHub batch bootstrap imports candidates silently and advances to latest message", () => {
+  const h = makeHarness();
+  h.properties.set("DISCORD_GIFT_CHANNEL_ID", "123456789012345678");
+  const result = h.context.processDiscordGiftBatch_({
+    channelId: "123456789012345678",
+    guildId: "223456789012345678",
+    latestMessageId: "923456789012345678",
+    messages: [{
+      id: "823456789012345678",
+      channel_id: "123456789012345678",
+      webhook_id: "323456789012345678",
+      content: [
+        "Rewards: Wishing star ×3, Dye ×2",
+        "Gift Code: bootstrap123",
+        "Redemption Deadline: 2099/10/01 00:59"
+      ].join("\n"),
+      embeds: []
+    }]
+  });
+
+  assert.equal(result.bootstrap, true);
+  assert.equal(result.counts.created, 1);
+  assert.equal(result.lastMessageId, "923456789012345678");
+  assert.equal(h.properties.get("DISCORD_GIFT_LAST_MESSAGE_ID"), "923456789012345678");
+  assert.deepEqual(h.events.notices, []);
+  assert.deepEqual(h.events.notifications, []);
+});
+
+test("GitHub batch ignores candidates at or before the stored cursor", () => {
+  const h = makeHarness();
+  h.properties.set("DISCORD_GIFT_CHANNEL_ID", "123456789012345678");
+  h.properties.set("DISCORD_GIFT_LAST_MESSAGE_ID", "823456789012345678");
+
+  const result = h.context.processDiscordGiftBatch_({
+    channelId: "123456789012345678",
+    guildId: "223456789012345678",
+    latestMessageId: "923456789012345678",
+    messages: [
+      {
+        id: "723456789012345678",
+        channel_id: "123456789012345678",
+        webhook_id: "323456789012345678",
+        content: "Rewards: Dye ×1\nGift Code: oldcode1",
+        embeds: []
+      },
+      {
+        id: "923456789012345678",
+        channel_id: "123456789012345678",
+        webhook_id: "323456789012345678",
+        content: "Rewards: Dye ×2\nGift Code: newcode1",
+        embeds: []
+      }
+    ]
+  });
+
+  assert.equal(result.bootstrap, false);
+  assert.equal(result.counts.created, 1);
+  assert.equal(h.rows.length, 2);
+  assert.equal(h.rows[1][1], "newcode1");
+  assert.deepEqual(h.events.notifications, ["newcode1"]);
+});
