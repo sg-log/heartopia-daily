@@ -6,7 +6,9 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i += 2) args[argv[i]] = argv[i + 1];
   if (!/^20\d{2}-\d{2}-\d{2}$/.test(args['--target-date'] || '')) throw new Error('Invalid --target-date');
   if (!args['--out']) throw new Error('Missing --out');
-  return { targetDate: args['--target-date'], out: args['--out'] };
+  const slot = String(args['--slot'] || '').trim();
+  if (slot && !['morning','evening'].includes(slot)) throw new Error('Invalid --slot');
+  return { targetDate: args['--target-date'], out: args['--out'], slot };
 }
 
 function sourcePlatformForHost(host) {
@@ -63,9 +65,26 @@ export function normalizeCandidateUrl(raw) {
   return null;
 }
 
-export function buildQueries(targetDate) {
+function expectedStartSlotFor(slot) {
+  return slot === 'morning' ? '06' : slot === 'evening' ? '18' : '';
+}
+
+function startSlotTokens(slot) {
+  const start = expectedStartSlotFor(slot);
+  if (!start) return [];
+  const hour = String(Number(start));
+  return [`${start}:00`, `${hour}:00`, `${start}時`, `${hour}時`, `${start}時開始`, `${hour}時開始`].map(v => v.toLowerCase());
+}
+
+export function buildQueries(targetDate, slot = '') {
   const [, month, day] = targetDate.split('-').map(Number);
+  const start = expectedStartSlotFor(slot);
+  const slotQueries = start ? [
+    `ハートピア 天気 ${month}月${day}日 ${start}:00`,
+    `ハートピア お天気予報 ${month}月${day}日 ${start}:00`
+  ] : [];
   return [
+    ...slotQueries,
     `ハートピア 天気 ${month}月${day}日`,
     `ハートピア スローライフ 天気 ${month}月${day}日`,
     `Heartopia weather ${targetDate}`
@@ -95,18 +114,20 @@ export function targetDateTokens(targetDate) {
   ].map((value) => value.toLowerCase());
 }
 
-export function candidateRelevance(text, targetDate) {
+export function candidateRelevance(text, targetDate, slot = '') {
   const s = normalizeSearchText(text);
   const hasGame = s.includes('ハートピア') || s.includes('heartopia');
   const hasWeather = s.includes('天気') || s.includes('weather') || s.includes('予報') || s.includes('forecast');
   const dateMatched = targetDateTokens(targetDate).some((token) => s.includes(token));
   const forecastMatched = s.includes('天気予報') || s.includes('今日の天気') || s.includes('weather forecast');
+  const startSlotMatched = startSlotTokens(slot).some((token) => s.includes(token));
   let score = 0;
   if (hasGame) score += 4;
   if (hasWeather) score += 4;
   if (dateMatched) score += 5;
   if (forecastMatched) score += 2;
-  return { relevant: hasGame && hasWeather, dateMatched, forecastMatched, score };
+  if (startSlotMatched) score += 7;
+  return { relevant: hasGame && hasWeather, dateMatched, forecastMatched, startSlotMatched, score };
 }
 
 function providerUrl(provider, query) {
@@ -118,7 +139,7 @@ function providerUrl(provider, query) {
   throw new Error(`Unknown provider ${provider}`);
 }
 
-async function collectFromPage(page, provider, query, targetDate, limit = 40) {
+async function collectFromPage(page, provider, query, targetDate, slot = '', limit = 40) {
   const url = providerUrl(provider, query);
   const result = { provider, query, url, status: 'ok', error: null, linksSeen: 0, candidates: [] };
   try {
@@ -147,7 +168,7 @@ async function collectFromPage(page, provider, query, targetDate, limit = 40) {
       const normalized = normalizeCandidateUrl(row.href);
       if (!normalized) continue;
       const contextText = `${row.text} ${row.parentText}`;
-      const relevance = candidateRelevance(contextText, targetDate);
+      const relevance = candidateRelevance(contextText, targetDate, slot);
       if (!relevance.relevant) continue;
       result.candidates.push({
         sourceUrl: normalized.url,
@@ -160,7 +181,8 @@ async function collectFromPage(page, provider, query, targetDate, limit = 40) {
         context: row.parentText.slice(0, 1000),
         relevanceScore: relevance.score,
         dateMatched: relevance.dateMatched,
-        forecastMatched: relevance.forecastMatched
+        forecastMatched: relevance.forecastMatched,
+        startSlotMatched: relevance.startSlotMatched
       });
       if (result.candidates.length >= limit) break;
     }
@@ -174,6 +196,7 @@ async function collectFromPage(page, provider, query, targetDate, limit = 40) {
 function rankCandidates(candidates) {
   return [...candidates].sort((a, b) =>
     Number(Boolean(b.dateMatched)) - Number(Boolean(a.dateMatched)) ||
+    Number(Boolean(b.startSlotMatched)) - Number(Boolean(a.startSlotMatched)) ||
     Number(Boolean(b.forecastMatched)) - Number(Boolean(a.forecastMatched)) ||
     Number(b.relevanceScore || 0) - Number(a.relevanceScore || 0) ||
     b.discoveries.length - a.discoveries.length ||
@@ -216,7 +239,7 @@ export function selectDiversifiedCandidates(candidates, limit = 24) {
   return selected;
 }
 
-export function mergeAndRankCandidates(attempts, targetDate, limit = 24) {
+export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = '') {
   const merged = new Map();
   for (const attempt of attempts || []) {
     for (const c of attempt.candidates || []) {
@@ -225,20 +248,21 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24) {
       if (!merged.has(key)) merged.set(key, { ...c, discoveries: [] });
       const record = merged.get(key);
       record.discoveries.push({ discoverySource: c.discoverySource, searchQuery: c.searchQuery });
-      const relevance = candidateRelevance(`${record.anchorText || ''} ${record.context || ''}`, targetDate);
+      const relevance = candidateRelevance(`${record.anchorText || ''} ${record.context || ''}`, targetDate, slot);
       record.relevanceScore = Math.max(Number(record.relevanceScore || 0), relevance.score);
       record.dateMatched = Boolean(record.dateMatched || relevance.dateMatched);
       record.forecastMatched = Boolean(record.forecastMatched || relevance.forecastMatched);
+      record.startSlotMatched = Boolean(record.startSlotMatched || relevance.startSlotMatched);
     }
   }
   const relevant = [...merged.values()].filter((candidate) =>
-    candidateRelevance(`${candidate.anchorText || ''} ${candidate.context || ''}`, targetDate).relevant
+    candidateRelevance(`${candidate.anchorText || ''} ${candidate.context || ''}`, targetDate, slot).relevant
   );
   return selectDiversifiedCandidates(relevant, limit);
 }
 
-export async function discover(targetDate) {
-  const queries = buildQueries(targetDate);
+export async function discover(targetDate, slot = '') {
+  const queries = buildQueries(targetDate, slot);
   // Public-WEB discovery uses multiple routes. X/Yahoo realtime are allowed as
   // discovery routes, but neither is privileged or treated as authoritative.
   const providers = ['bing', 'duckduckgo', 'yahoo-web', 'yahoo-realtime'];
@@ -251,13 +275,13 @@ export async function discover(targetDate) {
       const providerQueries = provider === 'yahoo-realtime'
         ? [queries[0], queries[1], 'ハートピア 天気']
         : queries;
-      for (const query of providerQueries) attempts.push(await collectFromPage(page, provider, query, targetDate));
+      for (const query of providerQueries) attempts.push(await collectFromPage(page, provider, query, targetDate, slot));
     }
   } finally {
     await browser.close();
   }
 
-  const candidates = mergeAndRankCandidates(attempts, targetDate, 24);
+  const candidates = mergeAndRankCandidates(attempts, targetDate, 24, slot);
   return {
     schemaVersion: 3,
     responseType: 'weather-public-discovery',
@@ -269,8 +293,8 @@ export async function discover(targetDate) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const { targetDate, out } = parseArgs(process.argv.slice(2));
-  const result = await discover(targetDate);
+  const { targetDate, out, slot } = parseArgs(process.argv.slice(2));
+  const result = await discover(targetDate, slot);
   await fs.writeFile(out, `${JSON.stringify(result)}\n`, 'utf8');
   console.log(JSON.stringify({
     candidateCount: result.candidates.length,
