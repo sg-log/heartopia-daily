@@ -1,11 +1,12 @@
 function processDiscordGiftMessage_(message, config, options) {
+  const silent = Boolean(options && options.silent);
   const text = discordGiftMessageText_(message);
   if (!text || !looksLikeDiscordGiftAnnouncement_(text)) {
     return { advanceCursor: true, mode: "ignored" };
   }
 
   if (!message.webhook_id) {
-    notifyGiftCodeReview_(message, config, "ギフト形式の投稿ですがWebhook投稿ではありません");
+    if (!silent) notifyGiftCodeReview_(message, config, "ギフト形式の投稿ですがWebhook投稿ではありません");
     return { advanceCursor: true, mode: "review" };
   }
 
@@ -20,7 +21,7 @@ function processDiscordGiftMessage_(message, config, options) {
     rewardNameMap: giftRewardNameMap_()
   });
   if (!parsed.ok) {
-    notifyGiftCodeReview_(message, config, parsed.error || "ギフトコードを安全に解析できませんでした");
+    if (!silent) notifyGiftCodeReview_(message, config, parsed.error || "ギフトコードを安全に解析できませんでした");
     return { advanceCursor: true, mode: "review" };
   }
 
@@ -41,8 +42,8 @@ function processDiscordGiftMessage_(message, config, options) {
     status: giftStatusFromExpiry_(parsed.expiresAt)
   };
 
-  const result = saveAutomatedGiftCode_(candidate, { silent: Boolean(options && options.silent) });
-  if (result.mode === "conflict") {
+  const result = saveAutomatedGiftCode_(candidate, { silent: silent });
+  if (result.mode === "conflict" && !silent) {
     notifyGiftCodeReview_(message, config, result.reason || "既存データと内容が一致しないため自動更新しませんでした");
   }
   return { advanceCursor: true, mode: result.mode, code: candidate.code };
