@@ -1,4 +1,5 @@
 name: Weather diagnostic now
+# rerun-after-panel-hue-fix
 
 on:
   push:
