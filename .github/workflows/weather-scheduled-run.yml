@@ -230,6 +230,9 @@ jobs:
                 -SearchQuery ([string]$candidate.searchQuery)
             } catch { continue }
             & node tools/weather-unified-review.mjs --mode inspect --capture-dir $dir --target-date $env:TARGET_DATE --output $env:REVIEW_DRAFT
+            if (Test-Path $env:REVIEW_DRAFT) {
+              Copy-Item -LiteralPath $env:REVIEW_DRAFT -Destination (Join-Path $dir 'review.json') -Force
+            }
             if ($LASTEXITCODE -eq 0) {
               if (Test-Path $env:SELECTED_DIR) { Remove-Item -Recurse -Force $env:SELECTED_DIR }
               Move-Item -LiteralPath $dir -Destination $env:SELECTED_DIR
@@ -240,6 +243,15 @@ jobs:
           if ($null -eq $selected) { throw 'No captured public candidate produced complete daily and weekly weather.' }
           "selected_dir=$env:SELECTED_DIR" >> $env:GITHUB_OUTPUT
           "selected_source_url=$([string]$selected.sourceUrl)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload failed candidate diagnostics
+        if: ${{ always() && steps.guard.outputs.already_succeeded != 'true' && steps.capture.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: weather-scheduled-failure-${{ github.run_id }}
+          path: ${{ runner.temp }}/weather-candidate-*
+          if-no-files-found: warn
+          retention-days: 3
 
       - name: Upload exact captured evidence artifact
         id: upload
