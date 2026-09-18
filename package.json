@@ -2,7 +2,7 @@
   "name": "heartopia-daily-automation",
   "private": true,
   "scripts": {
-    "test:gift-discord": "node --test tools/test-gift-discord-parser.mjs",
+    "test:gift-discord": "node --test tools/test-gift-discord-parser.mjs tools/test-gift-discord-storage.mjs",
     "test:weather-screenshot": "node --test tools/test-weather-screenshot-core.mjs tools/test-weather-screenshot-browser.mjs",
     "test:weather-cloud-url": "node --test tools/test-weather-cloud-url-evidence.mjs",
     "weather:cloud:url": "node tools/weather-cloud-url-evidence.mjs",
