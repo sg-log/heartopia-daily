@@ -34,17 +34,56 @@ jobs:
           console.log({queries:q, current:r, stale});
           NODE
       - run: npx playwright install --with-deps chromium
-      - name: Verify real 06-start daily-only post
+      - name: Verify real split daily plus weekly evidence
         shell: pwsh
         env:
-          SOURCE_URL: https://x.com/i/status/2100739618446684218
-          CAPTURE_DIR: ${{ runner.temp }}/daily-only-acceptance
-          REVIEW_PATH: ${{ runner.temp }}/daily-only-review.json
+          DAILY_URL: https://x.com/i/status/2100739618446684218
+          WEEKLY_URL: https://x.com/i/status/2100687420958339120
+          DAILY_DIR: ${{ runner.temp }}/daily-only-acceptance
+          WEEKLY_DIR: ${{ runner.temp }}/weekly-acceptance
+          COMBINED_DIR: ${{ runner.temp }}/combined-acceptance
+          COMBINED_REVIEW: ${{ runner.temp }}/combined-review.json
         run: |
-          New-Item -ItemType Directory -Path $env:CAPTURE_DIR -Force | Out-Null
-          node tools/weather-x-embed-evidence.mjs --url "$env:SOURCE_URL" --output-dir "$env:CAPTURE_DIR"
-          if ($LASTEXITCODE -ne 0) { throw 'capture failed' }
-          node tools/weather-direct-daily-panel-review.mjs --capture-dir "$env:CAPTURE_DIR" --target-date "2026-09-18" --output "$env:REVIEW_PATH"
+          foreach ($dir in @($env:DAILY_DIR,$env:WEEKLY_DIR,$env:COMBINED_DIR)) {
+            if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          }
+
+          node tools/weather-x-embed-evidence.mjs --url "$env:DAILY_URL" --output-dir "$env:DAILY_DIR"
+          if ($LASTEXITCODE -ne 0) { throw 'daily capture failed' }
+          ./tools/weather-cloud-discovery.ps1 -CapturePath "$env:DAILY_DIR/capture.json" -OutputPath "$env:DAILY_DIR/discovery-candidate.json" -DiscoverySource "acceptance" -SearchQuery "9/18 06 current"
+          node tools/weather-direct-daily-panel-review.mjs --capture-dir "$env:DAILY_DIR" --target-date "2026-09-18" --output "$env:DAILY_DIR/daily-review.json"
           if ($LASTEXITCODE -ne 0) { throw 'daily-only review failed' }
-          $r = Get-Content -LiteralPath $env:REVIEW_PATH -Raw -Encoding UTF8 | ConvertFrom-Json
-          if ($r.ready -ne $true -or [string]$r.interpretation.startSlot -cne '06') { throw 'daily-only acceptance mismatch' }
+
+          node tools/weather-x-embed-evidence.mjs --url "$env:WEEKLY_URL" --output-dir "$env:WEEKLY_DIR"
+          if ($LASTEXITCODE -ne 0) { throw 'weekly capture failed' }
+          ./tools/weather-cloud-discovery.ps1 -CapturePath "$env:WEEKLY_DIR/capture.json" -OutputPath "$env:WEEKLY_DIR/discovery-candidate.json" -DiscoverySource "acceptance" -SearchQuery "9/18 weekly"
+          node tools/weather-unified-review.mjs --mode inspect --capture-dir "$env:WEEKLY_DIR" --target-date "2026-09-18" --output "$env:WEEKLY_DIR/weekly-review.json"
+          if ($LASTEXITCODE -ne 0) { throw 'weekly review failed' }
+
+          node tools/weather-cross-source-review.mjs `
+            --daily-dir "$env:DAILY_DIR" `
+            --daily-review "$env:DAILY_DIR/daily-review.json" `
+            --weekly-dir "$env:WEEKLY_DIR" `
+            --weekly-review "$env:WEEKLY_DIR/weekly-review.json" `
+            --output-dir "$env:COMBINED_DIR" `
+            --output "$env:COMBINED_REVIEW" `
+            --expected-start-slot "06"
+          if ($LASTEXITCODE -ne 0) { throw 'cross-source combine failed' }
+
+          $r = Get-Content -LiteralPath $env:COMBINED_REVIEW -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($r.ready -ne $true -or [string]$r.interpretation.startSlot -cne '06' -or @($r.interpretation.weeklyDays).Count -ne 5) {
+            throw 'combined acceptance mismatch'
+          }
+          Write-Host "Combined acceptance ready: start=$($r.interpretation.startSlot) weekly=$(@($r.interpretation.weeklyDays).Count)"
+
+      - name: Dispatch corrected production morning run once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh workflow run weather-scheduled-run.yml
+          --ref main
+          -f slot=morning
+          -f target_date=2026-09-18
+          -f trigger_origin=manual
+          -f attempt_kind=manual
