@@ -102,6 +102,7 @@ function doPost(e) {
       requireKey_(body.adminKey, adminKey_(), "管理キー");
       return json_({ ok: true, codes: listGiftCodes_(true) });
     }
+    if (action === "ingestDiscordGiftBatch") return ingestDiscordGiftBatch_(body);
     if (action === "saveApproved") return saveApproved_(body);
     if (action === "approve") return changeStatus_(body, "approved");
     if (action === "reject") return changeStatus_(body, "rejected");
