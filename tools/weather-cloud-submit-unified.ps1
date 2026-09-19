@@ -131,6 +131,33 @@ function Invoke-UnifiedPendingPost {
     [pscustomobject]@{ id=[string]$call.data.id; duplicate=($call.data.duplicate -eq $true); diagnostic=$call.diagnostic }
 }
 
+function Find-UnifiedPendingAfterNetworkError {
+    param(
+        [Parameter(Mandatory)] [System.Collections.IDictionary] $Payload,
+        [Parameter(Mandatory)] [object] $Artifact,
+        [Parameter(Mandatory)] [string] $ApiUrl,
+        [Parameter(Mandatory)] [Security.SecureString] $AdminKey
+    )
+    $sawExactReport = $false
+    foreach ($delaySeconds in @(0, 2, 4)) {
+        if ($delaySeconds -gt 0) { Start-Sleep -Seconds $delaySeconds }
+        $call = Invoke-UnifiedPrivateRead -ApiUrl $ApiUrl -AdminKey $AdminKey -Payload ([ordered]@{action='pending'})
+        if ($call.diagnostic.failureCode) {
+            if ([string]$call.diagnostic.failureCode -ceq 'networkError') { continue }
+            throw 'WEATHER_SAFE:pendingLookupFailed'
+        }
+        if ($call.data.ok -ne $true) { throw 'WEATHER_SAFE:pendingLookupFailed' }
+        $matches = @($call.data.reports | Where-Object { Test-UnifiedReportMatch $_ $Payload })
+        if ($matches.Count -gt 1) { throw 'WEATHER_SAFE:duplicateConflict' }
+        if ($matches.Count -eq 1) {
+            $sawExactReport = $true
+            if (Confirm-UnifiedStoredEvidence $matches[0] $Artifact $ApiUrl $AdminKey) { return $matches[0] }
+        }
+    }
+    if ($sawExactReport) { throw 'WEATHER_SAFE:evidenceVerificationFailed' }
+    $null
+}
+
 $result = [ordered]@{
     attempted=$false; apiSuccess=$false; driveSaved=$false; pendingRegistered=$false
     sha256Match=$false; imageRetrieved=$false; duplicate=$false; reportId=''
@@ -197,16 +224,29 @@ try {
             } else {
                 $result.attempted = $true
                 $result.stage = 'submission'
-                $receipt = Invoke-UnifiedPendingPost -Payload $preview.payload -ApiUrl $apiUrl -PostKey $postKey
-                $result.apiSuccess=$true; $result.duplicate=$receipt.duplicate; $result.reportId=$receipt.id
-                $result.stage = 'pendingVerification'
-                $verifyCall = Invoke-UnifiedPrivateRead -ApiUrl $apiUrl -AdminKey $adminKey -Payload ([ordered]@{action='pending'})
-                if ($verifyCall.diagnostic.failureCode -or $verifyCall.data.ok -ne $true) { throw 'WEATHER_SAFE:pendingVerificationFailed' }
-                $stored = @($verifyCall.data.reports | Where-Object { [string]$_.id -ceq [string]$receipt.id })
-                if ($stored.Count -ne 1 -or -not (Test-UnifiedReportMatch $stored[0] $preview.payload)) { throw 'WEATHER_SAFE:pendingVerificationFailed' }
-                $result.pendingRegistered = $true
-                if (-not (Confirm-UnifiedStoredEvidence $stored[0] $artifact $apiUrl $adminKey)) { throw 'WEATHER_SAFE:evidenceVerificationFailed' }
-                $result.driveSaved=$true; $result.sha256Match=$true; $result.imageRetrieved=$true; $result.stage='complete'
+                $receipt = $null
+                try {
+                    $receipt = Invoke-UnifiedPendingPost -Payload $preview.payload -ApiUrl $apiUrl -PostKey $postKey
+                } catch {
+                    if ($_.Exception.Message -cne 'WEATHER_SAFE:networkError') { throw }
+                    # Ambiguous timeout: never POST again. The server may already have committed the pending row.
+                    $result.stage = 'submissionRecovery'
+                    $recovered = Find-UnifiedPendingAfterNetworkError -Payload $preview.payload -Artifact $artifact -ApiUrl $apiUrl -AdminKey $adminKey
+                    if ($null -eq $recovered) { throw 'WEATHER_SAFE:networkError' }
+                    $result.apiSuccess=$true; $result.duplicate=$false; $result.reportId=[string]$recovered.id
+                    $result.pendingRegistered=$true; $result.driveSaved=$true; $result.sha256Match=$true; $result.imageRetrieved=$true; $result.stage='complete'
+                }
+                if ($null -ne $receipt) {
+                    $result.apiSuccess=$true; $result.duplicate=$receipt.duplicate; $result.reportId=$receipt.id
+                    $result.stage = 'pendingVerification'
+                    $verifyCall = Invoke-UnifiedPrivateRead -ApiUrl $apiUrl -AdminKey $adminKey -Payload ([ordered]@{action='pending'})
+                    if ($verifyCall.diagnostic.failureCode -or $verifyCall.data.ok -ne $true) { throw 'WEATHER_SAFE:pendingVerificationFailed' }
+                    $stored = @($verifyCall.data.reports | Where-Object { [string]$_.id -ceq [string]$receipt.id })
+                    if ($stored.Count -ne 1 -or -not (Test-UnifiedReportMatch $stored[0] $preview.payload)) { throw 'WEATHER_SAFE:pendingVerificationFailed' }
+                    $result.pendingRegistered = $true
+                    if (-not (Confirm-UnifiedStoredEvidence $stored[0] $artifact $apiUrl $adminKey)) { throw 'WEATHER_SAFE:evidenceVerificationFailed' }
+                    $result.driveSaved=$true; $result.sha256Match=$true; $result.imageRetrieved=$true; $result.stage='complete'
+                }
             }
         }
     }
