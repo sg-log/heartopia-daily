@@ -400,60 +400,71 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = 
 
 export async function discover(targetDate, slot = '') {
   const queries = buildQueries(targetDate, slot);
-  // Public-WEB discovery uses multiple routes. Search providers only discover URLs;
-  // none of them is authoritative. Final truth still comes from strict in-game UI review.
-  const providers = ['bing', 'duckduckgo', 'yahoo-web', 'yahoo-realtime', 'google'];
-  const knownHandles = normalizedKnownHandles(process.env.WEATHER_KNOWN_X_HANDLES || '');
+  // Invariant: no person and no single search provider is fixed as the truth source.
+  // Every configured public search route gets the same generic Heartopia-weather
+  // queries. Authors are discovered from the current run, then optionally expanded.
+  const providers = DISCOVERY_PROVIDERS;
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ locale: 'ja-JP', timezoneId: 'Asia/Tokyo' });
   const page = await context.newPage();
   const attempts = [];
   const profileChecks = [];
+  const dynamicHandles = [];
   try {
+    // First pass: broad multi-provider discovery with no author fixed in advance.
     for (const provider of providers) {
-      const providerQueries = provider === 'yahoo-realtime'
-        ? [queries[0], queries[1], 'ハートピア 天気']
-        : queries;
-      for (const query of providerQueries) attempts.push(await collectFromPage(page, provider, query, targetDate, slot));
+      for (const query of queries) {
+        attempts.push(await collectFromPage(page, provider, query, targetDate, slot));
+      }
+    }
 
-      // Known-author route is intentionally separate from generic relevance.
-      // It searches public indexes for a few verified weather posters, but still
-      // requires exact date/start-slot text and later strict Heartopia UI review.
-      for (const handle of knownHandles) {
-        const authorQueries = provider === 'yahoo-realtime'
-          ? buildKnownAuthorRealtimeQueries(handle, targetDate, slot)
-          : buildKnownAuthorQueries(handle, targetDate, slot);
-        for (const query of authorQueries) {
+    // Discover authors from this run itself, including visible X results that the
+    // text gate dropped. Prefer handles with target-date/current-slot clues.
+    const handleScores = new Map();
+    for (const attempt of attempts) {
+      for (const item of attempt.diagnostics || []) {
+        const handle = String(item.sourceHandle || '').trim();
+        if (!handle) continue;
+        const key = handle.toLowerCase();
+        const score =
+          (item.dateMatched ? 4 : 0) +
+          (item.startSlotMatched ? 3 : 0) +
+          (item.kept ? 1 : 0);
+        const current = handleScores.get(key);
+        if (!current || score > current.score) handleScores.set(key, { handle, score });
+      }
+    }
+    const handlesToCheck = [...handleScores.values()]
+      .sort((a, b) => b.score - a.score || a.handle.localeCompare(b.handle))
+      .slice(0, 12)
+      .map((item) => item.handle);
+
+    for (const handle of handlesToCheck) {
+      const check = await inspectPublicXProfile(page, handle);
+      profileChecks.push(check);
+      if (check.heartopiaMatched) dynamicHandles.push(handle);
+    }
+
+    // Second pass: expand only authors discovered in this run whose public profile
+    // contains Heartopia context. This is dynamic and never relies on a saved person.
+    for (const provider of providers) {
+      for (const handle of dynamicHandles) {
+        for (const query of buildDynamicAuthorQueries(provider, handle, targetDate, slot)) {
           attempts.push(await collectFromPage(page, provider, query, targetDate, slot, 20, handle));
         }
       }
     }
 
-    // Profile text is a weak discovery/ranking signal only. Check only natural
-    // exact-date/current-slot X candidates that needed a fallback, and never
-    // reject a candidate merely because the profile check fails or lacks terms.
-    const handlesToCheck = [...new Set(
-      attempts.flatMap((attempt) => attempt.candidates || [])
-        .filter((candidate) =>
-          candidate.sourceType === 'x' &&
-          candidate.sourceHandle &&
-          !candidate.strictTextRelevant &&
-          candidate.dateMatched &&
-          candidate.startSlotMatched
-        )
-        .map((candidate) => candidate.sourceHandle)
-    )].slice(0, 12);
-
-    for (const handle of handlesToCheck) {
-      const check = await inspectPublicXProfile(page, handle);
-      profileChecks.push(check);
-      for (const attempt of attempts) {
-        for (const candidate of attempt.candidates || []) {
-          if (String(candidate.sourceHandle || '').toLowerCase() !== String(handle).toLowerCase()) continue;
-          candidate.profileCheckStatus = check.status;
-          candidate.profileHeartopiaMatched = check.heartopiaMatched;
-          candidate.profileHeartopiaTerms = check.matchedTerms;
-        }
+    const profileByHandle = new Map(
+      profileChecks.map((check) => [String(check.handle || '').toLowerCase(), check])
+    );
+    for (const attempt of attempts) {
+      for (const candidate of attempt.candidates || []) {
+        const check = profileByHandle.get(String(candidate.sourceHandle || '').toLowerCase());
+        if (!check) continue;
+        candidate.profileCheckStatus = check.status;
+        candidate.profileHeartopiaMatched = check.heartopiaMatched;
+        candidate.profileHeartopiaTerms = check.matchedTerms;
       }
     }
   } finally {
@@ -469,12 +480,14 @@ export async function discover(targetDate, slot = '') {
       ...item,
       selectedFinal: selectedUrls.has(item.sourceUrl)
     }))
-  ).slice(0, 400);
+  ).slice(0, 600);
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     responseType: 'weather-public-discovery',
     targetDate,
     generatedAt: new Date().toISOString(),
+    providers,
+    dynamicHandles,
     attempts: attempts.map(({ provider, query, status, error, linksSeen, candidates }) => ({ provider, query, status, error, linksSeen, candidateCount: candidates.length })),
     profileChecks,
     xTrace,
@@ -496,15 +509,17 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       dateMatched: candidate.dateMatched,
       startSlotMatched: candidate.startSlotMatched,
       strictTextRelevant: candidate.strictTextRelevant,
-      slotContextFallback: candidate.slotContextFallback,
-      knownAuthorFallback: candidate.knownAuthorFallback,
-      knownHandle: candidate.knownHandle || '',
+      searchContextFallback: candidate.searchContextFallback,
+      dynamicAuthorFallback: candidate.dynamicAuthorFallback,
+      dynamicHandle: candidate.dynamicHandle || '',
       profileCheckStatus: candidate.profileCheckStatus || '',
       profileHeartopiaMatched: Boolean(candidate.profileHeartopiaMatched),
       profileHeartopiaTerms: candidate.profileHeartopiaTerms || [],
       discoverySource: candidate.discoverySource,
       discoveryCount: candidate.discoveries?.length || 0
     })),
+    providers: result.providers,
+    dynamicHandles: result.dynamicHandles,
     attempts: result.attempts,
     profileChecks: result.profileChecks,
     xTrace: result.xTrace
