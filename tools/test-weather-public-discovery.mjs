@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildQueries,
+  buildKnownAuthorQueries,
   normalizeCandidateUrl,
   candidateRelevance,
   isSlotContextFallback,
+  isKnownAuthorFallback,
   mergeAndRankCandidates,
   selectDiversifiedCandidates,
   targetDateTokens
@@ -15,13 +17,15 @@ test('normalizes X status URLs without account dependency', () => {
     url: 'https://x.com/i/status/2099304671949230199',
     sourceType: 'x',
     sourcePlatform: 'x',
-    sourceId: '2099304671949230199'
+    sourceId: '2099304671949230199',
+    sourceHandle: 'example'
   });
   assert.deepEqual(normalizeCandidateUrl('https://twitter.com/foo/status/1234567890'), {
     url: 'https://x.com/i/status/1234567890',
     sourceType: 'x',
     sourcePlatform: 'x',
-    sourceId: '1234567890'
+    sourceId: '1234567890',
+    sourceHandle: 'foo'
   });
 });
 
@@ -37,6 +41,14 @@ test('unwraps DuckDuckGo redirect and rejects search-provider pages', () => {
   assert.equal(normalizeCandidateUrl(wrapped)?.url, 'https://x.com/i/status/999');
   assert.equal(normalizeCandidateUrl('https://www.bing.com/search?q=heartopia'), null);
   assert.equal(normalizeCandidateUrl('http://x.com/u/status/1'), null);
+});
+
+test('unwraps Google result redirects and rejects Google search pages', () => {
+  const wrapped = 'https://www.google.com/url?q=' + encodeURIComponent('https://x.com/sylfley/status/2102000000000000000');
+  const result = normalizeCandidateUrl(wrapped);
+  assert.equal(result?.url, 'https://x.com/i/status/2102000000000000000');
+  assert.equal(result?.sourceHandle, 'sylfley');
+  assert.equal(normalizeCandidateUrl('https://www.google.com/search?q=heartopia'), null);
 });
 
 test('preserves generic public HTTPS result URLs', () => {
@@ -62,6 +74,14 @@ test('builds date-specific and broad query variants', () => {
     'ハートピア 天気 9月15日 18:00',
     'ハートピア お天気予報 9月15日 18:00'
   ]);
+});
+
+test('builds known-author X queries for the current slot', () => {
+  const queries = buildKnownAuthorQueries('sylfley', '2026-09-20', 'evening');
+  assert.equal(queries.length, 3);
+  assert.ok(queries.every(q => q.includes('site:x.com/sylfley/status')));
+  assert.ok(queries.every(q => q.includes('18:00')));
+  assert.deepEqual(buildKnownAuthorQueries('bad handle!', '2026-09-20', 'evening'), []);
 });
 
 test('slot-aware relevance rewards only the current start slot', () => {
@@ -109,6 +129,27 @@ test('does not broaden slot fallback outside exact Yahoo realtime X context', ()
   assert.equal(isSlotContextFallback({ ...base, discoverySource: 'yahoo-web' }, '2026-09-20', 'evening'), false);
   assert.equal(isSlotContextFallback({ ...base, searchQuery: 'ハートピア 天気' }, '2026-09-20', 'evening'), false);
   assert.equal(isSlotContextFallback({ ...base, text: '2026/09/20 12:00-18:00 虹だよー' }, '2026-09-20', 'evening'), false);
+});
+
+test('known-author fallback accepts natural exact-slot posts without game/weather words', () => {
+  assert.equal(isKnownAuthorFallback({
+    sourceType: 'x',
+    sourceHandle: 'sylfley',
+    knownHandle: 'sylfley',
+    text: '2026/09/20 18:00-24:00 虹だよー'
+  }, '2026-09-20', 'evening'), true);
+});
+
+test('known-author fallback remains fail-closed for wrong author/date/start hour', () => {
+  const base = {
+    sourceType: 'x',
+    sourceHandle: 'sylfley',
+    knownHandle: 'sylfley',
+    text: '2026/09/20 18:00-24:00 虹だよー'
+  };
+  assert.equal(isKnownAuthorFallback({ ...base, sourceHandle: 'someone_else' }, '2026-09-20', 'evening'), false);
+  assert.equal(isKnownAuthorFallback({ ...base, text: '2026/09/19 18:00-24:00 虹だよー' }, '2026-09-20', 'evening'), false);
+  assert.equal(isKnownAuthorFallback({ ...base, text: '2026/09/20 12:00-18:00 虹だよー' }, '2026-09-20', 'evening'), false);
 });
 
 test('date tokens include common Japanese and slash forms', () => {
@@ -184,6 +225,34 @@ test('merge keeps exact-slot fallback posts for strict image verification', () =
   assert.equal(ranked[0].sourceId, '92018');
   assert.equal(ranked[0].slotContextFallback, true);
   assert.equal(ranked[0].strictTextRelevant, false);
+});
+
+test('merge keeps known-author fallback candidates for strict image review', () => {
+  const attempts = [{
+    candidates: [{
+      sourceUrl: 'https://x.com/i/status/9201801',
+      sourceType: 'x',
+      sourcePlatform: 'x',
+      sourceId: '9201801',
+      sourceHandle: 'sylfley',
+      discoverySource: 'google',
+      searchQuery: 'site:x.com/sylfley/status 2026-09-20 18:00',
+      anchorText: 'つちやん☆',
+      context: '2026/09/20 18:00-24:00 虹だよー',
+      relevanceScore: 12,
+      dateMatched: true,
+      forecastMatched: false,
+      startSlotMatched: true,
+      strictTextRelevant: false,
+      slotContextFallback: false,
+      knownAuthorFallback: true,
+      knownHandle: 'sylfley'
+    }]
+  }];
+  const ranked = mergeAndRankCandidates(attempts, '2026-09-20', 24, 'evening');
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].knownAuthorFallback, true);
+  assert.equal(ranked[0].knownHandle, 'sylfley');
 });
 
 test('diversification does not give X or Yahoo Realtime an intrinsic ranking bonus', () => {
