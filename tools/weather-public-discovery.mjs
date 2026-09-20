@@ -80,6 +80,8 @@ function startSlotTokens(slot) {
   return [`${start}:00`, `${hour}:00`, `${start}時`, `${hour}時`, `${start}時開始`, `${hour}時開始`].map(v => v.toLowerCase());
 }
 
+export const DISCOVERY_PROVIDERS = ['bing', 'duckduckgo', 'yahoo-web', 'yahoo-realtime', 'google'];
+
 export function buildQueries(targetDate, slot = '') {
   const [, month, day] = targetDate.split('-').map(Number);
   const start = expectedStartSlotFor(slot);
@@ -91,39 +93,32 @@ export function buildQueries(targetDate, slot = '') {
     ...slotQueries,
     `ハートピア 天気 ${month}月${day}日`,
     `ハートピア スローライフ 天気 ${month}月${day}日`,
-    `Heartopia weather ${targetDate}`
+    `Heartopia weather ${targetDate}`,
+    'ハートピア 天気',
+    'Heartopia weather'
   ];
 }
 
-export const DEFAULT_KNOWN_X_WEATHER_HANDLES = ['sylfley'];
-
-function normalizedKnownHandles(raw = '') {
-  const extra = String(raw || '').split(',').map(v => v.trim().replace(/^@/, '')).filter(v => /^[A-Za-z0-9_]{1,15}$/.test(v));
-  return [...new Set([...DEFAULT_KNOWN_X_WEATHER_HANDLES, ...extra])];
-}
-
-export function buildKnownAuthorQueries(handle, targetDate, slot = '') {
+export function buildDynamicAuthorQueries(provider, handle, targetDate, slot = '') {
+  if (!DISCOVERY_PROVIDERS.includes(provider)) return [];
   if (!/^[A-Za-z0-9_]{1,15}$/.test(handle || '')) return [];
   const [, month, day] = targetDate.split('-').map(Number);
   const start = expectedStartSlotFor(slot);
   if (!start) return [];
+
+  if (provider === 'yahoo-realtime') {
+    const slashDate = targetDate.replaceAll('-', '/');
+    return [
+      `@${handle} ${slashDate} ${start}:00`,
+      `@${handle} ${month}/${day} ${start}:00`,
+      `${handle} ${month}/${day} ${start}:00`
+    ];
+  }
+
   return [
     `site:x.com/${handle}/status ${targetDate} ${start}:00`,
     `site:x.com/${handle}/status ${month}/${day} ${start}:00`,
     `site:x.com/${handle}/status ${month}月${day}日 ${start}:00`
-  ];
-}
-
-export function buildKnownAuthorRealtimeQueries(handle, targetDate, slot = '') {
-  if (!/^[A-Za-z0-9_]{1,15}$/.test(handle || '')) return [];
-  const [, month, day] = targetDate.split('-').map(Number);
-  const start = expectedStartSlotFor(slot);
-  if (!start) return [];
-  const slashDate = targetDate.replaceAll('-', '/');
-  return [
-    `@${handle} ${slashDate} ${start}:00`,
-    `@${handle} ${month}/${day} ${start}:00`,
-    `${handle} ${month}/${day} ${start}:00`
   ];
 }
 
