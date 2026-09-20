@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildQueries,
   buildKnownAuthorQueries,
+  buildKnownAuthorRealtimeQueries,
   normalizeCandidateUrl,
   candidateRelevance,
   profileHeartopiaSignals,
@@ -84,6 +85,16 @@ test('builds known-author X queries for the current slot', () => {
   assert.ok(queries.every(q => q.includes('site:x.com/sylfley/status')));
   assert.ok(queries.every(q => q.includes('18:00')));
   assert.deepEqual(buildKnownAuthorQueries('bad handle!', '2026-09-20', 'evening'), []);
+});
+
+test('builds Yahoo Realtime known-author queries without site: syntax', () => {
+  const queries = buildKnownAuthorRealtimeQueries('sylfley', '2026-09-20', 'evening');
+  assert.deepEqual(queries, [
+    '@sylfley 2026/09/20 18:00',
+    '@sylfley 9/20 18:00',
+    'sylfley 9/20 18:00'
+  ]);
+  assert.deepEqual(buildKnownAuthorRealtimeQueries('bad handle!', '2026-09-20', 'evening'), []);
 });
 
 test('slot-aware relevance rewards only the current start slot', () => {

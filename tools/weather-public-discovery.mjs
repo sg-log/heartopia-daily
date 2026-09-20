@@ -114,6 +114,19 @@ export function buildKnownAuthorQueries(handle, targetDate, slot = '') {
   ];
 }
 
+export function buildKnownAuthorRealtimeQueries(handle, targetDate, slot = '') {
+  if (!/^[A-Za-z0-9_]{1,15}$/.test(handle || '')) return [];
+  const [, month, day] = targetDate.split('-').map(Number);
+  const start = expectedStartSlotFor(slot);
+  if (!start) return [];
+  const slashDate = targetDate.replaceAll('-', '/');
+  return [
+    `@${handle} ${slashDate} ${start}:00`,
+    `@${handle} ${month}/${day} ${start}:00`,
+    `${handle} ${month}/${day} ${start}:00`
+  ];
+}
+
 function normalizeSearchText(text) {
   return String(text || '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
@@ -416,11 +429,12 @@ export async function discover(targetDate, slot = '') {
       // Known-author route is intentionally separate from generic relevance.
       // It searches public indexes for a few verified weather posters, but still
       // requires exact date/start-slot text and later strict Heartopia UI review.
-      if (provider !== 'yahoo-realtime') {
-        for (const handle of knownHandles) {
-          for (const query of buildKnownAuthorQueries(handle, targetDate, slot)) {
-            attempts.push(await collectFromPage(page, provider, query, targetDate, slot, 20, handle));
-          }
+      for (const handle of knownHandles) {
+        const authorQueries = provider === 'yahoo-realtime'
+          ? buildKnownAuthorRealtimeQueries(handle, targetDate, slot)
+          : buildKnownAuthorQueries(handle, targetDate, slot);
+        for (const query of authorQueries) {
+          attempts.push(await collectFromPage(page, provider, query, targetDate, slot, 20, handle));
         }
       }
     }
