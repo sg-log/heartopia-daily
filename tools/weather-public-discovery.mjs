@@ -127,6 +127,11 @@ export function profileHeartopiaSignals(text) {
   };
 }
 
+export function extractXHandleFromText(text) {
+  const match = String(text || '').match(/@([A-Za-z0-9_]{1,15})\b/);
+  return match ? match[1] : '';
+}
+
 export function targetDateTokens(targetDate) {
   const match = String(targetDate || '').match(/^(20\d{2})-(\d{2})-(\d{2})$/);
   if (!match) return [];
@@ -251,6 +256,7 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
       if (!normalized) continue;
       const contextText = `${row.text} ${row.parentText}`;
       const relevance = candidateRelevance(contextText, targetDate, slot);
+      const sourceHandle = normalized.sourceHandle || (normalized.sourceType === 'x' ? extractXHandleFromText(contextText) : '');
       const slotContextFallback = !relevance.relevant && isSlotContextFallback({
         sourceType: normalized.sourceType,
         discoverySource: provider,
@@ -259,7 +265,7 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
       }, targetDate, slot);
       const knownAuthorFallback = !relevance.relevant && isKnownAuthorFallback({
         sourceType: normalized.sourceType,
-        sourceHandle: normalized.sourceHandle,
+        sourceHandle,
         knownHandle,
         text: contextText
       }, targetDate, slot);
@@ -274,7 +280,7 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
         result.diagnostics.push({
           sourceUrl: normalized.url,
           sourceId: normalized.sourceId,
-          sourceHandle: normalized.sourceHandle || '',
+          sourceHandle,
           keepReason,
           kept: keepReason !== 'dropped-text-gate',
           dateMatched: relevance.dateMatched,
@@ -288,7 +294,7 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
         sourceType: normalized.sourceType,
         sourcePlatform: normalized.sourcePlatform,
         sourceId: normalized.sourceId,
-        sourceHandle: normalized.sourceHandle || '',
+        sourceHandle,
         discoverySource: provider,
         searchQuery: query,
         anchorText: row.text.slice(0, 300),
@@ -495,6 +501,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       discoverySource: candidate.discoverySource,
       discoveryCount: candidate.discoveries?.length || 0
     })),
-    attempts: result.attempts
+    attempts: result.attempts,
+    profileChecks: result.profileChecks,
+    xTrace: result.xTrace
   }));
 }
