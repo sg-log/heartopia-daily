@@ -231,7 +231,7 @@ function providerUrl(provider, query) {
   throw new Error(`Unknown provider ${provider}`);
 }
 
-async function collectFromPage(page, provider, query, targetDate, slot = '', limit = 40, knownHandle = '') {
+async function collectFromPage(page, provider, query, targetDate, slot = '', limit = 40, dynamicHandle = '') {
   const url = providerUrl(provider, query);
   const result = { provider, query, url, status: 'ok', error: null, linksSeen: 0, candidates: [], diagnostics: [] };
   try {
@@ -262,24 +262,23 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
       const contextText = `${row.text} ${row.parentText}`;
       const relevance = candidateRelevance(contextText, targetDate, slot);
       const sourceHandle = normalized.sourceHandle || (normalized.sourceType === 'x' ? extractXHandleFromText(contextText) : '');
-      const slotContextFallback = !relevance.relevant && isSlotContextFallback({
+      const searchContextFallback = !relevance.relevant && isSearchContextFallback({
         sourceType: normalized.sourceType,
-        discoverySource: provider,
         searchQuery: query,
         text: contextText
       }, targetDate, slot);
-      const knownAuthorFallback = !relevance.relevant && isKnownAuthorFallback({
+      const dynamicAuthorFallback = !relevance.relevant && isDynamicAuthorFallback({
         sourceType: normalized.sourceType,
         sourceHandle,
-        knownHandle,
+        dynamicHandle,
         text: contextText
       }, targetDate, slot);
       const keepReason = relevance.relevant
         ? 'strict-text'
-        : slotContextFallback
-          ? 'yahoo-slot-fallback'
-          : knownAuthorFallback
-            ? 'known-author-fallback'
+        : searchContextFallback
+          ? 'search-context-fallback'
+          : dynamicAuthorFallback
+            ? 'dynamic-author-fallback'
             : 'dropped-text-gate';
       if (normalized.sourceType === 'x' && result.diagnostics.length < 120) {
         result.diagnostics.push({
@@ -293,7 +292,7 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
           firstExplicitHour: firstExplicitHour(contextText)
         });
       }
-      if (!relevance.relevant && !slotContextFallback && !knownAuthorFallback) continue;
+      if (!relevance.relevant && !searchContextFallback && !dynamicAuthorFallback) continue;
       result.candidates.push({
         sourceUrl: normalized.url,
         sourceType: normalized.sourceType,
@@ -309,9 +308,9 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
         forecastMatched: relevance.forecastMatched,
         startSlotMatched: relevance.startSlotMatched,
         strictTextRelevant: relevance.relevant,
-        slotContextFallback,
-        knownAuthorFallback,
-        knownHandle: knownHandle || ''
+        searchContextFallback,
+        dynamicAuthorFallback,
+        dynamicHandle: dynamicHandle || ''
       });
       if (result.candidates.length >= limit) break;
     }
@@ -326,7 +325,6 @@ function rankCandidates(candidates) {
   return [...candidates].sort((a, b) =>
     Number(Boolean(b.dateMatched)) - Number(Boolean(a.dateMatched)) ||
     Number(Boolean(b.startSlotMatched)) - Number(Boolean(a.startSlotMatched)) ||
-    Number(Boolean(b.knownAuthorFallback)) - Number(Boolean(a.knownAuthorFallback)) ||
     Number(Boolean(b.profileHeartopiaMatched)) - Number(Boolean(a.profileHeartopiaMatched)) ||
     Number(Boolean(b.forecastMatched)) - Number(Boolean(a.forecastMatched)) ||
     Number(b.relevanceScore || 0) - Number(a.relevanceScore || 0) ||
@@ -385,17 +383,17 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = 
       record.forecastMatched = Boolean(record.forecastMatched || relevance.forecastMatched);
       record.startSlotMatched = Boolean(record.startSlotMatched || relevance.startSlotMatched);
       record.strictTextRelevant = Boolean(record.strictTextRelevant || relevance.relevant);
-      record.slotContextFallback = Boolean(record.slotContextFallback || c.slotContextFallback);
-      record.knownAuthorFallback = Boolean(record.knownAuthorFallback || c.knownAuthorFallback);
+      record.searchContextFallback = Boolean(record.searchContextFallback || c.searchContextFallback);
+      record.dynamicAuthorFallback = Boolean(record.dynamicAuthorFallback || c.dynamicAuthorFallback);
       record.profileHeartopiaMatched = Boolean(record.profileHeartopiaMatched || c.profileHeartopiaMatched);
       record.profileHeartopiaTerms = [...new Set([...(record.profileHeartopiaTerms || []), ...(c.profileHeartopiaTerms || [])])];
       if (!record.profileCheckStatus && c.profileCheckStatus) record.profileCheckStatus = c.profileCheckStatus;
-      if (!record.knownHandle && c.knownHandle) record.knownHandle = c.knownHandle;
+      if (!record.dynamicHandle && c.dynamicHandle) record.dynamicHandle = c.dynamicHandle;
     }
   }
   const relevant = [...merged.values()].filter((candidate) => {
     const strict = candidateRelevance(`${candidate.anchorText || ''} ${candidate.context || ''}`, targetDate, slot).relevant;
-    return strict || candidate.slotContextFallback === true || candidate.knownAuthorFallback === true;
+    return strict || candidate.searchContextFallback === true || candidate.dynamicAuthorFallback === true;
   });
   return selectDiversifiedCandidates(relevant, limit);
 }
