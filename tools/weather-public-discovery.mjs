@@ -180,20 +180,17 @@ function firstExplicitHour(text) {
   return match ? String(Number(match[1])).padStart(2, '0') : '';
 }
 
-export function isSlotContextFallback({ sourceType, discoverySource, searchQuery, text }, targetDate, slot = '') {
-  if (sourceType !== 'x' || discoverySource !== 'yahoo-realtime' || !slot) return false;
+export function isSearchContextFallback({ sourceType, searchQuery, text }, targetDate, slot = '') {
+  if (sourceType !== 'x' || !slot) return false;
   const queryRelevance = candidateRelevance(searchQuery, targetDate, slot);
-  // Yahoo Realtime is already scoped by a Heartopia-weather query. Do not require
-  // the query itself to contain the current slot: broad "ハートピア 天気" results
-  // may still contain an exact target-date/current-slot post.
   if (!queryRelevance.relevant) return false;
   const postRelevance = candidateRelevance(text, targetDate, slot);
   return postRelevance.dateMatched && firstExplicitHour(text) === expectedStartSlotFor(slot);
 }
 
-export function isKnownAuthorFallback({ sourceType, sourceHandle, knownHandle, text }, targetDate, slot = '') {
-  if (sourceType !== 'x' || !knownHandle || !slot) return false;
-  if (String(sourceHandle || '').toLowerCase() !== String(knownHandle).toLowerCase()) return false;
+export function isDynamicAuthorFallback({ sourceType, sourceHandle, dynamicHandle, text }, targetDate, slot = '') {
+  if (sourceType !== 'x' || !dynamicHandle || !slot) return false;
+  if (String(sourceHandle || '').toLowerCase() !== String(dynamicHandle).toLowerCase()) return false;
   const postRelevance = candidateRelevance(text, targetDate, slot);
   return postRelevance.dateMatched && firstExplicitHour(text) === expectedStartSlotFor(slot);
 }
