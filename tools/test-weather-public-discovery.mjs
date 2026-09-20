@@ -5,6 +5,7 @@ import {
   buildKnownAuthorQueries,
   normalizeCandidateUrl,
   candidateRelevance,
+  profileHeartopiaSignals,
   isSlotContextFallback,
   isKnownAuthorFallback,
   mergeAndRankCandidates,
@@ -118,16 +119,17 @@ test('keeps exact-date exact-slot X posts from a Heartopia weather realtime quer
   assert.equal(fallback, true);
 });
 
-test('does not broaden slot fallback outside exact Yahoo realtime X context', () => {
+test('broad Yahoo realtime Heartopia-weather query keeps exact-date exact-slot natural posts', () => {
   const base = {
     sourceType: 'x',
     discoverySource: 'yahoo-realtime',
-    searchQuery: 'ハートピア 天気 9月20日 18:00',
+    searchQuery: 'ハートピア 天気',
     text: '2026/09/20 18:00-24:00 虹だよー'
   };
+  assert.equal(isSlotContextFallback(base, '2026-09-20', 'evening'), true);
   assert.equal(isSlotContextFallback({ ...base, sourceType: 'web' }, '2026-09-20', 'evening'), false);
   assert.equal(isSlotContextFallback({ ...base, discoverySource: 'yahoo-web' }, '2026-09-20', 'evening'), false);
-  assert.equal(isSlotContextFallback({ ...base, searchQuery: 'ハートピア 天気' }, '2026-09-20', 'evening'), false);
+  assert.equal(isSlotContextFallback({ ...base, searchQuery: 'ゲーム 雑談' }, '2026-09-20', 'evening'), false);
   assert.equal(isSlotContextFallback({ ...base, text: '2026/09/20 12:00-18:00 虹だよー' }, '2026-09-20', 'evening'), false);
 });
 
@@ -150,6 +152,21 @@ test('known-author fallback remains fail-closed for wrong author/date/start hour
   assert.equal(isKnownAuthorFallback({ ...base, sourceHandle: 'someone_else' }, '2026-09-20', 'evening'), false);
   assert.equal(isKnownAuthorFallback({ ...base, text: '2026/09/19 18:00-24:00 虹だよー' }, '2026-09-20', 'evening'), false);
   assert.equal(isKnownAuthorFallback({ ...base, text: '2026/09/20 12:00-18:00 虹だよー' }, '2026-09-20', 'evening'), false);
+});
+
+test('profile Heartopia signal recognizes Japanese and English game references only as a weak signal', () => {
+  assert.deepEqual(profileHeartopiaSignals('ハートピア中心に遊んでます'), {
+    matched: true,
+    matchedTerms: ['ハートピア']
+  });
+  assert.deepEqual(profileHeartopiaSignals('Heartopia screenshots and notes'), {
+    matched: true,
+    matchedTerms: ['heartopia']
+  });
+  assert.deepEqual(profileHeartopiaSignals('ゲームいろいろ'), {
+    matched: false,
+    matchedTerms: []
+  });
 });
 
 test('date tokens include common Japanese and slash forms', () => {
@@ -209,7 +226,7 @@ test('merge keeps exact-slot fallback posts for strict image verification', () =
       sourcePlatform: 'x',
       sourceId: '92018',
       discoverySource: 'yahoo-realtime',
-      searchQuery: 'ハートピア 天気 9月20日 18:00',
+      searchQuery: 'ハートピア 天気',
       anchorText: 'つちやん☆',
       context: '2026/09/20 18:00-24:00 虹だよー',
       relevanceScore: 12,
@@ -253,6 +270,38 @@ test('merge keeps known-author fallback candidates for strict image review', () 
   assert.equal(ranked.length, 1);
   assert.equal(ranked[0].knownAuthorFallback, true);
   assert.equal(ranked[0].knownHandle, 'sylfley');
+});
+
+test('profile Heartopia signal only breaks otherwise equal ranking ties', () => {
+  const selected = selectDiversifiedCandidates([
+    {
+      sourceUrl: 'https://x.com/i/status/501',
+      sourceType: 'x',
+      sourcePlatform: 'x',
+      sourceId: '501',
+      discoverySource: 'yahoo-realtime',
+      relevanceScore: 12,
+      dateMatched: true,
+      startSlotMatched: true,
+      forecastMatched: false,
+      profileHeartopiaMatched: false,
+      discoveries: [{ discoverySource: 'yahoo-realtime', searchQuery: 'ハートピア 天気' }]
+    },
+    {
+      sourceUrl: 'https://x.com/i/status/502',
+      sourceType: 'x',
+      sourcePlatform: 'x',
+      sourceId: '502',
+      discoverySource: 'yahoo-realtime',
+      relevanceScore: 12,
+      dateMatched: true,
+      startSlotMatched: true,
+      forecastMatched: false,
+      profileHeartopiaMatched: true,
+      discoveries: [{ discoverySource: 'yahoo-realtime', searchQuery: 'ハートピア 天気' }]
+    }
+  ], 2);
+  assert.equal(selected[0].sourceId, '502');
 });
 
 test('diversification does not give X or Yahoo Realtime an intrinsic ranking bonus', () => {
