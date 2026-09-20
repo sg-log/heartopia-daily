@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  DISCOVERY_PROVIDERS,
   buildQueries,
-  buildKnownAuthorQueries,
-  buildKnownAuthorRealtimeQueries,
+  buildDynamicAuthorQueries,
   normalizeCandidateUrl,
   candidateRelevance,
   profileHeartopiaSignals,
   extractXHandleFromText,
-  isSlotContextFallback,
-  isKnownAuthorFallback,
+  isSearchContextFallback,
+  isDynamicAuthorFallback,
   mergeAndRankCandidates,
   selectDiversifiedCandidates,
   targetDateTokens
@@ -47,10 +47,10 @@ test('unwraps DuckDuckGo redirect and rejects search-provider pages', () => {
 });
 
 test('unwraps Google result redirects and rejects Google search pages', () => {
-  const wrapped = 'https://www.google.com/url?q=' + encodeURIComponent('https://x.com/sylfley/status/2102000000000000000');
+  const wrapped = 'https://www.google.com/url?q=' + encodeURIComponent('https://x.com/weatherfan/status/2102000000000000000');
   const result = normalizeCandidateUrl(wrapped);
   assert.equal(result?.url, 'https://x.com/i/status/2102000000000000000');
-  assert.equal(result?.sourceHandle, 'sylfley');
+  assert.equal(result?.sourceHandle, 'weatherfan');
   assert.equal(normalizeCandidateUrl('https://www.google.com/search?q=heartopia'), null);
 });
 
@@ -63,12 +63,16 @@ test('preserves generic public HTTPS result URLs', () => {
   });
 });
 
-test('builds date-specific and broad query variants', () => {
-  assert.deepEqual(buildQueries('2026-09-15'), [
+test('builds date-specific and broad query variants for every discovery route', () => {
+  const base = buildQueries('2026-09-15');
+  assert.deepEqual(base, [
     'ハートピア 天気 9月15日',
     'ハートピア スローライフ 天気 9月15日',
-    'Heartopia weather 2026-09-15'
+    'Heartopia weather 2026-09-15',
+    'ハートピア 天気',
+    'Heartopia weather'
   ]);
+  assert.ok(DISCOVERY_PROVIDERS.length >= 4);
   assert.deepEqual(buildQueries('2026-09-15', 'morning').slice(0, 2), [
     'ハートピア 天気 9月15日 06:00',
     'ハートピア お天気予報 9月15日 06:00'
@@ -79,22 +83,20 @@ test('builds date-specific and broad query variants', () => {
   ]);
 });
 
-test('builds known-author X queries for the current slot', () => {
-  const queries = buildKnownAuthorQueries('sylfley', '2026-09-20', 'evening');
-  assert.equal(queries.length, 3);
-  assert.ok(queries.every(q => q.includes('site:x.com/sylfley/status')));
-  assert.ok(queries.every(q => q.includes('18:00')));
-  assert.deepEqual(buildKnownAuthorQueries('bad handle!', '2026-09-20', 'evening'), []);
-});
+test('builds dynamic-author queries only from a runtime-discovered handle', () => {
+  const webQueries = buildDynamicAuthorQueries('google', 'weatherfan', '2026-09-20', 'evening');
+  assert.equal(webQueries.length, 3);
+  assert.ok(webQueries.every(q => q.includes('site:x.com/weatherfan/status')));
+  assert.ok(webQueries.every(q => q.includes('18:00')));
 
-test('builds Yahoo Realtime known-author queries without site: syntax', () => {
-  const queries = buildKnownAuthorRealtimeQueries('sylfley', '2026-09-20', 'evening');
-  assert.deepEqual(queries, [
-    '@sylfley 2026/09/20 18:00',
-    '@sylfley 9/20 18:00',
-    'sylfley 9/20 18:00'
+  const realtimeQueries = buildDynamicAuthorQueries('yahoo-realtime', 'weatherfan', '2026-09-20', 'evening');
+  assert.deepEqual(realtimeQueries, [
+    '@weatherfan 2026/09/20 18:00',
+    '@weatherfan 9/20 18:00',
+    'weatherfan 9/20 18:00'
   ]);
-  assert.deepEqual(buildKnownAuthorRealtimeQueries('bad handle!', '2026-09-20', 'evening'), []);
+  assert.deepEqual(buildDynamicAuthorQueries('google', 'bad handle!', '2026-09-20', 'evening'), []);
+  assert.deepEqual(buildDynamicAuthorQueries('unknown-provider', 'weatherfan', '2026-09-20', 'evening'), []);
 });
 
 test('slot-aware relevance rewards only the current start slot', () => {
@@ -121,53 +123,33 @@ test('recognizes Heartopia weather text and target date', () => {
   assert.ok(result.score >= 13);
 });
 
-test('keeps exact-date exact-slot X posts from a Heartopia weather realtime query even when post text is natural', () => {
-  const fallback = isSlotContextFallback({
-    sourceType: 'x',
-    discoverySource: 'yahoo-realtime',
-    searchQuery: 'ハートピア 天気 9月20日 18:00',
-    text: 'つちやん☆ @sylfley 2026/09/20 18:00-24:00 虹だよー'
-  }, '2026-09-20', 'evening');
-  assert.equal(fallback, true);
-});
-
-test('broad Yahoo realtime Heartopia-weather query keeps exact-date exact-slot natural posts', () => {
+test('search-context fallback is provider-neutral for exact-date exact-slot X posts', () => {
   const base = {
     sourceType: 'x',
-    discoverySource: 'yahoo-realtime',
     searchQuery: 'ハートピア 天気',
     text: '2026/09/20 18:00-24:00 虹だよー'
   };
-  assert.equal(isSlotContextFallback(base, '2026-09-20', 'evening'), true);
-  assert.equal(isSlotContextFallback({ ...base, sourceType: 'web' }, '2026-09-20', 'evening'), false);
-  assert.equal(isSlotContextFallback({ ...base, discoverySource: 'yahoo-web' }, '2026-09-20', 'evening'), false);
-  assert.equal(isSlotContextFallback({ ...base, searchQuery: 'ゲーム 雑談' }, '2026-09-20', 'evening'), false);
-  assert.equal(isSlotContextFallback({ ...base, text: '2026/09/20 12:00-18:00 虹だよー' }, '2026-09-20', 'evening'), false);
+  assert.equal(isSearchContextFallback(base, '2026-09-20', 'evening'), true);
+  assert.equal(isSearchContextFallback({ ...base, sourceType: 'web' }, '2026-09-20', 'evening'), false);
+  assert.equal(isSearchContextFallback({ ...base, searchQuery: 'ゲーム 雑談' }, '2026-09-20', 'evening'), false);
+  assert.equal(isSearchContextFallback({ ...base, text: '2026/09/20 12:00-18:00 虹だよー' }, '2026-09-20', 'evening'), false);
 });
 
-test('known-author fallback accepts natural exact-slot posts without game/weather words', () => {
-  assert.equal(isKnownAuthorFallback({
-    sourceType: 'x',
-    sourceHandle: 'sylfley',
-    knownHandle: 'sylfley',
-    text: '2026/09/20 18:00-24:00 虹だよー'
-  }, '2026-09-20', 'evening'), true);
-});
-
-test('known-author fallback remains fail-closed for wrong author/date/start hour', () => {
+test('dynamic-author fallback accepts only the runtime-discovered matching author/date/start hour', () => {
   const base = {
     sourceType: 'x',
-    sourceHandle: 'sylfley',
-    knownHandle: 'sylfley',
+    sourceHandle: 'weatherfan',
+    dynamicHandle: 'weatherfan',
     text: '2026/09/20 18:00-24:00 虹だよー'
   };
-  assert.equal(isKnownAuthorFallback({ ...base, sourceHandle: 'someone_else' }, '2026-09-20', 'evening'), false);
-  assert.equal(isKnownAuthorFallback({ ...base, text: '2026/09/19 18:00-24:00 虹だよー' }, '2026-09-20', 'evening'), false);
-  assert.equal(isKnownAuthorFallback({ ...base, text: '2026/09/20 12:00-18:00 虹だよー' }, '2026-09-20', 'evening'), false);
+  assert.equal(isDynamicAuthorFallback(base, '2026-09-20', 'evening'), true);
+  assert.equal(isDynamicAuthorFallback({ ...base, sourceHandle: 'someone_else' }, '2026-09-20', 'evening'), false);
+  assert.equal(isDynamicAuthorFallback({ ...base, text: '2026/09/19 18:00-24:00 虹だよー' }, '2026-09-20', 'evening'), false);
+  assert.equal(isDynamicAuthorFallback({ ...base, text: '2026/09/20 12:00-18:00 虹だよー' }, '2026-09-20', 'evening'), false);
 });
 
 test('extracts an X handle from Yahoo realtime result text when normalized URL lost it', () => {
-  assert.equal(extractXHandleFromText('つちやん☆ @sylfley 2026/09/20 18:00-24:00'), 'sylfley');
+  assert.equal(extractXHandleFromText('天気メモ @weatherfan 2026/09/20 18:00-24:00'), 'weatherfan');
   assert.equal(extractXHandleFromText('no handle here'), '');
 });
 
@@ -251,42 +233,42 @@ test('merge keeps exact-slot fallback posts for strict image verification', () =
       forecastMatched: false,
       startSlotMatched: true,
       strictTextRelevant: false,
-      slotContextFallback: true
+      searchContextFallback: true
     }]
   }];
   const ranked = mergeAndRankCandidates(attempts, '2026-09-20', 24, 'evening');
   assert.equal(ranked.length, 1);
   assert.equal(ranked[0].sourceId, '92018');
-  assert.equal(ranked[0].slotContextFallback, true);
+  assert.equal(ranked[0].searchContextFallback, true);
   assert.equal(ranked[0].strictTextRelevant, false);
 });
 
-test('merge keeps known-author fallback candidates for strict image review', () => {
+test('merge keeps dynamically discovered author fallback candidates for strict image review', () => {
   const attempts = [{
     candidates: [{
       sourceUrl: 'https://x.com/i/status/9201801',
       sourceType: 'x',
       sourcePlatform: 'x',
       sourceId: '9201801',
-      sourceHandle: 'sylfley',
+      sourceHandle: 'weatherfan',
       discoverySource: 'google',
-      searchQuery: 'site:x.com/sylfley/status 2026-09-20 18:00',
-      anchorText: 'つちやん☆',
+      searchQuery: 'site:x.com/weatherfan/status 2026-09-20 18:00',
+      anchorText: 'weather memo',
       context: '2026/09/20 18:00-24:00 虹だよー',
       relevanceScore: 12,
       dateMatched: true,
       forecastMatched: false,
       startSlotMatched: true,
       strictTextRelevant: false,
-      slotContextFallback: false,
-      knownAuthorFallback: true,
-      knownHandle: 'sylfley'
+      searchContextFallback: false,
+      dynamicAuthorFallback: true,
+      dynamicHandle: 'weatherfan'
     }]
   }];
   const ranked = mergeAndRankCandidates(attempts, '2026-09-20', 24, 'evening');
   assert.equal(ranked.length, 1);
-  assert.equal(ranked[0].knownAuthorFallback, true);
-  assert.equal(ranked[0].knownHandle, 'sylfley');
+  assert.equal(ranked[0].dynamicAuthorFallback, true);
+  assert.equal(ranked[0].dynamicHandle, 'weatherfan');
 });
 
 test('profile Heartopia signal only breaks otherwise equal ranking ties', () => {
@@ -321,7 +303,7 @@ test('profile Heartopia signal only breaks otherwise equal ranking ties', () => 
   assert.equal(selected[0].sourceId, '502');
 });
 
-test('diversification does not give X or Yahoo Realtime an intrinsic ranking bonus', () => {
+test('diversification does not give any search provider or platform an intrinsic ranking bonus', () => {
   const candidates = [];
   for (let i = 0; i < 8; i++) {
     candidates.push({

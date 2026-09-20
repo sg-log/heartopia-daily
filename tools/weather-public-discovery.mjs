@@ -80,6 +80,8 @@ function startSlotTokens(slot) {
   return [`${start}:00`, `${hour}:00`, `${start}時`, `${hour}時`, `${start}時開始`, `${hour}時開始`].map(v => v.toLowerCase());
 }
 
+export const DISCOVERY_PROVIDERS = ['bing', 'duckduckgo', 'yahoo-web', 'yahoo-realtime', 'google'];
+
 export function buildQueries(targetDate, slot = '') {
   const [, month, day] = targetDate.split('-').map(Number);
   const start = expectedStartSlotFor(slot);
@@ -91,39 +93,32 @@ export function buildQueries(targetDate, slot = '') {
     ...slotQueries,
     `ハートピア 天気 ${month}月${day}日`,
     `ハートピア スローライフ 天気 ${month}月${day}日`,
-    `Heartopia weather ${targetDate}`
+    `Heartopia weather ${targetDate}`,
+    'ハートピア 天気',
+    'Heartopia weather'
   ];
 }
 
-export const DEFAULT_KNOWN_X_WEATHER_HANDLES = ['sylfley'];
-
-function normalizedKnownHandles(raw = '') {
-  const extra = String(raw || '').split(',').map(v => v.trim().replace(/^@/, '')).filter(v => /^[A-Za-z0-9_]{1,15}$/.test(v));
-  return [...new Set([...DEFAULT_KNOWN_X_WEATHER_HANDLES, ...extra])];
-}
-
-export function buildKnownAuthorQueries(handle, targetDate, slot = '') {
+export function buildDynamicAuthorQueries(provider, handle, targetDate, slot = '') {
+  if (!DISCOVERY_PROVIDERS.includes(provider)) return [];
   if (!/^[A-Za-z0-9_]{1,15}$/.test(handle || '')) return [];
   const [, month, day] = targetDate.split('-').map(Number);
   const start = expectedStartSlotFor(slot);
   if (!start) return [];
+
+  if (provider === 'yahoo-realtime') {
+    const slashDate = targetDate.replaceAll('-', '/');
+    return [
+      `@${handle} ${slashDate} ${start}:00`,
+      `@${handle} ${month}/${day} ${start}:00`,
+      `${handle} ${month}/${day} ${start}:00`
+    ];
+  }
+
   return [
     `site:x.com/${handle}/status ${targetDate} ${start}:00`,
     `site:x.com/${handle}/status ${month}/${day} ${start}:00`,
     `site:x.com/${handle}/status ${month}月${day}日 ${start}:00`
-  ];
-}
-
-export function buildKnownAuthorRealtimeQueries(handle, targetDate, slot = '') {
-  if (!/^[A-Za-z0-9_]{1,15}$/.test(handle || '')) return [];
-  const [, month, day] = targetDate.split('-').map(Number);
-  const start = expectedStartSlotFor(slot);
-  if (!start) return [];
-  const slashDate = targetDate.replaceAll('-', '/');
-  return [
-    `@${handle} ${slashDate} ${start}:00`,
-    `@${handle} ${month}/${day} ${start}:00`,
-    `${handle} ${month}/${day} ${start}:00`
   ];
 }
 
@@ -185,20 +180,17 @@ function firstExplicitHour(text) {
   return match ? String(Number(match[1])).padStart(2, '0') : '';
 }
 
-export function isSlotContextFallback({ sourceType, discoverySource, searchQuery, text }, targetDate, slot = '') {
-  if (sourceType !== 'x' || discoverySource !== 'yahoo-realtime' || !slot) return false;
+export function isSearchContextFallback({ sourceType, searchQuery, text }, targetDate, slot = '') {
+  if (sourceType !== 'x' || !slot) return false;
   const queryRelevance = candidateRelevance(searchQuery, targetDate, slot);
-  // Yahoo Realtime is already scoped by a Heartopia-weather query. Do not require
-  // the query itself to contain the current slot: broad "ハートピア 天気" results
-  // may still contain an exact target-date/current-slot post.
   if (!queryRelevance.relevant) return false;
   const postRelevance = candidateRelevance(text, targetDate, slot);
   return postRelevance.dateMatched && firstExplicitHour(text) === expectedStartSlotFor(slot);
 }
 
-export function isKnownAuthorFallback({ sourceType, sourceHandle, knownHandle, text }, targetDate, slot = '') {
-  if (sourceType !== 'x' || !knownHandle || !slot) return false;
-  if (String(sourceHandle || '').toLowerCase() !== String(knownHandle).toLowerCase()) return false;
+export function isDynamicAuthorFallback({ sourceType, sourceHandle, dynamicHandle, text }, targetDate, slot = '') {
+  if (sourceType !== 'x' || !dynamicHandle || !slot) return false;
+  if (String(sourceHandle || '').toLowerCase() !== String(dynamicHandle).toLowerCase()) return false;
   const postRelevance = candidateRelevance(text, targetDate, slot);
   return postRelevance.dateMatched && firstExplicitHour(text) === expectedStartSlotFor(slot);
 }
@@ -239,7 +231,7 @@ function providerUrl(provider, query) {
   throw new Error(`Unknown provider ${provider}`);
 }
 
-async function collectFromPage(page, provider, query, targetDate, slot = '', limit = 40, knownHandle = '') {
+async function collectFromPage(page, provider, query, targetDate, slot = '', limit = 40, dynamicHandle = '') {
   const url = providerUrl(provider, query);
   const result = { provider, query, url, status: 'ok', error: null, linksSeen: 0, candidates: [], diagnostics: [] };
   try {
@@ -270,24 +262,23 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
       const contextText = `${row.text} ${row.parentText}`;
       const relevance = candidateRelevance(contextText, targetDate, slot);
       const sourceHandle = normalized.sourceHandle || (normalized.sourceType === 'x' ? extractXHandleFromText(contextText) : '');
-      const slotContextFallback = !relevance.relevant && isSlotContextFallback({
+      const searchContextFallback = !relevance.relevant && isSearchContextFallback({
         sourceType: normalized.sourceType,
-        discoverySource: provider,
         searchQuery: query,
         text: contextText
       }, targetDate, slot);
-      const knownAuthorFallback = !relevance.relevant && isKnownAuthorFallback({
+      const dynamicAuthorFallback = !relevance.relevant && isDynamicAuthorFallback({
         sourceType: normalized.sourceType,
         sourceHandle,
-        knownHandle,
+        dynamicHandle,
         text: contextText
       }, targetDate, slot);
       const keepReason = relevance.relevant
         ? 'strict-text'
-        : slotContextFallback
-          ? 'yahoo-slot-fallback'
-          : knownAuthorFallback
-            ? 'known-author-fallback'
+        : searchContextFallback
+          ? 'search-context-fallback'
+          : dynamicAuthorFallback
+            ? 'dynamic-author-fallback'
             : 'dropped-text-gate';
       if (normalized.sourceType === 'x' && result.diagnostics.length < 120) {
         result.diagnostics.push({
@@ -301,7 +292,7 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
           firstExplicitHour: firstExplicitHour(contextText)
         });
       }
-      if (!relevance.relevant && !slotContextFallback && !knownAuthorFallback) continue;
+      if (!relevance.relevant && !searchContextFallback && !dynamicAuthorFallback) continue;
       result.candidates.push({
         sourceUrl: normalized.url,
         sourceType: normalized.sourceType,
@@ -317,9 +308,9 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
         forecastMatched: relevance.forecastMatched,
         startSlotMatched: relevance.startSlotMatched,
         strictTextRelevant: relevance.relevant,
-        slotContextFallback,
-        knownAuthorFallback,
-        knownHandle: knownHandle || ''
+        searchContextFallback,
+        dynamicAuthorFallback,
+        dynamicHandle: dynamicHandle || ''
       });
       if (result.candidates.length >= limit) break;
     }
@@ -334,7 +325,6 @@ function rankCandidates(candidates) {
   return [...candidates].sort((a, b) =>
     Number(Boolean(b.dateMatched)) - Number(Boolean(a.dateMatched)) ||
     Number(Boolean(b.startSlotMatched)) - Number(Boolean(a.startSlotMatched)) ||
-    Number(Boolean(b.knownAuthorFallback)) - Number(Boolean(a.knownAuthorFallback)) ||
     Number(Boolean(b.profileHeartopiaMatched)) - Number(Boolean(a.profileHeartopiaMatched)) ||
     Number(Boolean(b.forecastMatched)) - Number(Boolean(a.forecastMatched)) ||
     Number(b.relevanceScore || 0) - Number(a.relevanceScore || 0) ||
@@ -393,77 +383,88 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = 
       record.forecastMatched = Boolean(record.forecastMatched || relevance.forecastMatched);
       record.startSlotMatched = Boolean(record.startSlotMatched || relevance.startSlotMatched);
       record.strictTextRelevant = Boolean(record.strictTextRelevant || relevance.relevant);
-      record.slotContextFallback = Boolean(record.slotContextFallback || c.slotContextFallback);
-      record.knownAuthorFallback = Boolean(record.knownAuthorFallback || c.knownAuthorFallback);
+      record.searchContextFallback = Boolean(record.searchContextFallback || c.searchContextFallback);
+      record.dynamicAuthorFallback = Boolean(record.dynamicAuthorFallback || c.dynamicAuthorFallback);
       record.profileHeartopiaMatched = Boolean(record.profileHeartopiaMatched || c.profileHeartopiaMatched);
       record.profileHeartopiaTerms = [...new Set([...(record.profileHeartopiaTerms || []), ...(c.profileHeartopiaTerms || [])])];
       if (!record.profileCheckStatus && c.profileCheckStatus) record.profileCheckStatus = c.profileCheckStatus;
-      if (!record.knownHandle && c.knownHandle) record.knownHandle = c.knownHandle;
+      if (!record.dynamicHandle && c.dynamicHandle) record.dynamicHandle = c.dynamicHandle;
     }
   }
   const relevant = [...merged.values()].filter((candidate) => {
     const strict = candidateRelevance(`${candidate.anchorText || ''} ${candidate.context || ''}`, targetDate, slot).relevant;
-    return strict || candidate.slotContextFallback === true || candidate.knownAuthorFallback === true;
+    return strict || candidate.searchContextFallback === true || candidate.dynamicAuthorFallback === true;
   });
   return selectDiversifiedCandidates(relevant, limit);
 }
 
 export async function discover(targetDate, slot = '') {
   const queries = buildQueries(targetDate, slot);
-  // Public-WEB discovery uses multiple routes. Search providers only discover URLs;
-  // none of them is authoritative. Final truth still comes from strict in-game UI review.
-  const providers = ['bing', 'duckduckgo', 'yahoo-web', 'yahoo-realtime', 'google'];
-  const knownHandles = normalizedKnownHandles(process.env.WEATHER_KNOWN_X_HANDLES || '');
+  // Invariant: no person and no single search provider is fixed as the truth source.
+  // Every configured public search route gets the same generic Heartopia-weather
+  // queries. Authors are discovered from the current run, then optionally expanded.
+  const providers = DISCOVERY_PROVIDERS;
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ locale: 'ja-JP', timezoneId: 'Asia/Tokyo' });
   const page = await context.newPage();
   const attempts = [];
   const profileChecks = [];
+  const dynamicHandles = [];
   try {
+    // First pass: broad multi-provider discovery with no author fixed in advance.
     for (const provider of providers) {
-      const providerQueries = provider === 'yahoo-realtime'
-        ? [queries[0], queries[1], 'ハートピア 天気']
-        : queries;
-      for (const query of providerQueries) attempts.push(await collectFromPage(page, provider, query, targetDate, slot));
+      for (const query of queries) {
+        attempts.push(await collectFromPage(page, provider, query, targetDate, slot));
+      }
+    }
 
-      // Known-author route is intentionally separate from generic relevance.
-      // It searches public indexes for a few verified weather posters, but still
-      // requires exact date/start-slot text and later strict Heartopia UI review.
-      for (const handle of knownHandles) {
-        const authorQueries = provider === 'yahoo-realtime'
-          ? buildKnownAuthorRealtimeQueries(handle, targetDate, slot)
-          : buildKnownAuthorQueries(handle, targetDate, slot);
-        for (const query of authorQueries) {
+    // Discover authors from this run itself, including visible X results that the
+    // text gate dropped. Prefer handles with target-date/current-slot clues.
+    const handleScores = new Map();
+    for (const attempt of attempts) {
+      for (const item of attempt.diagnostics || []) {
+        const handle = String(item.sourceHandle || '').trim();
+        if (!handle) continue;
+        const key = handle.toLowerCase();
+        const score =
+          (item.dateMatched ? 4 : 0) +
+          (item.startSlotMatched ? 3 : 0) +
+          (item.kept ? 1 : 0);
+        const current = handleScores.get(key);
+        if (!current || score > current.score) handleScores.set(key, { handle, score });
+      }
+    }
+    const handlesToCheck = [...handleScores.values()]
+      .sort((a, b) => b.score - a.score || a.handle.localeCompare(b.handle))
+      .slice(0, 12)
+      .map((item) => item.handle);
+
+    for (const handle of handlesToCheck) {
+      const check = await inspectPublicXProfile(page, handle);
+      profileChecks.push(check);
+      if (check.heartopiaMatched) dynamicHandles.push(handle);
+    }
+
+    // Second pass: expand only authors discovered in this run whose public profile
+    // contains Heartopia context. This is dynamic and never relies on a saved person.
+    for (const provider of providers) {
+      for (const handle of dynamicHandles) {
+        for (const query of buildDynamicAuthorQueries(provider, handle, targetDate, slot)) {
           attempts.push(await collectFromPage(page, provider, query, targetDate, slot, 20, handle));
         }
       }
     }
 
-    // Profile text is a weak discovery/ranking signal only. Check only natural
-    // exact-date/current-slot X candidates that needed a fallback, and never
-    // reject a candidate merely because the profile check fails or lacks terms.
-    const handlesToCheck = [...new Set(
-      attempts.flatMap((attempt) => attempt.candidates || [])
-        .filter((candidate) =>
-          candidate.sourceType === 'x' &&
-          candidate.sourceHandle &&
-          !candidate.strictTextRelevant &&
-          candidate.dateMatched &&
-          candidate.startSlotMatched
-        )
-        .map((candidate) => candidate.sourceHandle)
-    )].slice(0, 12);
-
-    for (const handle of handlesToCheck) {
-      const check = await inspectPublicXProfile(page, handle);
-      profileChecks.push(check);
-      for (const attempt of attempts) {
-        for (const candidate of attempt.candidates || []) {
-          if (String(candidate.sourceHandle || '').toLowerCase() !== String(handle).toLowerCase()) continue;
-          candidate.profileCheckStatus = check.status;
-          candidate.profileHeartopiaMatched = check.heartopiaMatched;
-          candidate.profileHeartopiaTerms = check.matchedTerms;
-        }
+    const profileByHandle = new Map(
+      profileChecks.map((check) => [String(check.handle || '').toLowerCase(), check])
+    );
+    for (const attempt of attempts) {
+      for (const candidate of attempt.candidates || []) {
+        const check = profileByHandle.get(String(candidate.sourceHandle || '').toLowerCase());
+        if (!check) continue;
+        candidate.profileCheckStatus = check.status;
+        candidate.profileHeartopiaMatched = check.heartopiaMatched;
+        candidate.profileHeartopiaTerms = check.matchedTerms;
       }
     }
   } finally {
@@ -479,12 +480,14 @@ export async function discover(targetDate, slot = '') {
       ...item,
       selectedFinal: selectedUrls.has(item.sourceUrl)
     }))
-  ).slice(0, 400);
+  ).slice(0, 600);
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     responseType: 'weather-public-discovery',
     targetDate,
     generatedAt: new Date().toISOString(),
+    providers,
+    dynamicHandles,
     attempts: attempts.map(({ provider, query, status, error, linksSeen, candidates }) => ({ provider, query, status, error, linksSeen, candidateCount: candidates.length })),
     profileChecks,
     xTrace,
@@ -506,15 +509,17 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       dateMatched: candidate.dateMatched,
       startSlotMatched: candidate.startSlotMatched,
       strictTextRelevant: candidate.strictTextRelevant,
-      slotContextFallback: candidate.slotContextFallback,
-      knownAuthorFallback: candidate.knownAuthorFallback,
-      knownHandle: candidate.knownHandle || '',
+      searchContextFallback: candidate.searchContextFallback,
+      dynamicAuthorFallback: candidate.dynamicAuthorFallback,
+      dynamicHandle: candidate.dynamicHandle || '',
       profileCheckStatus: candidate.profileCheckStatus || '',
       profileHeartopiaMatched: Boolean(candidate.profileHeartopiaMatched),
       profileHeartopiaTerms: candidate.profileHeartopiaTerms || [],
       discoverySource: candidate.discoverySource,
       discoveryCount: candidate.discoveries?.length || 0
     })),
+    providers: result.providers,
+    dynamicHandles: result.dynamicHandles,
     attempts: result.attempts,
     profileChecks: result.profileChecks,
     xTrace: result.xTrace
