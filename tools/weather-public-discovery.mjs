@@ -118,6 +118,15 @@ function normalizeSearchText(text) {
   return String(text || '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
+export function profileHeartopiaSignals(text) {
+  const s = normalizeSearchText(text);
+  const matchedTerms = ['ハートピア', 'heartopia'].filter((term) => s.includes(term));
+  return {
+    matched: matchedTerms.length > 0,
+    matchedTerms
+  };
+}
+
 export function targetDateTokens(targetDate) {
   const match = String(targetDate || '').match(/^(20\d{2})-(\d{2})-(\d{2})$/);
   if (!match) return [];
@@ -161,7 +170,10 @@ function firstExplicitHour(text) {
 export function isSlotContextFallback({ sourceType, discoverySource, searchQuery, text }, targetDate, slot = '') {
   if (sourceType !== 'x' || discoverySource !== 'yahoo-realtime' || !slot) return false;
   const queryRelevance = candidateRelevance(searchQuery, targetDate, slot);
-  if (!queryRelevance.relevant || !queryRelevance.startSlotMatched) return false;
+  // Yahoo Realtime is already scoped by a Heartopia-weather query. Do not require
+  // the query itself to contain the current slot: broad "ハートピア 天気" results
+  // may still contain an exact target-date/current-slot post.
+  if (!queryRelevance.relevant) return false;
   const postRelevance = candidateRelevance(text, targetDate, slot);
   return postRelevance.dateMatched && firstExplicitHour(text) === expectedStartSlotFor(slot);
 }
@@ -171,6 +183,32 @@ export function isKnownAuthorFallback({ sourceType, sourceHandle, knownHandle, t
   if (String(sourceHandle || '').toLowerCase() !== String(knownHandle).toLowerCase()) return false;
   const postRelevance = candidateRelevance(text, targetDate, slot);
   return postRelevance.dateMatched && firstExplicitHour(text) === expectedStartSlotFor(slot);
+}
+
+async function inspectPublicXProfile(page, handle) {
+  const result = {
+    handle,
+    status: 'not-checked',
+    heartopiaMatched: false,
+    matchedTerms: []
+  };
+  if (!/^[A-Za-z0-9_]{1,15}$/.test(handle || '')) return result;
+
+  try {
+    await page.goto(`https://x.com/${handle}`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForTimeout(800);
+    const description = await page.locator('[data-testid="UserDescription"]').first().innerText({ timeout: 1500 }).catch(() => '');
+    const metaDescription = await page.locator('meta[name="description"]').first().getAttribute('content').catch(() => '');
+    const ogDescription = await page.locator('meta[property="og:description"]').first().getAttribute('content').catch(() => '');
+    const signals = profileHeartopiaSignals(`${description || ''} ${metaDescription || ''} ${ogDescription || ''}`);
+    result.status = 'ok';
+    result.heartopiaMatched = signals.matched;
+    result.matchedTerms = signals.matchedTerms;
+  } catch (err) {
+    result.status = 'failed';
+    result.error = String(err?.message || err).slice(0, 240);
+  }
+  return result;
 }
 
 function providerUrl(provider, query) {
@@ -185,7 +223,7 @@ function providerUrl(provider, query) {
 
 async function collectFromPage(page, provider, query, targetDate, slot = '', limit = 40, knownHandle = '') {
   const url = providerUrl(provider, query);
-  const result = { provider, query, url, status: 'ok', error: null, linksSeen: 0, candidates: [] };
+  const result = { provider, query, url, status: 'ok', error: null, linksSeen: 0, candidates: [], diagnostics: [] };
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(1500);
@@ -225,6 +263,25 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
         knownHandle,
         text: contextText
       }, targetDate, slot);
+      const keepReason = relevance.relevant
+        ? 'strict-text'
+        : slotContextFallback
+          ? 'yahoo-slot-fallback'
+          : knownAuthorFallback
+            ? 'known-author-fallback'
+            : 'dropped-text-gate';
+      if (normalized.sourceType === 'x' && result.diagnostics.length < 120) {
+        result.diagnostics.push({
+          sourceUrl: normalized.url,
+          sourceId: normalized.sourceId,
+          sourceHandle: normalized.sourceHandle || '',
+          keepReason,
+          kept: keepReason !== 'dropped-text-gate',
+          dateMatched: relevance.dateMatched,
+          startSlotMatched: relevance.startSlotMatched,
+          firstExplicitHour: firstExplicitHour(contextText)
+        });
+      }
       if (!relevance.relevant && !slotContextFallback && !knownAuthorFallback) continue;
       result.candidates.push({
         sourceUrl: normalized.url,
@@ -259,6 +316,7 @@ function rankCandidates(candidates) {
     Number(Boolean(b.dateMatched)) - Number(Boolean(a.dateMatched)) ||
     Number(Boolean(b.startSlotMatched)) - Number(Boolean(a.startSlotMatched)) ||
     Number(Boolean(b.knownAuthorFallback)) - Number(Boolean(a.knownAuthorFallback)) ||
+    Number(Boolean(b.profileHeartopiaMatched)) - Number(Boolean(a.profileHeartopiaMatched)) ||
     Number(Boolean(b.forecastMatched)) - Number(Boolean(a.forecastMatched)) ||
     Number(b.relevanceScore || 0) - Number(a.relevanceScore || 0) ||
     b.discoveries.length - a.discoveries.length ||
@@ -318,6 +376,9 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = 
       record.strictTextRelevant = Boolean(record.strictTextRelevant || relevance.relevant);
       record.slotContextFallback = Boolean(record.slotContextFallback || c.slotContextFallback);
       record.knownAuthorFallback = Boolean(record.knownAuthorFallback || c.knownAuthorFallback);
+      record.profileHeartopiaMatched = Boolean(record.profileHeartopiaMatched || c.profileHeartopiaMatched);
+      record.profileHeartopiaTerms = [...new Set([...(record.profileHeartopiaTerms || []), ...(c.profileHeartopiaTerms || [])])];
+      if (!record.profileCheckStatus && c.profileCheckStatus) record.profileCheckStatus = c.profileCheckStatus;
       if (!record.knownHandle && c.knownHandle) record.knownHandle = c.knownHandle;
     }
   }
@@ -338,6 +399,7 @@ export async function discover(targetDate, slot = '') {
   const context = await browser.newContext({ locale: 'ja-JP', timezoneId: 'Asia/Tokyo' });
   const page = await context.newPage();
   const attempts = [];
+  const profileChecks = [];
   try {
     for (const provider of providers) {
       const providerQueries = provider === 'yahoo-realtime'
@@ -356,17 +418,56 @@ export async function discover(targetDate, slot = '') {
         }
       }
     }
+
+    // Profile text is a weak discovery/ranking signal only. Check only natural
+    // exact-date/current-slot X candidates that needed a fallback, and never
+    // reject a candidate merely because the profile check fails or lacks terms.
+    const handlesToCheck = [...new Set(
+      attempts.flatMap((attempt) => attempt.candidates || [])
+        .filter((candidate) =>
+          candidate.sourceType === 'x' &&
+          candidate.sourceHandle &&
+          !candidate.strictTextRelevant &&
+          candidate.dateMatched &&
+          candidate.startSlotMatched
+        )
+        .map((candidate) => candidate.sourceHandle)
+    )].slice(0, 12);
+
+    for (const handle of handlesToCheck) {
+      const check = await inspectPublicXProfile(page, handle);
+      profileChecks.push(check);
+      for (const attempt of attempts) {
+        for (const candidate of attempt.candidates || []) {
+          if (String(candidate.sourceHandle || '').toLowerCase() !== String(handle).toLowerCase()) continue;
+          candidate.profileCheckStatus = check.status;
+          candidate.profileHeartopiaMatched = check.heartopiaMatched;
+          candidate.profileHeartopiaTerms = check.matchedTerms;
+        }
+      }
+    }
   } finally {
     await browser.close();
   }
 
   const candidates = mergeAndRankCandidates(attempts, targetDate, 24, slot);
+  const selectedUrls = new Set(candidates.map((candidate) => candidate.sourceUrl));
+  const xTrace = attempts.flatMap((attempt) =>
+    (attempt.diagnostics || []).map((item) => ({
+      provider: attempt.provider,
+      searchQuery: attempt.query,
+      ...item,
+      selectedFinal: selectedUrls.has(item.sourceUrl)
+    }))
+  ).slice(0, 400);
   return {
     schemaVersion: 3,
     responseType: 'weather-public-discovery',
     targetDate,
     generatedAt: new Date().toISOString(),
     attempts: attempts.map(({ provider, query, status, error, linksSeen, candidates }) => ({ provider, query, status, error, linksSeen, candidateCount: candidates.length })),
+    profileChecks,
+    xTrace,
     candidates
   };
 }
@@ -388,6 +489,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       slotContextFallback: candidate.slotContextFallback,
       knownAuthorFallback: candidate.knownAuthorFallback,
       knownHandle: candidate.knownHandle || '',
+      profileCheckStatus: candidate.profileCheckStatus || '',
+      profileHeartopiaMatched: Boolean(candidate.profileHeartopiaMatched),
+      profileHeartopiaTerms: candidate.profileHeartopiaTerms || [],
       discoverySource: candidate.discoverySource,
       discoveryCount: candidate.discoveries?.length || 0
     })),
