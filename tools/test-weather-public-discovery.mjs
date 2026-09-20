@@ -4,6 +4,7 @@ import {
   buildQueries,
   normalizeCandidateUrl,
   candidateRelevance,
+  isSlotContextFallback,
   mergeAndRankCandidates,
   selectDiversifiedCandidates,
   targetDateTokens
@@ -87,6 +88,29 @@ test('recognizes Heartopia weather text and target date', () => {
   assert.ok(result.score >= 13);
 });
 
+test('keeps exact-date exact-slot X posts from a Heartopia weather realtime query even when post text is natural', () => {
+  const fallback = isSlotContextFallback({
+    sourceType: 'x',
+    discoverySource: 'yahoo-realtime',
+    searchQuery: 'ハートピア 天気 9月20日 18:00',
+    text: 'つちやん☆ @sylfley 2026/09/20 18:00-24:00 虹だよー'
+  }, '2026-09-20', 'evening');
+  assert.equal(fallback, true);
+});
+
+test('does not broaden slot fallback outside exact Yahoo realtime X context', () => {
+  const base = {
+    sourceType: 'x',
+    discoverySource: 'yahoo-realtime',
+    searchQuery: 'ハートピア 天気 9月20日 18:00',
+    text: '2026/09/20 18:00-24:00 虹だよー'
+  };
+  assert.equal(isSlotContextFallback({ ...base, sourceType: 'web' }, '2026-09-20', 'evening'), false);
+  assert.equal(isSlotContextFallback({ ...base, discoverySource: 'yahoo-web' }, '2026-09-20', 'evening'), false);
+  assert.equal(isSlotContextFallback({ ...base, searchQuery: 'ハートピア 天気' }, '2026-09-20', 'evening'), false);
+  assert.equal(isSlotContextFallback({ ...base, text: '2026/09/20 12:00-18:00 虹だよー' }, '2026-09-20', 'evening'), false);
+});
+
 test('date tokens include common Japanese and slash forms', () => {
   const tokens = targetDateTokens('2026-09-16');
   assert.ok(tokens.includes('2026-09-16'));
@@ -134,6 +158,32 @@ test('mergeAndRankCandidates drops unrelated links and prioritizes dated weather
   assert.equal(ranked[0].dateMatched, true);
   assert.ok(ranked.some((item) => item.sourceType === 'web'));
   assert.ok(!ranked.some((item) => item.sourceId === '1'));
+});
+
+test('merge keeps exact-slot fallback posts for strict image verification', () => {
+  const attempts = [{
+    candidates: [{
+      sourceUrl: 'https://x.com/i/status/92018',
+      sourceType: 'x',
+      sourcePlatform: 'x',
+      sourceId: '92018',
+      discoverySource: 'yahoo-realtime',
+      searchQuery: 'ハートピア 天気 9月20日 18:00',
+      anchorText: 'つちやん☆',
+      context: '2026/09/20 18:00-24:00 虹だよー',
+      relevanceScore: 12,
+      dateMatched: true,
+      forecastMatched: false,
+      startSlotMatched: true,
+      strictTextRelevant: false,
+      slotContextFallback: true
+    }]
+  }];
+  const ranked = mergeAndRankCandidates(attempts, '2026-09-20', 24, 'evening');
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].sourceId, '92018');
+  assert.equal(ranked[0].slotContextFallback, true);
+  assert.equal(ranked[0].strictTextRelevant, false);
 });
 
 test('diversification does not give X or Yahoo Realtime an intrinsic ranking bonus', () => {
