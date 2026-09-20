@@ -130,6 +130,14 @@ export function candidateRelevance(text, targetDate, slot = '') {
   return { relevant: hasGame && hasWeather, dateMatched, forecastMatched, startSlotMatched, score };
 }
 
+export function isSlotContextFallback({ sourceType, discoverySource, searchQuery, text }, targetDate, slot = '') {
+  if (sourceType !== 'x' || discoverySource !== 'yahoo-realtime' || !slot) return false;
+  const queryRelevance = candidateRelevance(searchQuery, targetDate, slot);
+  if (!queryRelevance.relevant || !queryRelevance.startSlotMatched) return false;
+  const postRelevance = candidateRelevance(text, targetDate, slot);
+  return postRelevance.dateMatched && postRelevance.startSlotMatched;
+}
+
 function providerUrl(provider, query) {
   const q = encodeURIComponent(query);
   if (provider === 'bing') return `https://www.bing.com/search?q=${q}`;
@@ -169,7 +177,13 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
       if (!normalized) continue;
       const contextText = `${row.text} ${row.parentText}`;
       const relevance = candidateRelevance(contextText, targetDate, slot);
-      if (!relevance.relevant) continue;
+      const slotContextFallback = !relevance.relevant && isSlotContextFallback({
+        sourceType: normalized.sourceType,
+        discoverySource: provider,
+        searchQuery: query,
+        text: contextText
+      }, targetDate, slot);
+      if (!relevance.relevant && !slotContextFallback) continue;
       result.candidates.push({
         sourceUrl: normalized.url,
         sourceType: normalized.sourceType,
@@ -182,7 +196,9 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
         relevanceScore: relevance.score,
         dateMatched: relevance.dateMatched,
         forecastMatched: relevance.forecastMatched,
-        startSlotMatched: relevance.startSlotMatched
+        startSlotMatched: relevance.startSlotMatched,
+        strictTextRelevant: relevance.relevant,
+        slotContextFallback
       });
       if (result.candidates.length >= limit) break;
     }
@@ -253,11 +269,14 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = 
       record.dateMatched = Boolean(record.dateMatched || relevance.dateMatched);
       record.forecastMatched = Boolean(record.forecastMatched || relevance.forecastMatched);
       record.startSlotMatched = Boolean(record.startSlotMatched || relevance.startSlotMatched);
+      record.strictTextRelevant = Boolean(record.strictTextRelevant || relevance.relevant);
+      record.slotContextFallback = Boolean(record.slotContextFallback || c.slotContextFallback);
     }
   }
-  const relevant = [...merged.values()].filter((candidate) =>
-    candidateRelevance(`${candidate.anchorText || ''} ${candidate.context || ''}`, targetDate, slot).relevant
-  );
+  const relevant = [...merged.values()].filter((candidate) => {
+    const strict = candidateRelevance(`${candidate.anchorText || ''} ${candidate.context || ''}`, targetDate, slot).relevant;
+    return strict || candidate.slotContextFallback === true;
+  });
   return selectDiversifiedCandidates(relevant, limit);
 }
 
@@ -304,6 +323,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       sourcePlatform: candidate.sourcePlatform,
       relevanceScore: candidate.relevanceScore,
       dateMatched: candidate.dateMatched,
+      startSlotMatched: candidate.startSlotMatched,
+      strictTextRelevant: candidate.strictTextRelevant,
+      slotContextFallback: candidate.slotContextFallback,
       discoverySource: candidate.discoverySource,
       discoveryCount: candidate.discoveries?.length || 0
     })),
