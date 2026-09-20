@@ -27,7 +27,9 @@ export function normalizeCandidateUrl(raw) {
     try { u = new URL(text); } catch { return null; }
     if (u.protocol !== 'https:') return null;
 
-    for (const key of ['uddg', 'url', 'u', 'target']) {
+    const redirectKeys = ['uddg', 'url', 'u', 'target'];
+    if (/(^|\.)google\./.test(u.hostname.toLowerCase()) || u.hostname.toLowerCase() === 'google.com') redirectKeys.push('q');
+    for (const key of redirectKeys) {
       const nested = u.searchParams.get(key);
       if (nested && /^https%?3A|^https:\/\//i.test(nested)) {
         try { text = decodeURIComponent(nested); } catch { text = nested; }
@@ -43,16 +45,18 @@ export function normalizeCandidateUrl(raw) {
     if (platform === 'x') {
       const status = u.pathname.match(/^\/(?:i\/status|[A-Za-z0-9_]+\/status)\/(\d+)(?:\/(?:photo|video)\/[1-4])?\/?$/);
       if (!status) return null;
+      const handle = u.pathname.match(/^\/([A-Za-z0-9_]+)\/status\//)?.[1] || '';
       return {
         url: `https://x.com/i/status/${status[1]}`,
         sourceType: 'x',
         sourcePlatform: 'x',
-        sourceId: status[1]
+        sourceId: status[1],
+        sourceHandle: handle
       };
     }
 
     if (host === 't.co' || host === 'pic.x.com') return null;
-    if (host.endsWith('bing.com') || host.endsWith('duckduckgo.com') || host.endsWith('search.yahoo.co.jp')) return null;
+    if (host.endsWith('bing.com') || host.endsWith('duckduckgo.com') || host.endsWith('search.yahoo.co.jp') || /(^|\.)google\./.test(host) || host === 'google.com') return null;
 
     u.hash = '';
     return {
@@ -88,6 +92,25 @@ export function buildQueries(targetDate, slot = '') {
     `ハートピア 天気 ${month}月${day}日`,
     `ハートピア スローライフ 天気 ${month}月${day}日`,
     `Heartopia weather ${targetDate}`
+  ];
+}
+
+export const DEFAULT_KNOWN_X_WEATHER_HANDLES = ['sylfley'];
+
+function normalizedKnownHandles(raw = '') {
+  const extra = String(raw || '').split(',').map(v => v.trim().replace(/^@/, '')).filter(v => /^[A-Za-z0-9_]{1,15}$/.test(v));
+  return [...new Set([...DEFAULT_KNOWN_X_WEATHER_HANDLES, ...extra])];
+}
+
+export function buildKnownAuthorQueries(handle, targetDate, slot = '') {
+  if (!/^[A-Za-z0-9_]{1,15}$/.test(handle || '')) return [];
+  const [, month, day] = targetDate.split('-').map(Number);
+  const start = expectedStartSlotFor(slot);
+  if (!start) return [];
+  return [
+    `site:x.com/${handle}/status ${targetDate} ${start}:00`,
+    `site:x.com/${handle}/status ${month}/${day} ${start}:00`,
+    `site:x.com/${handle}/status ${month}月${day}日 ${start}:00`
   ];
 }
 
@@ -143,16 +166,24 @@ export function isSlotContextFallback({ sourceType, discoverySource, searchQuery
   return postRelevance.dateMatched && firstExplicitHour(text) === expectedStartSlotFor(slot);
 }
 
+export function isKnownAuthorFallback({ sourceType, sourceHandle, knownHandle, text }, targetDate, slot = '') {
+  if (sourceType !== 'x' || !knownHandle || !slot) return false;
+  if (String(sourceHandle || '').toLowerCase() !== String(knownHandle).toLowerCase()) return false;
+  const postRelevance = candidateRelevance(text, targetDate, slot);
+  return postRelevance.dateMatched && firstExplicitHour(text) === expectedStartSlotFor(slot);
+}
+
 function providerUrl(provider, query) {
   const q = encodeURIComponent(query);
   if (provider === 'bing') return `https://www.bing.com/search?q=${q}`;
   if (provider === 'duckduckgo') return `https://html.duckduckgo.com/html/?q=${q}`;
   if (provider === 'yahoo-web') return `https://search.yahoo.co.jp/search?p=${q}`;
   if (provider === 'yahoo-realtime') return `https://search.yahoo.co.jp/realtime/search?p=${q}`;
+  if (provider === 'google') return `https://www.google.com/search?q=${q}&num=20&hl=ja`;
   throw new Error(`Unknown provider ${provider}`);
 }
 
-async function collectFromPage(page, provider, query, targetDate, slot = '', limit = 40) {
+async function collectFromPage(page, provider, query, targetDate, slot = '', limit = 40, knownHandle = '') {
   const url = providerUrl(provider, query);
   const result = { provider, query, url, status: 'ok', error: null, linksSeen: 0, candidates: [] };
   try {
@@ -188,12 +219,19 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
         searchQuery: query,
         text: contextText
       }, targetDate, slot);
-      if (!relevance.relevant && !slotContextFallback) continue;
+      const knownAuthorFallback = !relevance.relevant && isKnownAuthorFallback({
+        sourceType: normalized.sourceType,
+        sourceHandle: normalized.sourceHandle,
+        knownHandle,
+        text: contextText
+      }, targetDate, slot);
+      if (!relevance.relevant && !slotContextFallback && !knownAuthorFallback) continue;
       result.candidates.push({
         sourceUrl: normalized.url,
         sourceType: normalized.sourceType,
         sourcePlatform: normalized.sourcePlatform,
         sourceId: normalized.sourceId,
+        sourceHandle: normalized.sourceHandle || '',
         discoverySource: provider,
         searchQuery: query,
         anchorText: row.text.slice(0, 300),
@@ -203,7 +241,9 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
         forecastMatched: relevance.forecastMatched,
         startSlotMatched: relevance.startSlotMatched,
         strictTextRelevant: relevance.relevant,
-        slotContextFallback
+        slotContextFallback,
+        knownAuthorFallback,
+        knownHandle: knownHandle || ''
       });
       if (result.candidates.length >= limit) break;
     }
@@ -218,6 +258,7 @@ function rankCandidates(candidates) {
   return [...candidates].sort((a, b) =>
     Number(Boolean(b.dateMatched)) - Number(Boolean(a.dateMatched)) ||
     Number(Boolean(b.startSlotMatched)) - Number(Boolean(a.startSlotMatched)) ||
+    Number(Boolean(b.knownAuthorFallback)) - Number(Boolean(a.knownAuthorFallback)) ||
     Number(Boolean(b.forecastMatched)) - Number(Boolean(a.forecastMatched)) ||
     Number(b.relevanceScore || 0) - Number(a.relevanceScore || 0) ||
     b.discoveries.length - a.discoveries.length ||
@@ -276,20 +317,23 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = 
       record.startSlotMatched = Boolean(record.startSlotMatched || relevance.startSlotMatched);
       record.strictTextRelevant = Boolean(record.strictTextRelevant || relevance.relevant);
       record.slotContextFallback = Boolean(record.slotContextFallback || c.slotContextFallback);
+      record.knownAuthorFallback = Boolean(record.knownAuthorFallback || c.knownAuthorFallback);
+      if (!record.knownHandle && c.knownHandle) record.knownHandle = c.knownHandle;
     }
   }
   const relevant = [...merged.values()].filter((candidate) => {
     const strict = candidateRelevance(`${candidate.anchorText || ''} ${candidate.context || ''}`, targetDate, slot).relevant;
-    return strict || candidate.slotContextFallback === true;
+    return strict || candidate.slotContextFallback === true || candidate.knownAuthorFallback === true;
   });
   return selectDiversifiedCandidates(relevant, limit);
 }
 
 export async function discover(targetDate, slot = '') {
   const queries = buildQueries(targetDate, slot);
-  // Public-WEB discovery uses multiple routes. X/Yahoo realtime are allowed as
-  // discovery routes, but neither is privileged or treated as authoritative.
-  const providers = ['bing', 'duckduckgo', 'yahoo-web', 'yahoo-realtime'];
+  // Public-WEB discovery uses multiple routes. Search providers only discover URLs;
+  // none of them is authoritative. Final truth still comes from strict in-game UI review.
+  const providers = ['bing', 'duckduckgo', 'yahoo-web', 'yahoo-realtime', 'google'];
+  const knownHandles = normalizedKnownHandles(process.env.WEATHER_KNOWN_X_HANDLES || '');
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ locale: 'ja-JP', timezoneId: 'Asia/Tokyo' });
   const page = await context.newPage();
@@ -300,6 +344,17 @@ export async function discover(targetDate, slot = '') {
         ? [queries[0], queries[1], 'ハートピア 天気']
         : queries;
       for (const query of providerQueries) attempts.push(await collectFromPage(page, provider, query, targetDate, slot));
+
+      // Known-author route is intentionally separate from generic relevance.
+      // It searches public indexes for a few verified weather posters, but still
+      // requires exact date/start-slot text and later strict Heartopia UI review.
+      if (provider !== 'yahoo-realtime') {
+        for (const handle of knownHandles) {
+          for (const query of buildKnownAuthorQueries(handle, targetDate, slot)) {
+            attempts.push(await collectFromPage(page, provider, query, targetDate, slot, 20, handle));
+          }
+        }
+      }
     }
   } finally {
     await browser.close();
@@ -331,6 +386,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       startSlotMatched: candidate.startSlotMatched,
       strictTextRelevant: candidate.strictTextRelevant,
       slotContextFallback: candidate.slotContextFallback,
+      knownAuthorFallback: candidate.knownAuthorFallback,
+      knownHandle: candidate.knownHandle || '',
       discoverySource: candidate.discoverySource,
       discoveryCount: candidate.discoveries?.length || 0
     })),
