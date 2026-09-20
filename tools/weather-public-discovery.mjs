@@ -1,6 +1,10 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 
+const REPO_FULL_NAME = 'sg-log/heartopia-daily';
+export const SEED_KNOWN_X_AUTHORS = ['sylfley'];
+const X_EPOCH_MS = 1288834974657n;
+
 function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i += 2) args[argv[i]] = argv[i + 1];
@@ -38,21 +42,34 @@ export function normalizeCandidateUrl(raw) {
     if (!u) continue;
 
     const host = u.hostname.toLowerCase();
+
+    if ((host === 'google.com' || host === 'www.google.com') && u.pathname === '/url') {
+      const nested = u.searchParams.get('q') || u.searchParams.get('url');
+      if (nested && /^https%?3A|^https:\/\//i.test(nested)) {
+        try { text = decodeURIComponent(nested); } catch { text = nested; }
+        continue;
+      }
+    }
+
     const platform = sourcePlatformForHost(host);
 
     if (platform === 'x') {
-      const status = u.pathname.match(/^\/(?:i\/status|[A-Za-z0-9_]+\/status)\/(\d+)(?:\/(?:photo|video)\/[1-4])?\/?$/);
-      if (!status) return null;
+      const iStatus = u.pathname.match(/^\/i\/status\/(\d+)(?:\/(?:photo|video)\/[1-4])?\/?$/);
+      const userStatus = u.pathname.match(/^\/([A-Za-z0-9_]+)\/status\/(\d+)(?:\/(?:photo|video)\/[1-4])?\/?$/);
+      if (!iStatus && !userStatus) return null;
+      const sourceId = iStatus?.[1] || userStatus?.[2] || '';
+      const sourceAuthor = userStatus?.[1]?.toLowerCase() || '';
       return {
-        url: `https://x.com/i/status/${status[1]}`,
+        url: `https://x.com/i/status/${sourceId}`,
         sourceType: 'x',
         sourcePlatform: 'x',
-        sourceId: status[1]
+        sourceId,
+        ...(sourceAuthor ? { sourceAuthor } : {})
       };
     }
 
     if (host === 't.co' || host === 'pic.x.com') return null;
-    if (host.endsWith('bing.com') || host.endsWith('duckduckgo.com') || host.endsWith('search.yahoo.co.jp')) return null;
+    if (host.endsWith('bing.com') || host.endsWith('duckduckgo.com') || host.endsWith('search.yahoo.co.jp') || host === 'google.com' || host === 'www.google.com') return null;
 
     u.hash = '';
     return {
@@ -114,6 +131,92 @@ export function targetDateTokens(targetDate) {
   ].map((value) => value.toLowerCase());
 }
 
+export function xStatusJstDate(sourceId) {
+  try {
+    const id = BigInt(String(sourceId || ''));
+    if (id <= 0n) return '';
+    const ms = Number((id >> 22n) + X_EPOCH_MS);
+    if (!Number.isFinite(ms)) return '';
+    const jst = new Date(ms + 9 * 60 * 60 * 1000);
+    const year = jst.getUTCFullYear();
+    const month = String(jst.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(jst.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  } catch {
+    return '';
+  }
+}
+
+function normalizeHandle(value) {
+  return String(value || '').trim().replace(/^@/, '').toLowerCase();
+}
+
+export function isKnownAuthorCandidate({ sourceType, sourceAuthor, sourceId }, targetDate, knownAuthors = SEED_KNOWN_X_AUTHORS) {
+  if (sourceType !== 'x') return false;
+  const author = normalizeHandle(sourceAuthor);
+  if (!author || !knownAuthors.map(normalizeHandle).includes(author)) return false;
+  return xStatusJstDate(sourceId) === targetDate;
+}
+
+export function buildKnownAuthorQueries(targetDate, slot = '', knownAuthors = SEED_KNOWN_X_AUTHORS) {
+  const start = expectedStartSlotFor(slot);
+  return knownAuthors.map((raw) => {
+    const handle = normalizeHandle(raw);
+    return `site:x.com/${handle}/status ${targetDate}${start ? ` ${start}:00` : ''}`;
+  });
+}
+
+export function extractSuccessfulXSourceUrls(issues) {
+  const urls = [];
+  const seen = new Set();
+  for (const issue of issues || []) {
+    const body = String(issue?.body || '');
+    if (!body.includes('heartopia-weather-scheduled-success:')) continue;
+    for (const match of body.matchAll(/"sourceUrl":"(https:\/\/x\.com\/i\/status\/\d+)"/g)) {
+      if (!seen.has(match[1])) {
+        seen.add(match[1]);
+        urls.push(match[1]);
+      }
+    }
+  }
+  return urls;
+}
+
+async function resolveXAuthorFromOembed(sourceUrl) {
+  try {
+    const u = new URL('https://publish.twitter.com/oembed');
+    u.searchParams.set('url', sourceUrl);
+    u.searchParams.set('omit_script', 'true');
+    u.searchParams.set('dnt', 'true');
+    const response = await fetch(u, { redirect: 'follow', signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) return '';
+    const data = await response.json();
+    const authorUrl = new URL(String(data.author_url || ''));
+    if (!['x.com','www.x.com','twitter.com','www.twitter.com'].includes(authorUrl.hostname.toLowerCase())) return '';
+    return normalizeHandle(authorUrl.pathname.split('/').filter(Boolean)[0] || '');
+  } catch {
+    return '';
+  }
+}
+
+async function discoverKnownXAuthors() {
+  const authors = new Set(SEED_KNOWN_X_AUTHORS.map(normalizeHandle));
+  try {
+    const response = await fetch(`https://api.github.com/repos/${REPO_FULL_NAME}/issues?state=closed&per_page=50&sort=created&direction=desc`, {
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'heartopia-weather-discovery' },
+      signal: AbortSignal.timeout(10_000)
+    });
+    if (!response.ok) return [...authors].filter(Boolean).slice(0, 5);
+    const issues = await response.json();
+    const sourceUrls = extractSuccessfulXSourceUrls(issues).slice(0, 8);
+    const resolved = await Promise.all(sourceUrls.map(resolveXAuthorFromOembed));
+    for (const handle of resolved) if (handle) authors.add(handle);
+  } catch {
+    // Fail soft: the static seed list remains available.
+  }
+  return [...authors].filter(Boolean).slice(0, 5);
+}
+
 export function candidateRelevance(text, targetDate, slot = '') {
   const s = normalizeSearchText(text);
   const hasGame = s.includes('ハートピア') || s.includes('heartopia');
@@ -145,6 +248,7 @@ export function isSlotContextFallback({ sourceType, discoverySource, searchQuery
 
 function providerUrl(provider, query) {
   const q = encodeURIComponent(query);
+  if (provider === 'google') return `https://www.google.com/search?hl=ja&num=50&q=${q}`;
   if (provider === 'bing') return `https://www.bing.com/search?q=${q}`;
   if (provider === 'duckduckgo') return `https://html.duckduckgo.com/html/?q=${q}`;
   if (provider === 'yahoo-web') return `https://search.yahoo.co.jp/search?p=${q}`;
@@ -152,7 +256,7 @@ function providerUrl(provider, query) {
   throw new Error(`Unknown provider ${provider}`);
 }
 
-async function collectFromPage(page, provider, query, targetDate, slot = '', limit = 40) {
+async function collectFromPage(page, provider, query, targetDate, slot = '', limit = 40, knownAuthors = SEED_KNOWN_X_AUTHORS) {
   const url = providerUrl(provider, query);
   const result = { provider, query, url, status: 'ok', error: null, linksSeen: 0, candidates: [] };
   try {
@@ -182,18 +286,28 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
       if (!normalized) continue;
       const contextText = `${row.text} ${row.parentText}`;
       const relevance = candidateRelevance(contextText, targetDate, slot);
+      const queryAuthor = knownAuthors.map(normalizeHandle).find((handle) =>
+        handle && normalizeSearchText(query).includes(`x.com/${handle}/status`)
+      ) || '';
+      const sourceAuthor = normalizeHandle(normalized.sourceAuthor || queryAuthor);
       const slotContextFallback = !relevance.relevant && isSlotContextFallback({
         sourceType: normalized.sourceType,
         discoverySource: provider,
         searchQuery: query,
         text: contextText
       }, targetDate, slot);
-      if (!relevance.relevant && !slotContextFallback) continue;
+      const knownAuthorFallback = !relevance.relevant && !slotContextFallback && isKnownAuthorCandidate({
+        sourceType: normalized.sourceType,
+        sourceAuthor,
+        sourceId: normalized.sourceId
+      }, targetDate, knownAuthors);
+      if (!relevance.relevant && !slotContextFallback && !knownAuthorFallback) continue;
       result.candidates.push({
         sourceUrl: normalized.url,
         sourceType: normalized.sourceType,
         sourcePlatform: normalized.sourcePlatform,
         sourceId: normalized.sourceId,
+        ...(sourceAuthor ? { sourceAuthor } : {}),
         discoverySource: provider,
         searchQuery: query,
         anchorText: row.text.slice(0, 300),
@@ -203,7 +317,67 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
         forecastMatched: relevance.forecastMatched,
         startSlotMatched: relevance.startSlotMatched,
         strictTextRelevant: relevance.relevant,
-        slotContextFallback
+        slotContextFallback,
+        knownAuthorFallback
+      });
+      if (result.candidates.length >= limit) break;
+    }
+  } catch (err) {
+    result.status = 'failed';
+    result.error = String(err?.message || err).slice(0, 500);
+  }
+  return result;
+}
+
+async function collectKnownAuthorProfile(page, handle, targetDate, slot = '', limit = 8) {
+  const normalizedHandle = normalizeHandle(handle);
+  const result = {
+    provider: 'x-profile',
+    query: `@${normalizedHandle}`,
+    url: `https://x.com/${normalizedHandle}`,
+    status: 'ok',
+    error: null,
+    linksSeen: 0,
+    candidates: []
+  };
+  if (!normalizedHandle) return result;
+  try {
+    await page.goto(result.url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.waitForTimeout(1800);
+    const rows = await page.locator('a[href*="/status/"]').evaluateAll((els) => els.slice(0, 200).map((a) => ({
+      href: a.href || '',
+      text: (a.innerText || a.textContent || '').trim(),
+      parentText: (a.parentElement?.parentElement?.innerText || a.parentElement?.innerText || '').trim().slice(0, 1200)
+    })));
+    result.linksSeen = rows.length;
+    const seen = new Set();
+    for (const row of rows) {
+      const normalized = normalizeCandidateUrl(row.href);
+      if (!normalized || normalized.sourceType !== 'x') continue;
+      const sourceAuthor = normalizeHandle(normalized.sourceAuthor);
+      if (sourceAuthor !== normalizedHandle) continue;
+      if (seen.has(normalized.url)) continue;
+      seen.add(normalized.url);
+      if (!isKnownAuthorCandidate({ sourceType: 'x', sourceAuthor, sourceId: normalized.sourceId }, targetDate, [normalizedHandle])) continue;
+      const contextText = `${row.text} ${row.parentText}`;
+      const relevance = candidateRelevance(contextText, targetDate, slot);
+      result.candidates.push({
+        sourceUrl: normalized.url,
+        sourceType: 'x',
+        sourcePlatform: 'x',
+        sourceId: normalized.sourceId,
+        sourceAuthor,
+        discoverySource: 'x-profile',
+        searchQuery: `@${normalizedHandle} public profile`,
+        anchorText: row.text.slice(0, 300),
+        context: row.parentText.slice(0, 1000),
+        relevanceScore: Math.max(relevance.score, 6),
+        dateMatched: true,
+        forecastMatched: relevance.forecastMatched,
+        startSlotMatched: relevance.startSlotMatched,
+        strictTextRelevant: relevance.relevant,
+        slotContextFallback: false,
+        knownAuthorFallback: true
       });
       if (result.candidates.length >= limit) break;
     }
@@ -218,6 +392,7 @@ function rankCandidates(candidates) {
   return [...candidates].sort((a, b) =>
     Number(Boolean(b.dateMatched)) - Number(Boolean(a.dateMatched)) ||
     Number(Boolean(b.startSlotMatched)) - Number(Boolean(a.startSlotMatched)) ||
+    Number(Boolean(b.knownAuthorFallback)) - Number(Boolean(a.knownAuthorFallback)) ||
     Number(Boolean(b.forecastMatched)) - Number(Boolean(a.forecastMatched)) ||
     Number(b.relevanceScore || 0) - Number(a.relevanceScore || 0) ||
     b.discoveries.length - a.discoveries.length ||
@@ -276,30 +451,44 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = 
       record.startSlotMatched = Boolean(record.startSlotMatched || relevance.startSlotMatched);
       record.strictTextRelevant = Boolean(record.strictTextRelevant || relevance.relevant);
       record.slotContextFallback = Boolean(record.slotContextFallback || c.slotContextFallback);
+      record.knownAuthorFallback = Boolean(record.knownAuthorFallback || c.knownAuthorFallback);
+      if (!record.sourceAuthor && c.sourceAuthor) record.sourceAuthor = normalizeHandle(c.sourceAuthor);
     }
   }
   const relevant = [...merged.values()].filter((candidate) => {
     const strict = candidateRelevance(`${candidate.anchorText || ''} ${candidate.context || ''}`, targetDate, slot).relevant;
-    return strict || candidate.slotContextFallback === true;
+    return strict || candidate.slotContextFallback === true || candidate.knownAuthorFallback === true;
   });
   return selectDiversifiedCandidates(relevant, limit);
 }
 
 export async function discover(targetDate, slot = '') {
   const queries = buildQueries(targetDate, slot);
-  // Public-WEB discovery uses multiple routes. X/Yahoo realtime are allowed as
-  // discovery routes, but neither is privileged or treated as authoritative.
-  const providers = ['bing', 'duckduckgo', 'yahoo-web', 'yahoo-realtime'];
+  const knownAuthors = await discoverKnownXAuthors();
+  const knownQueries = buildKnownAuthorQueries(targetDate, slot, knownAuthors);
+  // Multiple discovery routes are intentionally retained. Google and known
+  // public X profiles are fail-soft helpers; CAPTCHA/login walls are never bypassed.
+  const providers = ['google', 'bing', 'duckduckgo', 'yahoo-web', 'yahoo-realtime'];
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ locale: 'ja-JP', timezoneId: 'Asia/Tokyo' });
   const page = await context.newPage();
   const attempts = [];
   try {
     for (const provider of providers) {
-      const providerQueries = provider === 'yahoo-realtime'
-        ? [queries[0], queries[1], 'ハートピア 天気']
-        : queries;
-      for (const query of providerQueries) attempts.push(await collectFromPage(page, provider, query, targetDate, slot));
+      let providerQueries;
+      if (provider === 'yahoo-realtime') {
+        providerQueries = [queries[0], queries[1], 'ハートピア 天気'];
+      } else if (provider === 'google' || provider === 'yahoo-web') {
+        providerQueries = [...queries, ...knownQueries];
+      } else {
+        providerQueries = queries;
+      }
+      for (const query of providerQueries) {
+        attempts.push(await collectFromPage(page, provider, query, targetDate, slot, 40, knownAuthors));
+      }
+    }
+    for (const handle of knownAuthors) {
+      attempts.push(await collectKnownAuthorProfile(page, handle, targetDate, slot));
     }
   } finally {
     await browser.close();
@@ -311,6 +500,7 @@ export async function discover(targetDate, slot = '') {
     responseType: 'weather-public-discovery',
     targetDate,
     generatedAt: new Date().toISOString(),
+    knownAuthors,
     attempts: attempts.map(({ provider, query, status, error, linksSeen, candidates }) => ({ provider, query, status, error, linksSeen, candidateCount: candidates.length })),
     candidates
   };
@@ -322,6 +512,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   await fs.writeFile(out, `${JSON.stringify(result)}\n`, 'utf8');
   console.log(JSON.stringify({
     candidateCount: result.candidates.length,
+    knownAuthors: result.knownAuthors,
     candidates: result.candidates.map((candidate) => ({
       sourceUrl: candidate.sourceUrl,
       sourceType: candidate.sourceType,
@@ -331,6 +522,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       startSlotMatched: candidate.startSlotMatched,
       strictTextRelevant: candidate.strictTextRelevant,
       slotContextFallback: candidate.slotContextFallback,
+      knownAuthorFallback: candidate.knownAuthorFallback,
+      sourceAuthor: candidate.sourceAuthor || '',
       discoverySource: candidate.discoverySource,
       discoveryCount: candidate.discoveries?.length || 0
     })),
