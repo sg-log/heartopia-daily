@@ -130,12 +130,17 @@ export function candidateRelevance(text, targetDate, slot = '') {
   return { relevant: hasGame && hasWeather, dateMatched, forecastMatched, startSlotMatched, score };
 }
 
+function firstExplicitHour(text) {
+  const match = normalizeSearchText(text).match(/(?:^|[\s、,;（(])([0-2]?\d)(?::00|時)/);
+  return match ? String(Number(match[1])).padStart(2, '0') : '';
+}
+
 export function isSlotContextFallback({ sourceType, discoverySource, searchQuery, text }, targetDate, slot = '') {
   if (sourceType !== 'x' || discoverySource !== 'yahoo-realtime' || !slot) return false;
   const queryRelevance = candidateRelevance(searchQuery, targetDate, slot);
   if (!queryRelevance.relevant || !queryRelevance.startSlotMatched) return false;
   const postRelevance = candidateRelevance(text, targetDate, slot);
-  return postRelevance.dateMatched && postRelevance.startSlotMatched;
+  return postRelevance.dateMatched && firstExplicitHour(text) === expectedStartSlotFor(slot);
 }
 
 function providerUrl(provider, query) {
