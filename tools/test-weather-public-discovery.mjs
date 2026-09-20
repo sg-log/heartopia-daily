@@ -6,6 +6,7 @@ import {
   normalizeCandidateUrl,
   candidateRelevance,
   profileHeartopiaSignals,
+  extractXHandleFromText,
   isSlotContextFallback,
   isKnownAuthorFallback,
   mergeAndRankCandidates,
@@ -152,6 +153,11 @@ test('known-author fallback remains fail-closed for wrong author/date/start hour
   assert.equal(isKnownAuthorFallback({ ...base, sourceHandle: 'someone_else' }, '2026-09-20', 'evening'), false);
   assert.equal(isKnownAuthorFallback({ ...base, text: '2026/09/19 18:00-24:00 虹だよー' }, '2026-09-20', 'evening'), false);
   assert.equal(isKnownAuthorFallback({ ...base, text: '2026/09/20 12:00-18:00 虹だよー' }, '2026-09-20', 'evening'), false);
+});
+
+test('extracts an X handle from Yahoo realtime result text when normalized URL lost it', () => {
+  assert.equal(extractXHandleFromText('つちやん☆ @sylfley 2026/09/20 18:00-24:00'), 'sylfley');
+  assert.equal(extractXHandleFromText('no handle here'), '');
 });
 
 test('profile Heartopia signal recognizes Japanese and English game references only as a weak signal', () => {
