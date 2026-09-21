@@ -4,6 +4,7 @@ import fs from 'node:fs'
 
 const workflow = fs.readFileSync('.github/workflows/weather-scheduled-run.yml', 'utf8')
 const unifiedSubmit = fs.readFileSync('tools/weather-cloud-submit-unified.ps1', 'utf8')
+const discovery = fs.readFileSync('tools/weather-public-discovery.mjs', 'utf8')
 
 test('Apps Script is primary clock and GitHub cron is delayed backup', () => {
   for (const cron of ["30 22 * * *", "30 10 * * *"]) {
@@ -34,6 +35,16 @@ test('scheduler derives schedule dates from the intended cron time and manual da
   assert.match(workflow, /\$scheduledUtc\.ToOffset\(\[TimeSpan\]::FromHours\(9\)\)\.AddHours\(-6\)/)
   assert.match(workflow, /\$nowJst\.AddHours\(-6\)/)
   assert.match(workflow, /\$nowJst\.Hour -ge 6 -and \$nowJst\.Hour -lt 13/)
+})
+
+test('scheduler accepts the current public-discovery schema version', () => {
+  const schemaMatch = discovery.match(/schemaVersion:\s*(\d+)/)
+  assert.ok(schemaMatch, 'current discovery schemaVersion must be declared')
+  const currentSchema = Number(schemaMatch[1])
+  const gateMatch = workflow.match(/!\[([^\]]+)\]\.includes\(result\.schemaVersion\)/)
+  assert.ok(gateMatch, 'workflow must explicitly validate discovery schema versions')
+  const accepted = gateMatch[1].split(',').map(v => Number(v.trim())).filter(Number.isFinite)
+  assert.ok(accepted.includes(currentSchema), `workflow must accept discovery schemaVersion ${currentSchema}`)
 })
 
 test('scheduler reviews each Web or X candidate as same-image unified first, then daily-only', () => {
