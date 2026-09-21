@@ -83,6 +83,13 @@ function findGiftClaimBackupRow_(sheet, backupHash) {
   return null;
 }
 
+function sameGiftClaimCodes_(left, right) {
+  const a = normalizeGiftClaimCodes_(left).slice().sort();
+  const b = normalizeGiftClaimCodes_(right).slice().sort();
+  if (a.length !== b.length) return false;
+  return a.every(function(code, index) { return code === b[index]; });
+}
+
 function saveGiftClaimBackupRow_(sheet, existing, backupHash, claims) {
   const now = new Date().toISOString();
   const item = {
@@ -112,7 +119,9 @@ function syncGiftClaims_(body) {
     (existing ? existing.claims : []).concat(incoming).forEach(function(code) {
       if (merged.indexOf(code) < 0 && merged.length < GIFT_CLAIM_BACKUP_MAX_CODES) merged.push(code);
     });
-    const claims = saveGiftClaimBackupRow_(sheet, existing, backupHash, merged);
+    const claims = existing && sameGiftClaimCodes_(existing.claims, merged)
+      ? existing.claims
+      : saveGiftClaimBackupRow_(sheet, existing, backupHash, merged);
     return json_({ ok: true, claims: claims, backedUp: true });
   });
 }
@@ -133,7 +142,9 @@ function setGiftClaimState_(body) {
     const index = claims.indexOf(code);
     if (claimed && index < 0 && claims.length < GIFT_CLAIM_BACKUP_MAX_CODES) claims.push(code);
     if (!claimed && index >= 0) claims.splice(index, 1);
-    const saved = saveGiftClaimBackupRow_(sheet, existing, backupHash, claims);
+    const saved = existing && sameGiftClaimCodes_(existing.claims, claims)
+      ? existing.claims
+      : saveGiftClaimBackupRow_(sheet, existing, backupHash, claims);
     return json_({ ok: true, code: code, claimed: claimed, claims: saved, backedUp: true });
   });
 }
