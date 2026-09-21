@@ -194,7 +194,7 @@ test("bootstrap processing is silent while still importing a valid forwarded mes
     id: "100",
     channel_id: "2",
     guild_id: "1",
-    webhook_id: "official-webhook",
+    webhook_id: "323456789012345678",
     content: [
       "🎁Rewards: Wishing star ×3, Dye ×2, Flawless Fluorite ×1",
       "🔑Gift Code: r8a4k6p5q3m1",
@@ -211,7 +211,7 @@ test("bootstrap processing is silent while still importing a valid forwarded mes
 
   assert.equal(result.mode, "created");
   assert.equal(h.rows.length, 2);
-  assert.equal(h.properties.get("DISCORD_GIFT_SOURCE_WEBHOOK_ID"), "official-webhook");
+  assert.equal(h.properties.get("DISCORD_GIFT_SOURCE_WEBHOOK_ID"), "323456789012345678");
   assert.deepEqual(h.events.notices, []);
   assert.deepEqual(h.events.notifications, []);
   assert.deepEqual(h.events.reviewFetches, []);
@@ -223,7 +223,7 @@ test("unknown reward name is kept in English and marked for later official-name 
     id: "101",
     channel_id: "2",
     guild_id: "1",
-    webhook_id: "official-webhook",
+    webhook_id: "323456789012345678",
     content: [
       "Rewards: Mystery Token ×5, Dye ×2",
       "Gift Code: z9y8x7w6",
@@ -304,4 +304,76 @@ test("GitHub batch ignores candidates at or before the stored cursor", () => {
   assert.equal(h.rows.length, 2);
   assert.equal(h.rows[1][1], "newcode1");
   assert.deepEqual(h.events.notifications, ["newcode1"]);
+});
+
+
+test("learns a second valid followed-channel webhook instead of ignoring it", () => {
+  const h = makeHarness();
+  h.properties.set("DISCORD_GIFT_SOURCE_WEBHOOK_ID", "323456789012345678");
+  h.properties.set("DISCORD_GIFT_SOURCE_WEBHOOK_IDS", JSON.stringify(["323456789012345678"]));
+
+  const result = h.context.processDiscordGiftMessage_(
+    {
+      id: "923456789012345678",
+      channel_id: "123456789012345678",
+      guild_id: "223456789012345678",
+      webhook_id: "423456789012345678",
+      content: [
+        "Freebies are ready, don't forget to claim them:",
+        "Wishing star ×3",
+        "Dye ×2",
+        "Flawless Fluorite ×1",
+        "Gift Code: secondhook1",
+        "Redemption Deadline: 2099/10/01 00:59"
+      ].join("\n"),
+      embeds: []
+    },
+    { channelId: "123456789012345678", guildId: "223456789012345678" },
+    { silent: false }
+  );
+
+  assert.equal(result.mode, "created");
+  assert.deepEqual(
+    JSON.parse(h.properties.get("DISCORD_GIFT_SOURCE_WEBHOOK_IDS")),
+    ["323456789012345678", "423456789012345678"]
+  );
+  assert.equal(h.rows[1][1], "secondhook1");
+});
+
+test("official X batch creates a gift from a verified official status URL", () => {
+  const h = makeHarness();
+  const result = h.context.processOfficialXGiftBatch_({
+    posts: [{
+      statusId: "2099234567890123456",
+      sourceUrl: "https://x.com/myheartopia/status/2099234567890123456",
+      text: [
+        "Freebies are ready, don't forget to claim them:",
+        "Wishing star ×3",
+        "Dye ×2",
+        "Flawless Fluorite ×1",
+        "Gift Code: xbackup123",
+        "Redemption Deadline: 2099/10/01 00:59"
+      ].join("\n")
+    }]
+  });
+
+  assert.equal(result.counts.created, 1);
+  assert.equal(h.rows[1][1], "xbackup123");
+  assert.equal(h.rows[1][4], "https://x.com/myheartopia/status/2099234567890123456");
+  assert.equal(h.rows[1][5], "公式X自動取得");
+  assert.deepEqual(h.events.notifications, ["xbackup123"]);
+});
+
+test("official X batch rejects lookalike non-official account URLs", () => {
+  const h = makeHarness();
+  const result = h.context.processOfficialXGiftBatch_({
+    posts: [{
+      statusId: "2099234567890123456",
+      sourceUrl: "https://x.com/fakeheartopia/status/2099234567890123456",
+      text: "Rewards: Dye ×2\nGift Code: fakecode123"
+    }]
+  });
+
+  assert.equal(result.counts.ignored, 1);
+  assert.equal(h.rows.length, 1);
 });
