@@ -16,7 +16,8 @@
     "apps-script/weather-scheduler.gs",
     "apps-script/gift-code-config.gs",
     "apps-script/gift-code-parser.gs",
-    "apps-script/gift-code-storage.gs"
+    "apps-script/gift-code-storage.gs",
+    "apps-script/gift-claim-backup.gs"
   ],
   "skipSubdirectories": true
 }

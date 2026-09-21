@@ -104,6 +104,8 @@ function doPost(e) {
     }
     if (action === "ingestDiscordGiftBatch") return ingestDiscordGiftBatch_(body);
     if (action === "ingestOfficialXGiftBatch") return ingestOfficialXGiftBatch_(body);
+    if (action === "syncGiftClaims") return syncGiftClaims_(body);
+    if (action === "setGiftClaimState") return setGiftClaimState_(body);
     if (action === "saveApproved") return saveApproved_(body);
     if (action === "approve") return changeStatus_(body, "approved");
     if (action === "reject") return changeStatus_(body, "rejected");

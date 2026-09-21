@@ -5,4 +5,5 @@
 !gift-code-config.gs
 !gift-code-parser.gs
 !gift-code-storage.gs
+!gift-claim-backup.gs
 !appsscript.json

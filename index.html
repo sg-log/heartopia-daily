@@ -464,6 +464,16 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 .giftSource{color:var(--accent2);font-weight:800;text-decoration:none}
 .giftExpiredWrap{margin-top:12px}
 .giftExpiredWrap summary{cursor:pointer;font-weight:900;color:var(--muted)}
+.giftBackupBox{margin:8px 0 12px;padding:10px 12px;border:1px solid #e1e7e2;border-radius:13px;background:#f7faf7}
+.giftBackupLine{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.giftBackupState{font-size:12px;font-weight:800;color:var(--accent2)}
+.giftBackupLine button{padding:7px 10px;font-size:12px}
+.giftBackupDetails{margin-top:7px}
+.giftBackupDetails>summary{cursor:pointer;font-size:12px;font-weight:900;color:var(--muted)}
+.giftBackupRestoreGrid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;margin-top:8px}
+.giftBackupRestoreGrid label{margin:0}
+.giftBackupRestoreGrid button{white-space:nowrap}
+@media(max-width:560px){.giftBackupRestoreGrid{grid-template-columns:1fr}.giftBackupRestoreGrid button{width:100%}}
 .giftAdminList{margin-top:12px}
 .siteNotice{
   justify-self:start;
@@ -1073,6 +1083,23 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
           <summary>ギフトコード</summary>
           <div class="giftDetailsBody">
             <p class="small">コピーで受取済。受取状態はタップで切替できます。</p>
+            <div class="giftBackupBox">
+              <div class="giftBackupLine">
+                <span id="giftBackupStatus" class="giftBackupState">受取済バックアップを準備中…</span>
+                <button id="giftBackupCopyBtn" type="button" class="secondary">復元コードをコピー</button>
+              </div>
+              <details class="giftBackupDetails">
+                <summary>バックアップと復元</summary>
+                <p class="small">受取済はこの端末とサーバーへ自動保存します。ブラウザのサイトデータを全部消した場合は復元コードが必要です。復元コードは他の人に共有しないでください。</p>
+                <div class="giftBackupRestoreGrid">
+                  <label for="giftBackupCodeInput">復元コード
+                    <input id="giftBackupCodeInput" autocomplete="off" spellcheck="false" placeholder="HGD-xxxx-xxxx-...">
+                  </label>
+                  <button id="giftBackupRestoreBtn" type="button" class="secondary">このコードで復元</button>
+                </div>
+                <div id="giftBackupRestoreStatus" class="status"></div>
+              </details>
+            </div>
             <div id="giftCodeList" class="giftList"></div>
             <details id="expiredGiftCodes" class="giftExpiredWrap">
               <summary>期限切れコード</summary>
@@ -2846,6 +2873,7 @@ const ids = [
   "weatherAdminKey","refreshPendingWeatherBtn","pendingWeatherStatus","pendingWeatherReports",
   "quickGiftUrlInput","quickGiftAdminKey","loadQuickGiftUrlBtn","quickGiftTextInput","quickGiftImageInput","quickGiftDrop","quickGiftPreview","draftQuickGiftBtn","ocrQuickGiftBtn","clearQuickGiftBtn","quickGiftStatus","quickGiftOcrText","quickGiftConfirm",
   "quickGiftCodeConfirm","quickGiftCodeCandidateSelect","quickGiftRewardConfirm","quickGiftExpiresConfirm","quickGiftSourceConfirm","quickGiftMemoConfirm","quickGiftStatusConfirm","saveQuickGiftBtn",
+  "giftBackupStatus","giftBackupCopyBtn","giftBackupCodeInput","giftBackupRestoreBtn","giftBackupRestoreStatus",
   "giftCodeInput","giftRewardInput","giftExpiresAtInput","giftSourceUrlInput","giftMemoInput","giftStatusInput","giftAdminKey","saveGiftCodeBtn","clearGiftCodeBtn","refreshGiftCodesBtn","giftCodeStatus","giftCodeAdminList",
   "noticeDateInput","noticeTextInput","noticeAdminKey","saveNoticeBtn","clearNoticeBtn","noticeStatus",
   "accessStats","accessChart","accessExcludedToggle","refreshAccessStatsBtn","accessStatus",
@@ -2865,6 +2893,11 @@ let quickGiftImageFile = null;
 let weatherScreenshotFiles = {top:null, bottom:null};
 let weatherScreenshotCandidates = null;
 let quickGiftManualTouched = {code:false, reward:false, expiresAt:false, sourceUrl:false, memo:false, status:false};
+const GIFT_BACKUP_ID_KEY = "heartopiaGiftClaimBackupId.v1";
+const GIFT_BACKUP_COOKIE = "heartopiaGiftClaimBackupId";
+const GIFT_BACKUP_COOKIE_MAX_AGE = 315360000;
+let giftClaimRevision = 0;
+let giftBackupSyncInFlight = false;
 const ADMIN_SESSION_KEY = "heartopiaAdminKey";
 let adminSessionKey = sessionStorage.getItem(ADMIN_SESSION_KEY) || "";
 const ACCESS_SENT_DATE_KEY = "heartopiaAccessSentDate.v1";
@@ -3327,9 +3360,157 @@ function giftSourceUrl(url){
 }
 function giftClaimKey(code){ return `giftCodeClaimed:${code}`; }
 function giftClaimed(code){ return localStorage.getItem(giftClaimKey(code)) === "1"; }
-function setGiftClaimed(code, claimed){
+function normalizeGiftBackupId(value){
+  const compact = String(value || "").trim().replace(/^HGD-/i,"").replace(/[\s-]/g,"").toLowerCase();
+  return /^[a-f0-9]{32}$/.test(compact) ? compact : "";
+}
+function giftBackupCookieValue(){
+  const prefix = GIFT_BACKUP_COOKIE + "=";
+  return document.cookie.split(";").map(part => part.trim()).find(part => part.startsWith(prefix))?.slice(prefix.length) || "";
+}
+function storeGiftBackupId(value){
+  const id = normalizeGiftBackupId(value);
+  if(!id) return "";
+  try{ localStorage.setItem(GIFT_BACKUP_ID_KEY, id); }catch(_){}
+  document.cookie = `${GIFT_BACKUP_COOKIE}=${id}; Max-Age=${GIFT_BACKUP_COOKIE_MAX_AGE}; Path=/; SameSite=Lax; Secure`;
+  return id;
+}
+function newGiftBackupId(){
+  try{
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return [...bytes].map(value => value.toString(16).padStart(2,"0")).join("");
+  }catch(_){
+    return "";
+  }
+}
+function giftBackupId(){
+  let id = "";
+  try{ id = normalizeGiftBackupId(localStorage.getItem(GIFT_BACKUP_ID_KEY)); }catch(_){}
+  if(!id) id = normalizeGiftBackupId(giftBackupCookieValue());
+  if(!id) id = newGiftBackupId();
+  return storeGiftBackupId(id);
+}
+function giftBackupDisplayCode(value){
+  const id = normalizeGiftBackupId(value);
+  return id ? "HGD-" + id.match(/.{1,4}/g).join("-") : "";
+}
+function localGiftClaimCodes(){
+  try{
+    return Object.keys(localStorage)
+      .filter(key => key.startsWith("giftCodeClaimed:") && localStorage.getItem(key) === "1")
+      .map(key => key.slice("giftCodeClaimed:".length))
+      .filter(Boolean);
+  }catch(_){
+    return [];
+  }
+}
+function applyGiftClaimCodes(codes){
+  (Array.isArray(codes) ? codes : []).forEach(code => {
+    const text = String(code || "").trim();
+    if(text) localStorage.setItem(giftClaimKey(text), "1");
+  });
+}
+function setGiftBackupStatus(text, isError=false){
+  if(E.giftBackupStatus){
+    E.giftBackupStatus.textContent = text;
+    E.giftBackupStatus.style.color = isError ? "#9a5b55" : "";
+  }
+}
+async function syncGiftClaimBackup(options={}){
+  if(isAdminRoute() || !WEATHER_API_URL) return null;
+  if(giftBackupSyncInFlight && !options.force) return null;
+  const id = normalizeGiftBackupId(options.backupId) || giftBackupId();
+  if(!id){
+    setGiftBackupStatus("受取済は端末内に保存中（バックアップ非対応）", true);
+    return null;
+  }
+  storeGiftBackupId(id);
+  const revision = giftClaimRevision;
+  giftBackupSyncInFlight = true;
+  setGiftBackupStatus("受取済をバックアップ中…");
+  try{
+    const result = await apiPost({
+      action:"syncGiftClaims",
+      backupId:id,
+      claims:localGiftClaimCodes()
+    });
+    if(result.ok === false) throw new Error(result.error || "バックアップできませんでした");
+    if(revision === giftClaimRevision){
+      applyGiftClaimCodes(result.claims || []);
+      renderGiftCodes();
+    }
+    setGiftBackupStatus(`受取済バックアップ済み（${(result.claims || []).length}件）`);
+    return result;
+  }catch(error){
+    setGiftBackupStatus("端末内には保存済み。サーバーバックアップは再試行します", true);
+    return null;
+  }finally{
+    giftBackupSyncInFlight = false;
+    if(revision !== giftClaimRevision && !options.noRetry){
+      setTimeout(() => syncGiftClaimBackup({force:true, noRetry:true}), 0);
+    }
+  }
+}
+async function pushGiftClaimState(code, claimed){
+  if(isAdminRoute() || !WEATHER_API_URL) return;
+  const id = giftBackupId();
+  if(!id) return;
+  try{
+    const result = await apiPost({
+      action:"setGiftClaimState",
+      backupId:id,
+      code:String(code || "").trim(),
+      claimed:Boolean(claimed)
+    });
+    if(result.ok === false) throw new Error(result.error || "バックアップできませんでした");
+    setGiftBackupStatus(`受取済バックアップ済み（${(result.claims || []).length}件）`);
+  }catch(_){
+    setGiftBackupStatus("端末内には保存済み。サーバーバックアップは再試行します", true);
+  }
+}
+function setGiftClaimed(code, claimed, options={}){
   if(claimed) localStorage.setItem(giftClaimKey(code), "1");
   else localStorage.removeItem(giftClaimKey(code));
+  giftClaimRevision++;
+  if(options.sync !== false) pushGiftClaimState(code, claimed);
+}
+async function copyGiftBackupCode(){
+  const id = giftBackupId();
+  const display = giftBackupDisplayCode(id);
+  if(!display){
+    if(E.giftBackupRestoreStatus) E.giftBackupRestoreStatus.textContent = "復元コードを作成できませんでした。";
+    return;
+  }
+  try{
+    await navigator.clipboard.writeText(display);
+    toast("復元コードをコピーしました");
+    if(E.giftBackupRestoreStatus) E.giftBackupRestoreStatus.textContent = "復元コードをコピーしました。安全な場所に保存してください。";
+  }catch(_){
+    E.giftBackupCodeInput.value = display;
+    E.giftBackupCodeInput.select();
+    if(E.giftBackupRestoreStatus) E.giftBackupRestoreStatus.textContent = "復元コードを表示しました。手動でコピーしてください。";
+  }
+}
+async function restoreGiftClaimsFromCode(){
+  const id = normalizeGiftBackupId(E.giftBackupCodeInput.value);
+  if(!id){
+    E.giftBackupRestoreStatus.textContent = "復元コードの形式を確認してください。";
+    return;
+  }
+  storeGiftBackupId(id);
+  E.giftBackupRestoreBtn.disabled = true;
+  E.giftBackupRestoreStatus.textContent = "受取済を復元中…";
+  try{
+    const result = await syncGiftClaimBackup({backupId:id, force:true});
+    if(!result) throw new Error("復元できませんでした");
+    E.giftBackupRestoreStatus.textContent = `受取済を復元しました（${(result.claims || []).length}件）。`;
+    E.giftBackupCodeInput.value = "";
+  }catch(error){
+    E.giftBackupRestoreStatus.textContent = `復元できませんでした：${error.message}`;
+  }finally{
+    E.giftBackupRestoreBtn.disabled = false;
+  }
 }
 function giftPublicMemo(value){
   const text = String(value || "").trim();
@@ -6453,7 +6634,10 @@ function init(){
     if(input) input.addEventListener("input", () => syncAdminKeys(input));
   });
   fetchApprovedWeather();
-  fetchGiftCodes().then(renderToday);
+  fetchGiftCodes().then(async () => {
+    await syncGiftClaimBackup();
+    renderToday();
+  });
   fetchSiteNotice();
   recordAccessIfNeeded();
 
@@ -6514,6 +6698,11 @@ function init(){
     }catch(e){
       E.copyStatus.textContent = "手動で選択してコピーしてください";
     }
+  };
+  if(E.giftBackupCopyBtn) E.giftBackupCopyBtn.onclick = copyGiftBackupCode;
+  if(E.giftBackupRestoreBtn) E.giftBackupRestoreBtn.onclick = restoreGiftClaimsFromCode;
+  if(E.giftBackupCodeInput) E.giftBackupCodeInput.onkeydown = event => {
+    if(event.key === "Enter") restoreGiftClaimsFromCode();
   };
   [E.giftCodeList, E.expiredGiftCodeList].forEach(list => {
     if(!list) return;

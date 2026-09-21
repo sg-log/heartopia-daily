@@ -3,13 +3,17 @@ name: Gift code parser CI
 on:
   pull_request:
     paths:
-      - "apps-script/gift-code-*.gs"
+      - "apps-script/gift-*.gs"
       - "tools/test-gift-discord-parser.mjs"
       - "tools/test-gift-discord-storage.mjs"
       - "tools/test-gift-discord-poll.mjs"
       - "tools/gift-discord-poll.mjs"
       - "tools/gift-x-backup.mjs"
       - "tools/test-gift-x-backup.mjs"
+      - "tools/test-gift-claim-backup.mjs"
+      - "index.html"
+      - ".clasp.json"
+      - ".claspignore"
       - ".github/workflows/gift-code-discord-poll.yml"
       - "package.json"
       - "README-gift-code-automation.md"
