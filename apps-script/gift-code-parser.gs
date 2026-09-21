@@ -1,7 +1,49 @@
+function normalizeGiftAnnouncementText_(text) {
+  return String(text || "")
+    .normalize("NFKC")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\*\*/g, "")
+    .replace(/__/g, "")
+    .replace(/~~/g, "")
+    .replace(/ギフト\s*コード\s*[:：]/gi, "Gift Code:")
+    .replace(/(?:報酬内容|報酬)\s*[:：]/g, "Rewards:")
+    .replace(/(?:交換期限|受取期限|有効期限)\s*[:：]/g, "Redemption Deadline:")
+    .replace(/Rewards?\s+includes?\s*:/ig, "Rewards:");
+}
+
+function giftRewardSegmentsBeforeCode_(text) {
+  const lines = String(text || "").split("\n");
+  let codeIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/Gift\s*Code\s*:/i.test(lines[i])) {
+      codeIndex = i;
+      break;
+    }
+  }
+  if (codeIndex < 0) return [];
+
+  const segments = [];
+  const start = Math.max(0, codeIndex - 10);
+  for (let i = start; i < codeIndex; i++) {
+    const line = String(lines[i] || "").trim();
+    const match = line.match(/^(.+?)\s*[×xX*]\s*(\d+)\s*$/);
+    if (!match) continue;
+    const name = String(match[1] || "")
+      .trim()
+      .replace(/^[^A-Za-z0-9\u3040-\u30ff\u3400-\u9fff]+/, "")
+      .trim();
+    const count = String(match[2] || "").trim();
+    if (name && count) segments.push(name + "×" + count);
+  }
+  return segments;
+}
+
 function looksLikeDiscordGiftAnnouncement_(text) {
-  const source = String(text || "");
-  return /(?:^|\n)\s*[^\n]*Rewards?\s*:/i.test(source)
-    && /(?:^|\n)\s*[^\n]*Gift\s*Code\s*:/i.test(source);
+  const source = normalizeGiftAnnouncementText_(text);
+  const hasCode = /(?:^|\n)[^\n]*Gift\s*Code\s*:/i.test(source);
+  if (!hasCode) return false;
+  if (/(?:^|\n)\s*[^\n]*Rewards?\s*:/i.test(source)) return true;
+  return giftRewardSegmentsBeforeCode_(source).length > 0;
 }
 
 function discordGiftMessageText_(message) {
@@ -23,12 +65,7 @@ function discordGiftMessageText_(message) {
 }
 
 function parseDiscordGiftAnnouncement_(text, options) {
-  const source = String(text || "")
-    .normalize("NFKC")
-    .replace(/\r\n?/g, "\n")
-    .replace(/\*\*/g, "")
-    .replace(/__/g, "")
-    .replace(/~~/g, "");
+  const source = normalizeGiftAnnouncementText_(text);
   const codeMatch = source.match(/(?:^|\n)[^\n]*Gift\s*Code\s*:\s*`?([A-Za-z0-9][A-Za-z0-9_-]{5,99})`?/i);
   if (!codeMatch) return { ok: false, error: "Gift Codeを1件に確定できません" };
 
@@ -39,7 +76,11 @@ function parseDiscordGiftAnnouncement_(text, options) {
   const uniqueCodes = Array.from(new Set(codeMatches));
   if (uniqueCodes.length !== 1) return { ok: false, error: "Gift Code候補が複数あります" };
 
-  const rewardLine = lineValueAfterLabel_(source, /Rewards?/i);
+  let rewardLine = lineValueAfterLabel_(source, /Rewards?/i);
+  if (!rewardLine) {
+    const contextualRewards = giftRewardSegmentsBeforeCode_(source);
+    rewardLine = contextualRewards.join(", ");
+  }
   if (!rewardLine) return { ok: false, error: "Rewardsを読み取れません" };
 
   const rewardMap = options && options.rewardNameMap ? options.rewardNameMap : DEFAULT_GIFT_REWARD_NAME_MAP;
@@ -85,14 +126,18 @@ function parseDiscordGiftRewards_(line, rewardNameMap) {
   for (let i = 0; i < segments.length; i++) {
     const match = segments[i].match(/^(.+?)\s*[×xX*]\s*(\d+)\s*$/);
     if (!match) return { ok: false, error: "Rewardsの形式を安全に解析できません: " + segments[i] };
-    const englishName = String(match[1] || "").trim();
+    const sourceName = String(match[1] || "")
+      .trim()
+      .replace(/^[^A-Za-z0-9\u3040-\u30ff\u3400-\u9fff]+/, "")
+      .trim();
     const count = String(match[2] || "").trim();
-    if (!englishName || !count) return { ok: false, error: "Rewardsの形式が不正です" };
+    if (!sourceName || !count) return { ok: false, error: "Rewardsの形式が不正です" };
 
-    const japaneseName = normalizedMap[englishName.toLowerCase()] || "";
-    raw.push(englishName + "×" + count);
-    localized.push((japaneseName || englishName) + "×" + count);
-    if (!japaneseName) unresolved.push(englishName);
+    const japaneseName = normalizedMap[sourceName.toLowerCase()] || "";
+    const alreadyJapanese = /[\u3040-\u30ff\u3400-\u9fff]/.test(sourceName);
+    raw.push(sourceName + "×" + count);
+    localized.push((japaneseName || sourceName) + "×" + count);
+    if (!japaneseName && !alreadyJapanese) unresolved.push(sourceName);
   }
 
   return {
