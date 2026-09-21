@@ -119,9 +119,7 @@ function processOfficialXGiftBatch_(body) {
       rawReward: parsed.rawReward,
       expiresAt: parsed.expiresAt,
       sourceUrl: sourceUrl,
-      memo: parsed.unresolvedRewardNames.length
-        ? GIFT_X_AUTO_MEMO + " / 日本語名未確認: " + parsed.unresolvedRewardNames.join(", ")
-        : GIFT_X_AUTO_MEMO,
+      memo: "",
       status: giftStatusFromExpiry_(parsed.expiresAt)
     };
 
