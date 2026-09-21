@@ -68,9 +68,14 @@ test('builds date-specific and broad query variants for every discovery route', 
   assert.deepEqual(base, [
     'ハートピア 天気 9月15日',
     'ハートピア スローライフ 天気 9月15日',
+    'ハートピア 週間天気 9月15日',
+    'ハートピア 週間予報 9月15日',
     'Heartopia weather 2026-09-15',
+    'Heartopia weekly forecast 2026-09-15',
     'ハートピア 天気',
-    'Heartopia weather'
+    'ハートピア 週間天気',
+    'Heartopia weather',
+    'Heartopia weekly forecast'
   ]);
   assert.ok(DISCOVERY_PROVIDERS.length >= 4);
   assert.deepEqual(buildQueries('2026-09-15', 'morning').slice(0, 2), [
@@ -121,6 +126,13 @@ test('recognizes Heartopia weather text and target date', () => {
   assert.equal(result.dateMatched, true);
   assert.equal(result.forecastMatched, true);
   assert.ok(result.score >= 13);
+});
+
+test('recognizes weekly forecast wording as forecast context', () => {
+  const ja = candidateRelevance('ハートピア 週間天気 9月16日', '2026-09-16');
+  const en = candidateRelevance('Heartopia weekly forecast 2026-09-16', '2026-09-16');
+  assert.equal(ja.forecastMatched, true);
+  assert.equal(en.forecastMatched, true);
 });
 
 test('search-context fallback is provider-neutral for exact-date exact-slot X posts', () => {
@@ -301,6 +313,31 @@ test('profile Heartopia signal only breaks otherwise equal ranking ties', () => 
     }
   ], 2);
   assert.equal(selected[0].sourceId, '502');
+});
+
+test('diversification caps repeated X authors before relaxing caps', () => {
+  const candidates = [];
+  for (let i = 0; i < 10; i++) {
+    candidates.push({
+      sourceUrl: `https://x.com/i/status/${700 + i}`,
+      sourceType:'x', sourcePlatform:'x', sourceId:String(700+i),
+      sourceHandle:'sameauthor', discoverySource:'yahoo-realtime',
+      relevanceScore:20, dateMatched:true, startSlotMatched:true, forecastMatched:false,
+      discoveries:[{discoverySource:'yahoo-realtime',searchQuery:'q'}]
+    });
+  }
+  for (let i = 0; i < 5; i++) {
+    candidates.push({
+      sourceUrl: `https://x.com/i/status/${800 + i}`,
+      sourceType:'x', sourcePlatform:'x', sourceId:String(800+i),
+      sourceHandle:`author${i}`, discoverySource:'yahoo-realtime',
+      relevanceScore:19, dateMatched:true, startSlotMatched:true, forecastMatched:false,
+      discoveries:[{discoverySource:'yahoo-realtime',searchQuery:'q'}]
+    });
+  }
+  const selected = selectDiversifiedCandidates(candidates, 8);
+  assert.ok(selected.filter(item => item.sourceHandle === 'sameauthor').length <= 2);
+  assert.ok(new Set(selected.map(item => item.sourceHandle).filter(Boolean)).size >= 4);
 });
 
 test('diversification does not give any search provider or platform an intrinsic ranking bonus', () => {
