@@ -22,7 +22,7 @@ export function extractStatusIdsFromHtml(html, handle) {
   const escaped = String(handle || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const patterns = [
     new RegExp("https?://(?:www\\.)?(?:x|twitter)\\.com/" + escaped + "/status/(\\d{15,25})", "ig"),
-    new RegExp('href=["\\\']/' + escaped + '/status/(\\d{15,25})', "ig")
+    new RegExp("href=[\\\"\']/"+ escaped + "/status/(\\d{15,25})", "ig")
   ];
   const ids = [];
   for (const pattern of patterns) {
@@ -53,7 +53,7 @@ export function extractTweetTextFromOembedHtml(html) {
   return decodeHtml(
     match[1]
       .replace(/<br\s*\/?\s*>/gi, "\n")
-      .replace(/<a\\b[^>]*>[\\s\\S]*?<\\/a>/gi, "")
+      .replace(/<a\b[^>]*>[\s\S]*?<\/a>/gi, "")
       .replace(/<[^>]+>/g, "")
   ).replace(/\n{3,}/g, "\n\n").trim();
 }
