@@ -19,7 +19,7 @@ export function normalizeTimelineHtml(value) {
 
 export function extractStatusIdsFromHtml(html, handle) {
   const source = normalizeTimelineHtml(html);
-  const escaped = String(handle || "").replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
+  const escaped = String(handle || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const patterns = [
     new RegExp("https?://(?:www\\.)?(?:x|twitter)\\.com/" + escaped + "/status/(\\d{15,25})", "ig"),
     new RegExp('href=["\\\']/' + escaped + '/status/(\\d{15,25})', "ig")
@@ -43,16 +43,16 @@ function decodeHtml(value) {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;|&apos;/g, "'")
-    .replace(/&#(\\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
     .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
 }
 
 export function extractTweetTextFromOembedHtml(html) {
-  const match = String(html || "").match(/<p\\b[^>]*>([\\s\\S]*?)<\\/p>/i);
+  const match = String(html || "").match(/<p\b[^>]*>([\s\S]*?)<\/p>/i);
   if (!match) return "";
   return decodeHtml(
     match[1]
-      .replace(/<br\\s*\\/?\\s*>/gi, "\n")
+      .replace(/<br\s*\/?\s*>/gi, "\n")
       .replace(/<a\\b[^>]*>[\\s\\S]*?<\\/a>/gi, "")
       .replace(/<[^>]+>/g, "")
   ).replace(/\n{3,}/g, "\n\n").trim();
@@ -63,14 +63,14 @@ export function isOfficialXAuthorUrl(value, handle) {
     const url = new URL(String(value || ""));
     return url.protocol === "https:"
       && ["twitter.com", "www.twitter.com", "x.com", "www.x.com"].includes(url.hostname.toLowerCase())
-      && url.pathname.replace(/^\\/+|\\/+$/g, "").toLowerCase() === String(handle || "").toLowerCase();
+      && url.pathname.replace(/^\/+|\/+$/g, "").toLowerCase() === String(handle || "").toLowerCase();
   } catch {
     return false;
   }
 }
 
 function looksLikeGiftText(text) {
-  return /Gift\\s*Code\\s*:|ギフト\\s*コード\\s*[:：]/i.test(String(text || ""));
+  return /Gift\s*Code\s*:|ギフト\s*コード\s*[:：]/i.test(String(text || ""));
 }
 
 async function fetchText(fetchImpl, url) {
