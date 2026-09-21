@@ -110,7 +110,7 @@ function lineValueAfterLabel_(text, labelPattern) {
 }
 
 function parseDiscordGiftRewards_(line, rewardNameMap) {
-  const segments = String(line || "").split(/\s*[,，]\s*/).map(function(part) {
+  const segments = String(line || "").split(/\s*[,，、]\s*/).map(function(part) {
     return part.trim();
   }).filter(Boolean);
   if (!segments.length) return { ok: false, error: "Rewardsが空です" };
