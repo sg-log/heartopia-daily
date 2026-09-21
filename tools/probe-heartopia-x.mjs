@@ -28,3 +28,5 @@ for (const url of targets) {
     console.log(JSON.stringify({ url, error: error instanceof Error ? error.message : String(error) }));
   }
 }
+
+// PR probe sync marker
