@@ -94,13 +94,10 @@ export function buildQueries(targetDate, slot = '') {
     `ハートピア 天気 ${month}月${day}日`,
     `ハートピア スローライフ 天気 ${month}月${day}日`,
     `ハートピア 週間天気 ${month}月${day}日`,
-    `ハートピア 週間予報 ${month}月${day}日`,
     `Heartopia weather ${targetDate}`,
     `Heartopia weekly forecast ${targetDate}`,
     'ハートピア 天気',
-    'ハートピア 週間天気',
-    'Heartopia weather',
-    'Heartopia weekly forecast'
+    'Heartopia weather'
   ];
 }
 
@@ -372,6 +369,15 @@ export function selectDiversifiedCandidates(candidates, limit = 24) {
     if (handle && (authorCounts.get(handle) || 0) >= authorCap) continue;
     add(candidate);
   }
+  // Relax provider/platform caps first, but keep per-author diversity while
+  // there are still alternatives from other authors.
+  for (const candidate of ranked) {
+    if (selected.length >= limit) break;
+    const handle = String(candidate.sourceHandle || '').toLowerCase();
+    if (handle && (authorCounts.get(handle) || 0) >= authorCap) continue;
+    add(candidate);
+  }
+  // Only if diversity cannot fill the bounded pool do we relax the author cap.
   for (const candidate of ranked) {
     if (selected.length >= limit) break;
     add(candidate);
