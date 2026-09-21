@@ -4,6 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { extractPostDates, normalizeTargetDate } from './weather-deterministic-review.mjs';
+import { applyTimedSpecialWeatherHints } from './weather-unified-review.mjs';
 
 const START_SLOTS = ['00','06','12','18'];
 const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
@@ -71,13 +72,14 @@ async function inspectImage(page, bytes, mimeType, templates){
       const sig=signature(c),m=metrics(c),byWeather=new Map();
       for(const t of prepared){const v=similarity(sig,t.sig);byWeather.set(t.weather,Math.max(v,byWeather.get(t.weather)||0));}
       const ranked=[...byWeather.entries()].sort((a,b)=>b[1]-a[1]);
-      let [value,bestScore]=ranked[0]||['',0];const secondScore=ranked[1]?.[1]||0;const margin=bestScore-secondScore;
+      let [value,bestScore]=ranked[0]||['',0];const secondValue=ranked[1]?.[0]||'';const secondScore=ranked[1]?.[1]||0;const margin=bestScore-secondScore;const templateValue=value;
       if(m.red>=.04&&m.cyan>=.12)value='虹';
+      else if(value==='流星群')value='流星群';
       else if(m.purple>=.10&&m.warm>=.02)value='流星群';
       else if(m.cyan>=.58&&m.warm<.02)value='雨';
       else if(m.warm>=.025&&value!=='猛暑')value='晴';
       const high=(bestScore>=.43&&margin>=.008)||m.warm>=.025||(m.cyan>=.58&&m.warm<.02)||(m.red>=.04&&m.cyan>=.12);
-      return{value,high,bestScore,margin,metrics:m,box:{x:sx,y:sy,size}};
+      return{value,templateValue,secondValue,high,bestScore,secondScore,margin,metrics:m,box:{x:sx,y:sy,size}};
     });
 
     if(!window.Tesseract)await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=tesseractUrl;s.onload=resolve;s.onerror=reject;document.head.appendChild(s);});
@@ -118,8 +120,11 @@ export async function inspectDirectDailyPanelCapture({captureDir,targetDate,repo
       if(!inspected.ready)continue;
       const inferred=inferStartSlot(inspected.mapped);attempt.inferred=inferred;
       if(!inferred||!inspected.scores.every(s=>s.high&&s.value))continue;
-      const slots=inspected.scores.map((s,i)=>({slot:`slot${i}`,visible:true,weather:[s.value],confidence:'high',description:`デイリー専用UI画像判定 score=${s.bestScore.toFixed(3)} margin=${s.margin.toFixed(3)}`}));
-      return{schemaVersion:1,ready:true,targetDate,selectedImage:{file:media.file,mimeType:media.mimeType,captureSha256:media.sha256},interpretation:{ready:true,observedDate:targetDate,startSlot:inferred.startSlot,slots,confidence:'high',summary:`投稿本文で${targetDate}を確認し、同一投稿のデイリー天気UIから5枠と時刻ラベルを直接判読。`,unresolved:[]},diagnostics:{mode:'direct-daily-only-panel',selectedOriginal:media.file,structure:{width:inspected.width,height:inspected.height,blueRatio:inspected.blueRatio},mapped:inspected.mapped,ocrAttempts:inspected.ocrAttempts,scores:inspected.scores,attempts}};
+      const slots=inspected.scores.map((s,i)=>({slot:`slot${i}`,visible:true,weather:[s.value],confidence:'high',description:`デイリー専用UI画像判定 score=${s.bestScore.toFixed(3)} margin=${s.margin.toFixed(3)} template=${s.templateValue}`}));
+      const visual={schemaVersion:1,ready:true,targetDate,selectedImage:{file:media.file,mimeType:media.mimeType,captureSha256:media.sha256},interpretation:{ready:true,observedDate:targetDate,startSlot:inferred.startSlot,slots,confidence:'high',summary:`投稿本文で${targetDate}を確認し、同一投稿のデイリー天気UIから5枠と時刻ラベルを直接判読。`,unresolved:[]},diagnostics:{mode:'direct-daily-only-panel',selectedOriginal:media.file,structure:{width:inspected.width,height:inspected.height,blueRatio:inspected.blueRatio},mapped:inspected.mapped,ocrAttempts:inspected.ocrAttempts,scores:inspected.scores,attempts}};
+      const checked=applyTimedSpecialWeatherHints(visual,postText);
+      if(!checked.ready){attempt.textWeatherConflict=checked.diagnostics?.textWeatherConflicts||[];continue;}
+      return checked;
     }
   }finally{await browser.close();}
   return{ready:false,targetDate,diagnostics:{reason:'directDailyPanelNotReady',attempts}};

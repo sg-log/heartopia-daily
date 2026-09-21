@@ -93,7 +93,9 @@ export function buildQueries(targetDate, slot = '') {
     ...slotQueries,
     `ハートピア 天気 ${month}月${day}日`,
     `ハートピア スローライフ 天気 ${month}月${day}日`,
+    `ハートピア 週間天気 ${month}月${day}日`,
     `Heartopia weather ${targetDate}`,
+    `Heartopia weekly forecast ${targetDate}`,
     'ハートピア 天気',
     'Heartopia weather'
   ];
@@ -164,7 +166,7 @@ export function candidateRelevance(text, targetDate, slot = '') {
   const hasGame = s.includes('ハートピア') || s.includes('heartopia');
   const hasWeather = s.includes('天気') || s.includes('weather') || s.includes('予報') || s.includes('forecast');
   const dateMatched = targetDateTokens(targetDate).some((token) => s.includes(token));
-  const forecastMatched = s.includes('天気予報') || s.includes('今日の天気') || s.includes('weather forecast');
+  const forecastMatched = s.includes('天気予報') || s.includes('今日の天気') || s.includes('週間天気') || s.includes('週間予報') || s.includes('weather forecast') || s.includes('weekly forecast');
   const startSlotMatched = startSlotTokens(slot).some((token) => s.includes(token));
   let score = 0;
   if (hasGame) score += 4;
@@ -339,8 +341,10 @@ export function selectDiversifiedCandidates(candidates, limit = 24) {
   const selectedUrls = new Set();
   const providerCounts = new Map();
   const platformCounts = new Map();
+  const authorCounts = new Map();
   const providerCap = Math.max(3, Math.ceil(limit / 3));
   const platformCap = Math.max(4, Math.ceil(limit * 0.5));
+  const authorCap = Math.max(2, Math.ceil(limit / 6));
   const add = (candidate) => {
     if (selectedUrls.has(candidate.sourceUrl)) return false;
     selected.push(candidate);
@@ -348,6 +352,8 @@ export function selectDiversifiedCandidates(candidates, limit = 24) {
     providerCounts.set(candidate.discoverySource, (providerCounts.get(candidate.discoverySource) || 0) + 1);
     const platform = candidate.sourcePlatform || candidate.sourceType || 'web';
     platformCounts.set(platform, (platformCounts.get(platform) || 0) + 1);
+    const handle = String(candidate.sourceHandle || '').toLowerCase();
+    if (handle) authorCounts.set(handle, (authorCounts.get(handle) || 0) + 1);
     return true;
   };
 
@@ -357,10 +363,21 @@ export function selectDiversifiedCandidates(candidates, limit = 24) {
   for (const candidate of ranked) {
     if (selected.length >= limit) break;
     const platform = candidate.sourcePlatform || candidate.sourceType || 'web';
+    const handle = String(candidate.sourceHandle || '').toLowerCase();
     if ((providerCounts.get(candidate.discoverySource) || 0) >= providerCap) continue;
     if ((platformCounts.get(platform) || 0) >= platformCap) continue;
+    if (handle && (authorCounts.get(handle) || 0) >= authorCap) continue;
     add(candidate);
   }
+  // Relax provider/platform caps first, but keep per-author diversity while
+  // there are still alternatives from other authors.
+  for (const candidate of ranked) {
+    if (selected.length >= limit) break;
+    const handle = String(candidate.sourceHandle || '').toLowerCase();
+    if (handle && (authorCounts.get(handle) || 0) >= authorCap) continue;
+    add(candidate);
+  }
+  // Only if diversity cannot fill the bounded pool do we relax the author cap.
   for (const candidate of ranked) {
     if (selected.length >= limit) break;
     add(candidate);

@@ -77,6 +77,29 @@ test('stops for review when timed 流星雨 text conflicts with the game UI imag
   assert.deepEqual(result.interpretation.slots[2].weather, ['晴']);
 });
 
+test('treats natural open-ended meteor text as an exact slot hint', () => {
+  const hints = extractTimedMeteorIntervals('【 今日の天気予報 】\n18:00〜流星雨です');
+  assert.deepEqual(hints.map(item => [item.startMinute, item.endMinute, item.weather]), [[1080, 1080, '流星群']]);
+
+  const visual = {
+    ready:true,
+    interpretation:{
+      ready:true,startSlot:'06',summary:'visual',unresolved:[],
+      slots:[
+        {slot:'slot0',weather:['晴'],confidence:'high',description:'visual'},
+        {slot:'slot1',weather:['晴'],confidence:'high',description:'visual'},
+        {slot:'slot2',weather:['晴'],confidence:'high',description:'visual'},
+        {slot:'slot3',weather:['晴'],confidence:'high',description:'visual'},
+        {slot:'slot4',weather:['晴'],confidence:'high',description:'visual'}
+      ]
+    },
+    diagnostics:{}
+  };
+  const checked = applyTimedSpecialWeatherHints(visual, '18:00〜流星雨です');
+  assert.equal(checked.ready, false);
+  assert.equal(checked.diagnostics.textWeatherConflicts[0].slot, 'slot2');
+});
+
 test('does not override a slot from an untimed meteor mention', () => {
   const result = {ready:true,interpretation:{ready:true,startSlot:'06',slots:[{slot:'slot0',weather:['晴']}]} };
   assert.equal(applyTimedSpecialWeatherHints(result, '今日は流星群が見たい').interpretation.slots[0].weather[0], '晴');

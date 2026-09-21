@@ -221,8 +221,17 @@ jobs:
           $candidates = @(Get-Content -LiteralPath $env:CANDIDATE_PATH -Raw -Encoding UTF8 | ConvertFrom-Json)
           $selected = $null
           $selectionMode = ''
+          $fallback = $null
+          $fallbackDir = ''
+          $fallbackReviewPath = ''
+          $completeSearchLimit = [Math]::Min($candidates.Count, 8)
 
           for ($i = 0; $i -lt $candidates.Count; $i++) {
+            if ($null -ne $fallback -and $i -ge $completeSearchLimit) {
+              Write-Host "Complete daily+weekly search budget exhausted after $completeSearchLimit candidates; using the best verified daily fallback if no complete source was found."
+              break
+            }
+
             $candidate = $candidates[$i]
             $dir = Join-Path $env:RUNNER_TEMP ("weather-candidate-" + $i)
             if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
@@ -270,6 +279,7 @@ jobs:
                 Move-Item -LiteralPath $dir -Destination $env:SELECTED_DIR
                 $selected = $candidate
                 $selectionMode = 'daily-weekly'
+                Write-Host "Select complete current-slot daily+weekly evidence from $([string]$candidate.sourceUrl) start=$actualStartSlot weekly=$($weeklyDays.Count)."
                 break
               }
               if ($actualStartSlot) {
@@ -297,16 +307,22 @@ jobs:
                 $isCurrentDaily = $false
               }
 
-              if ($isCurrentDaily) {
-                if (Test-Path $env:SELECTED_DIR) { Remove-Item -Recurse -Force $env:SELECTED_DIR }
-                Copy-Item -LiteralPath $dailyOnlyPath -Destination $env:REVIEW_DRAFT -Force
-                Move-Item -LiteralPath $dir -Destination $env:SELECTED_DIR
-                $selected = $candidate
-                $selectionMode = 'daily-only'
-                Write-Host "Select current-slot daily-only evidence from $([string]$candidate.sourceUrl) start=$dailyStart."
-                break
+              if ($isCurrentDaily -and $null -eq $fallback) {
+                $fallback = $candidate
+                $fallbackDir = $dir
+                $fallbackReviewPath = $dailyOnlyPath
+                Write-Host "Hold current-slot daily-only fallback from $([string]$candidate.sourceUrl) start=$dailyStart while checking later candidates for weekly data."
               }
             }
+          }
+
+          if ($null -eq $selected -and $null -ne $fallback) {
+            if (Test-Path $env:SELECTED_DIR) { Remove-Item -Recurse -Force $env:SELECTED_DIR }
+            Copy-Item -LiteralPath $fallbackReviewPath -Destination $env:REVIEW_DRAFT -Force
+            Move-Item -LiteralPath $fallbackDir -Destination $env:SELECTED_DIR
+            $selected = $fallback
+            $selectionMode = 'daily-only'
+            Write-Host "No complete daily+weekly candidate found in the bounded search; select verified daily-only fallback from $([string]$fallback.sourceUrl)."
           }
 
           if ($null -eq $selected) { throw 'No captured public candidate produced current-slot daily weather.' }
