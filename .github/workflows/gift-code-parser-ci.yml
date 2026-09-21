@@ -8,7 +8,8 @@ on:
       - "tools/test-gift-discord-storage.mjs"
       - "tools/test-gift-discord-poll.mjs"
       - "tools/gift-discord-poll.mjs"
-      - "tools/probe-heartopia-x.mjs"
+      - "tools/gift-x-backup.mjs"
+      - "tools/test-gift-x-backup.mjs"
       - ".github/workflows/gift-code-discord-poll.yml"
       - "package.json"
       - "README-gift-code-automation.md"
@@ -27,5 +28,3 @@ jobs:
         with:
           node-version: "24"
       - run: npm run test:gift-discord
-      - name: Probe public Heartopia X endpoints
-        run: node tools/probe-heartopia-x.mjs
