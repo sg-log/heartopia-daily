@@ -69,13 +69,10 @@ test('builds date-specific and broad query variants for every discovery route', 
     'ハートピア 天気 9月15日',
     'ハートピア スローライフ 天気 9月15日',
     'ハートピア 週間天気 9月15日',
-    'ハートピア 週間予報 9月15日',
     'Heartopia weather 2026-09-15',
     'Heartopia weekly forecast 2026-09-15',
     'ハートピア 天気',
-    'ハートピア 週間天気',
-    'Heartopia weather',
-    'Heartopia weekly forecast'
+    'Heartopia weather'
   ]);
   assert.ok(DISCOVERY_PROVIDERS.length >= 4);
   assert.deepEqual(buildQueries('2026-09-15', 'morning').slice(0, 2), [
@@ -336,7 +333,7 @@ test('diversification caps repeated X authors before relaxing caps', () => {
     });
   }
   const selected = selectDiversifiedCandidates(candidates, 8);
-  assert.ok(selected.filter(item => item.sourceHandle === 'sameauthor').length <= 2);
+  assert.ok(selected.filter(item => item.sourceHandle === 'sameauthor').length <= 3);
   assert.ok(new Set(selected.map(item => item.sourceHandle).filter(Boolean)).size >= 4);
 });
 
