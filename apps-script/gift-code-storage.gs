@@ -1,7 +1,119 @@
+function giftSourceWebhookIds_() {
+  const props = PropertiesService.getScriptProperties();
+  const result = [];
+  const add = function(value) {
+    const id = String(value || "").trim();
+    if (/^\d{15,25}$/.test(id) && result.indexOf(id) < 0) result.push(id);
+  };
+
+  add(props.getProperty(DISCORD_GIFT_SOURCE_WEBHOOK_ID_PROPERTY));
+  const raw = String(props.getProperty(DISCORD_GIFT_SOURCE_WEBHOOK_IDS_PROPERTY) || "").trim();
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) parsed.forEach(add);
+    } catch (_) {
+      raw.split(/[\s,]+/).forEach(add);
+    }
+  }
+  return result.slice(0, 8);
+}
+
+function rememberGiftSourceWebhookId_(value) {
+  const id = String(value || "").trim();
+  if (!/^\d{15,25}$/.test(id)) return giftSourceWebhookIds_();
+
+  const props = PropertiesService.getScriptProperties();
+  const ids = giftSourceWebhookIds_();
+  if (ids.indexOf(id) < 0) ids.push(id);
+  const bounded = ids.slice(-8);
+  props.setProperty(DISCORD_GIFT_SOURCE_WEBHOOK_IDS_PROPERTY, JSON.stringify(bounded));
+  if (!String(props.getProperty(DISCORD_GIFT_SOURCE_WEBHOOK_ID_PROPERTY) || "").trim()) {
+    props.setProperty(DISCORD_GIFT_SOURCE_WEBHOOK_ID_PROPERTY, id);
+  }
+  return bounded;
+}
+
+function isAutoGiftMemo_(memo) {
+  const text = String(memo || "");
+  return text.indexOf(DISCORD_GIFT_AUTO_MEMO) >= 0 || text.indexOf(GIFT_X_AUTO_MEMO) >= 0;
+}
+
 function ingestDiscordGiftBatch_(body) {
   requireKey_(body.postKey, postKey_(), "投稿キー");
   const result = processDiscordGiftBatch_(body || {});
   return json_(Object.assign({ ok: true }, result));
+}
+
+function ingestOfficialXGiftBatch_(body) {
+  requireKey_(body.postKey, postKey_(), "投稿キー");
+  const result = processOfficialXGiftBatch_(body || {});
+  return json_(Object.assign({ ok: true }, result));
+}
+
+function processOfficialXGiftBatch_(body) {
+  const posts = Array.isArray(body.posts) ? body.posts.slice(0, 20) : [];
+  const counts = {
+    created: 0,
+    updated: 0,
+    duplicate: 0,
+    conflict: 0,
+    review: 0,
+    ignored: 0
+  };
+
+  for (let i = 0; i < posts.length; i++) {
+    const post = posts[i] || {};
+    const statusId = String(post.statusId || "").trim();
+    const sourceUrl = String(post.sourceUrl || "").trim();
+    const text = String(post.text || "").trim();
+
+    const match = sourceUrl.match(/^https:\/\/x\.com\/(myheartopia|Heartopia_JP)\/status\/(\d{15,25})(?:\?.*)?$/i);
+    if (!/^\d{15,25}$/.test(statusId) || !match || match[2] !== statusId || !text || text.length > 12000) {
+      counts.ignored++;
+      continue;
+    }
+
+    if (!looksLikeDiscordGiftAnnouncement_(text)) {
+      if (/Gift\s*Code\s*:|ギフト\s*コード\s*[:：]/i.test(text)) counts.review++;
+      else counts.ignored++;
+      continue;
+    }
+
+    const parsed = parseDiscordGiftAnnouncement_(text, {
+      rewardNameMap: giftRewardNameMap_()
+    });
+    if (!parsed.ok) {
+      counts.review++;
+      Logger.log("Official X gift review required: " + parsed.error + " " + sourceUrl);
+      continue;
+    }
+
+    const candidate = {
+      code: parsed.code,
+      reward: parsed.reward,
+      rawReward: parsed.rawReward,
+      expiresAt: parsed.expiresAt,
+      sourceUrl: sourceUrl,
+      memo: parsed.unresolvedRewardNames.length
+        ? GIFT_X_AUTO_MEMO + " / 日本語名未確認: " + parsed.unresolvedRewardNames.join(", ")
+        : GIFT_X_AUTO_MEMO,
+      status: giftStatusFromExpiry_(parsed.expiresAt)
+    };
+
+    const result = saveAutomatedGiftCode_(candidate, { silent: false });
+    const mode = String(result && result.mode || "ignored");
+    if (Object.prototype.hasOwnProperty.call(counts, mode)) counts[mode]++;
+    else counts.ignored++;
+    if (mode === "conflict") {
+      Logger.log("Official X gift conflict: " + sourceUrl + " " + String(result.reason || ""));
+    }
+  }
+
+  return {
+    receivedCandidates: posts.length,
+    counts: counts
+  };
 }
 
 function processDiscordGiftBatch_(body) {
@@ -80,13 +192,7 @@ function processDiscordGiftMessage_(message, config, options) {
     return { advanceCursor: true, mode: "review" };
   }
 
-  const props = PropertiesService.getScriptProperties();
-  let sourceWebhookId = String(props.getProperty(DISCORD_GIFT_SOURCE_WEBHOOK_ID_PROPERTY) || config.sourceWebhookId || "").trim();
   const currentWebhookId = String(message.webhook_id || "").trim();
-  if (sourceWebhookId && currentWebhookId !== sourceWebhookId) {
-    return { advanceCursor: true, mode: "ignored-webhook" };
-  }
-
   const parsed = parseDiscordGiftAnnouncement_(text, {
     rewardNameMap: giftRewardNameMap_()
   });
@@ -95,10 +201,10 @@ function processDiscordGiftMessage_(message, config, options) {
     return { advanceCursor: true, mode: "review" };
   }
 
-  if (!sourceWebhookId) {
-    props.setProperty(DISCORD_GIFT_SOURCE_WEBHOOK_ID_PROPERTY, currentWebhookId);
-    sourceWebhookId = currentWebhookId;
-  }
+  // The dedicated receiving channel may follow more than one official
+  // announcement channel. Learn each successfully parsed follower webhook
+  // instead of pinning the automation to the first one forever.
+  rememberGiftSourceWebhookId_(currentWebhookId);
 
   const candidate = {
     code: parsed.code,
@@ -168,14 +274,14 @@ function saveAutomatedGiftCode_(candidate, options) {
 
       const rewardAutoManaged = !existingReward
         || existingReward === incoming.rawReward
-        || existingMemo.indexOf(DISCORD_GIFT_AUTO_MEMO) >= 0;
+        || isAutoGiftMemo_(existingMemo);
       const expiryConflict = existingExpiry && incoming.expiresAt && existingExpiry !== incoming.expiresAt;
       const rewardConflict = existingReward && incoming.reward && existingReward !== incoming.reward && !rewardAutoManaged;
 
       if (expiryConflict || rewardConflict) {
         return {
           mode: "conflict",
-          reason: "既存の手動データとDiscord公式データが一致しません",
+          reason: "既存の手動データと公式自動取得データが一致しません",
           item: null
         };
       }
