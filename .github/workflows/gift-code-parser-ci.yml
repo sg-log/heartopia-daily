@@ -3,7 +3,7 @@ name: Gift code parser CI
 on:
   pull_request:
     paths:
-      - "apps-script/gift-code-*.gs"
+      - "apps-script/gift-*.gs"
       - "tools/test-gift-discord-parser.mjs"
       - "tools/test-gift-discord-storage.mjs"
       - "tools/test-gift-discord-poll.mjs"
