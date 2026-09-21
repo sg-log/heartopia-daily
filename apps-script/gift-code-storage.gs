@@ -35,8 +35,32 @@ function rememberGiftSourceWebhookId_(value) {
 }
 
 function isAutoGiftMemo_(memo) {
-  const text = String(memo || "");
-  return text.indexOf(DISCORD_GIFT_AUTO_MEMO) >= 0 || text.indexOf(GIFT_X_AUTO_MEMO) >= 0;
+  const text = String(memo || "").trim();
+  return /^(?:投稿文から下書き|スクショ確認あり|公式Discord自動取得|公式X自動取得)(?:\s*\/\s*日本語名未確認:.*)?$/i.test(text);
+}
+
+function isAutomatedGiftSourceUrl_(value) {
+  const text = String(value || "").trim();
+  return /^https:\/\/discord\.com\/channels\/\d+\/\d+\/\d+$/i.test(text)
+    || /^https:\/\/x\.com\/(?:myheartopia|Heartopia_JP)\/status\/\d+(?:\?.*)?$/i.test(text);
+}
+
+function clearGeneratedGiftMemos() {
+  return withScriptLock_(function() {
+    const sheet = getGiftSheet_();
+    const values = sheet.getDataRange().getValues();
+    const memoColumn = GIFT_HEADERS.indexOf("memo");
+    if (memoColumn < 0 || values.length <= 1) return { cleared: 0 };
+
+    let cleared = 0;
+    for (let i = 1; i < values.length; i++) {
+      const memo = plainSheetText_(values[i][memoColumn]).trim();
+      if (!isAutoGiftMemo_(memo)) continue;
+      sheet.getRange(i + 1, memoColumn + 1).setValue("");
+      cleared++;
+    }
+    return { cleared: cleared };
+  });
 }
 
 function ingestDiscordGiftBatch_(body) {
@@ -95,9 +119,7 @@ function processOfficialXGiftBatch_(body) {
       rawReward: parsed.rawReward,
       expiresAt: parsed.expiresAt,
       sourceUrl: sourceUrl,
-      memo: parsed.unresolvedRewardNames.length
-        ? GIFT_X_AUTO_MEMO + " / 日本語名未確認: " + parsed.unresolvedRewardNames.join(", ")
-        : GIFT_X_AUTO_MEMO,
+      memo: "",
       status: giftStatusFromExpiry_(parsed.expiresAt)
     };
 
@@ -212,9 +234,7 @@ function processDiscordGiftMessage_(message, config, options) {
     rawReward: parsed.rawReward,
     expiresAt: parsed.expiresAt,
     sourceUrl: discordGiftMessageUrl_(message, config),
-    memo: parsed.unresolvedRewardNames.length
-      ? DISCORD_GIFT_AUTO_MEMO + " / 日本語名未確認: " + parsed.unresolvedRewardNames.join(", ")
-      : DISCORD_GIFT_AUTO_MEMO,
+    memo: "",
     status: giftStatusFromExpiry_(parsed.expiresAt)
   };
 
@@ -245,7 +265,7 @@ function saveAutomatedGiftCode_(candidate, options) {
     rawReward: String(candidate.rawReward || "").trim(),
     expiresAt: validateGiftExpiresForWrite_(candidate.expiresAt),
     sourceUrl: safeSheetText_(validateHttpUrl_(candidate.sourceUrl, "sourceUrl", TEXT_LIMITS.sourceUrl)),
-    memo: safeSheetText_(limitText_(candidate.memo || DISCORD_GIFT_AUTO_MEMO, TEXT_LIMITS.memo, "メモ").trim()),
+    memo: safeSheetText_(limitText_(candidate.memo || "", TEXT_LIMITS.memo, "メモ").trim()),
     status: normalizeGiftStatus_(candidate.status),
     createdAt: now,
     updatedAt: now
@@ -274,7 +294,8 @@ function saveAutomatedGiftCode_(candidate, options) {
 
       const rewardAutoManaged = !existingReward
         || existingReward === incoming.rawReward
-        || isAutoGiftMemo_(existingMemo);
+        || isAutoGiftMemo_(existingMemo)
+        || isAutomatedGiftSourceUrl_(existingSource);
       const expiryConflict = existingExpiry && incoming.expiresAt && existingExpiry !== incoming.expiresAt;
       const rewardConflict = existingReward && incoming.reward && existingReward !== incoming.reward && !rewardAutoManaged;
 

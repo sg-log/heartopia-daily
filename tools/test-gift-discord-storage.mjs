@@ -28,10 +28,13 @@ function makeHarness(initialRows = []) {
     appendRow(row) {
       rows.push(row.slice());
     },
-    getRange(rowIndex, _column, _rowCount, _columnCount) {
+    getRange(rowIndex, columnIndex, _rowCount, _columnCount) {
       return {
         setValues(values) {
           rows[rowIndex - 1] = values[0].slice();
+        },
+        setValue(value) {
+          rows[rowIndex - 1][columnIndex - 1] = value;
         }
       };
     }
@@ -116,7 +119,7 @@ function candidate(overrides = {}) {
     rawReward: "Wishing star×3\nDye×2\nFlawless Fluorite×1",
     expiresAt: "2099-10-01T00:59",
     sourceUrl: "https://discord.com/channels/1/2/3",
-    memo: "公式Discord自動取得",
+    memo: "",
     status: "active",
     ...overrides
   };
@@ -240,7 +243,7 @@ test("unknown reward name is kept in English and marked for later official-name 
 
   assert.equal(result.mode, "created");
   assert.equal(h.rows[1][2], "Mystery Token×5\n染色剤×2");
-  assert.match(h.rows[1][5], /日本語名未確認: Mystery Token/);
+  assert.equal(h.rows[1][5], "");
 });
 
 
@@ -360,7 +363,7 @@ test("official X batch creates a gift from a verified official status URL", () =
   assert.equal(result.counts.created, 1);
   assert.equal(h.rows[1][1], "xbackup123");
   assert.equal(h.rows[1][4], "https://x.com/myheartopia/status/2099234567890123456");
-  assert.equal(h.rows[1][5], "公式X自動取得");
+  assert.equal(h.rows[1][5], "");
   assert.deepEqual(h.events.notifications, ["xbackup123"]);
 });
 
@@ -376,4 +379,42 @@ test("official X batch rejects lookalike non-official account URLs", () => {
 
   assert.equal(result.counts.ignored, 1);
   assert.equal(h.rows.length, 1);
+});
+
+
+test("clears only legacy auto-generated gift memos and preserves manual notes", () => {
+  const h = makeHarness([
+    ["id-1","code1","願い星×1","","","投稿文から下書き","active","",""],
+    ["id-2","code2","願い星×1","","","スクショ確認あり","active","",""],
+    ["id-3","code3","願い星×1","","","公式Discord自動取得 / 日本語名未確認: Mystery Token","active","",""],
+    ["id-4","code4","願い星×1","","","友達から確認済み","active","",""]
+  ]);
+
+  const result = h.context.clearGeneratedGiftMemos();
+
+  assert.equal(result.cleared, 3);
+  assert.equal(h.rows[1][5], "");
+  assert.equal(h.rows[2][5], "");
+  assert.equal(h.rows[3][5], "");
+  assert.equal(h.rows[4][5], "友達から確認済み");
+});
+
+test("automated source URL remains auto-managed even when memo is blank", () => {
+  const h = makeHarness([[
+    "id-1",
+    "r8a4k6p5q3m1",
+    "Wishing star×3\nDye×2\nFlawless Fluorite×1",
+    "2099-10-01T00:59",
+    "https://discord.com/channels/1/2/3",
+    "",
+    "active",
+    "2026-09-01T00:00:00.000Z",
+    "2026-09-01T00:00:00.000Z"
+  ]]);
+
+  const result = h.context.saveAutomatedGiftCode_(candidate(), { silent: false });
+
+  assert.notEqual(result.mode, "conflict");
+  assert.equal(h.rows[1][2], "願い星×3\n染色剤×2\n無垢な蛍石×1");
+  assert.equal(h.rows[1][5], "");
 });
