@@ -3331,6 +3331,12 @@ function setGiftClaimed(code, claimed){
   if(claimed) localStorage.setItem(giftClaimKey(code), "1");
   else localStorage.removeItem(giftClaimKey(code));
 }
+function giftPublicMemo(value){
+  const text = String(value || "").trim();
+  if(!text) return "";
+  if(/^(?:投稿文から下書き|スクショ確認あり|公式Discord自動取得|公式X自動取得)(?:\s*\/\s*日本語名未確認:.*)?$/i.test(text)) return "";
+  return text;
+}
 function giftCardHtml(item, expired=false){
   const claimed = giftClaimed(item.code);
   return `
@@ -3343,7 +3349,7 @@ function giftCardHtml(item, expired=false){
       ${item.reward ? `<div class="giftReward">報酬：${esc(item.reward)}</div>` : ""}
       <div class="giftMeta">
         <div>期限：${esc(giftExpiryText(item.expiresAt))}</div>
-        ${item.memo ? `<div>メモ：${esc(item.memo)}</div>` : ""}
+        ${giftPublicMemo(item.memo) ? `<div>メモ：${esc(giftPublicMemo(item.memo))}</div>` : ""}
         ${giftSourceUrl(item.sourceUrl) ? `<div><a class="giftSource" href="${esc(giftSourceUrl(item.sourceUrl))}" target="_blank" rel="noopener noreferrer">情報源を見る</a></div>` : ""}
       </div>
     </div>
@@ -3587,7 +3593,7 @@ function quickGiftDraft(){
     reward,
     expiresAt,
     sourceUrl,
-    memo:hasImage ? "スクショ確認あり" : "投稿文から下書き",
+    memo:"",
     status:"active",
     warnings
   };
