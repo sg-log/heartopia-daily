@@ -8,6 +8,8 @@ on:
       - "tools/test-gift-discord-storage.mjs"
       - "tools/test-gift-discord-poll.mjs"
       - "tools/gift-discord-poll.mjs"
+      - "tools/gift-x-backup.mjs"
+      - "tools/test-gift-x-backup.mjs"
       - ".github/workflows/gift-code-discord-poll.yml"
       - "package.json"
       - "README-gift-code-automation.md"

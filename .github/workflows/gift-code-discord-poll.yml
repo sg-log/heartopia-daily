@@ -37,3 +37,11 @@ jobs:
           DISCORD_GIFT_CHANNEL_ID: ${{ inputs.channel_id }}
           GIFT_POLL_MODE: ${{ inputs.mode }}
         run: node tools/gift-discord-poll.mjs
+
+      - name: Poll official X backup
+        if: ${{ always() }}
+        continue-on-error: true
+        env:
+          WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
+          GIFT_POLL_MODE: ${{ inputs.mode }}
+        run: node tools/gift-x-backup.mjs

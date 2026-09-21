@@ -1,6 +1,7 @@
 const DISCORD_GIFT_CHANNEL_ID_PROPERTY = "DISCORD_GIFT_CHANNEL_ID";
 const DISCORD_GIFT_GUILD_ID_PROPERTY = "DISCORD_GIFT_GUILD_ID";
 const DISCORD_GIFT_SOURCE_WEBHOOK_ID_PROPERTY = "DISCORD_GIFT_SOURCE_WEBHOOK_ID";
+const DISCORD_GIFT_SOURCE_WEBHOOK_IDS_PROPERTY = "DISCORD_GIFT_SOURCE_WEBHOOK_IDS";
 const DISCORD_GIFT_LAST_MESSAGE_ID_PROPERTY = "DISCORD_GIFT_LAST_MESSAGE_ID";
 const DISCORD_GIFT_REVIEW_WEBHOOK_URL_PROPERTY = "DISCORD_GIFT_REVIEW_WEBHOOK_URL";
 const GIFT_REWARD_NAME_MAP_PROPERTY = "GIFT_REWARD_NAME_MAP";
@@ -10,6 +11,7 @@ const GIFT_CODE_WORKFLOW = "gift-code-discord-poll.yml";
 const DISCORD_GIFT_POLL_LIMIT = 100;
 const DISCORD_GIFT_TIME_ZONE = "Asia/Tokyo";
 const DISCORD_GIFT_AUTO_MEMO = "公式Discord自動取得";
+const GIFT_X_AUTO_MEMO = "公式X自動取得";
 
 const DEFAULT_GIFT_REWARD_NAME_MAP = {
   "Wishing star": "願い星",
@@ -46,6 +48,7 @@ function getGiftCodeAutomationStatus() {
     channelId: channelId,
     guildId: String(props.getProperty(DISCORD_GIFT_GUILD_ID_PROPERTY) || "").trim(),
     sourceWebhookId: String(props.getProperty(DISCORD_GIFT_SOURCE_WEBHOOK_ID_PROPERTY) || "").trim(),
+    sourceWebhookIds: giftSourceWebhookIds_(),
     lastMessageId: String(props.getProperty(DISCORD_GIFT_LAST_MESSAGE_ID_PROPERTY) || "").trim(),
     intervalMinutes: GIFT_CODE_SCHEDULER_INTERVAL_MINUTES,
     transport: "github-actions"
@@ -58,7 +61,9 @@ function resetGiftCodeAutomationCursor() {
 }
 
 function resetGiftCodeAutomationSourceWebhook() {
-  PropertiesService.getScriptProperties().deleteProperty(DISCORD_GIFT_SOURCE_WEBHOOK_ID_PROPERTY);
+  const props = PropertiesService.getScriptProperties();
+  props.deleteProperty(DISCORD_GIFT_SOURCE_WEBHOOK_ID_PROPERTY);
+  props.deleteProperty(DISCORD_GIFT_SOURCE_WEBHOOK_IDS_PROPERTY);
   return getGiftCodeAutomationStatus();
 }
 

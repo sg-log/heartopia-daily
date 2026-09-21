@@ -2,33 +2,39 @@
 
 ## 目的
 
-PCがOFFでも、公式Discordから自分のDiscordへ転送されたギフトコード投稿を約5分間隔で確認し、既存の `gift_codes` シートへ自動登録します。
+PCがOFFでも、公式Discordのフォロー転送を約5分間隔で確認し、公式X（@myheartopia / @Heartopia_JP）もバックアップ確認して、既存の `gift_codes` シートへ自動登録します。
 
 現在の流れ:
 
 ```text
-Heartopia公式Discord
+Heartopia公式Discord（redeem-code / announcement など）
   ↓ Discordのチャンネルフォロー
 自分のDiscord「受信用」チャンネル
   ↓
 Apps Scriptの5分トリガー
   ↓ workflow_dispatch
 GitHub Actions
-  ↓ Discord REST API
+  ├─ Discord REST API（毎回）
+  └─ 公式Xバックアップ（約15分間隔）
+       ├─ @myheartopia
+       └─ @Heartopia_JP
+  ↓
 Apps Scriptの認証済み取込API
-  ↓ 固定フォーマットを解析
+  ↓ 安全な形式だけ解析・重複判定
 gift_codes
   ↓
 Heartopia Daily
 ```
 
-Apps Script から Discord Bot API を直接読む構成は使いません。Apps Script は時刻制御と GitHub Actions の起動を担当し、Discord API への通信は GitHub Actions が担当します。
+Apps Script から Discord Bot API を直接読む構成は使いません。Apps Script は時刻制御と GitHub Actions の起動を担当し、Discord / X への公開通信は GitHub Actions が担当します。公式XはDiscordフォロー漏れのバックアップで、取得できない場合でもDiscord側の自動取得は止めません。
 
 ## 安全方針
 
-- `Rewards:` と `Gift Code:` を両方確認できる投稿だけを候補として Apps Script へ送ります。
-- DiscordのWebhook投稿だけを登録対象にします。
-- 最初に正常解析できた転送Webhook IDを記録し、以後は同じWebhookだけを読みます。
+- `Rewards:` + `Gift Code:` 形式に加え、公式announcementで使われる「報酬を1行ずつ列挙 → Gift Code」形式も安全に解析します。
+- DiscordはWebhook投稿だけを登録対象にします。
+- 複数の公式チャンネルを同じ「受信用」へフォローできるよう、正常解析できた転送Webhook IDを最大8件まで学習します。
+- 公式Xは @myheartopia / @Heartopia_JP の投稿だけを対象にし、X公式oEmbedで投稿者を再確認してから候補にします。
+- Xの公開取得に失敗した場合はバックアップだけをスキップし、Discord側の処理は継続します。
 - Gift Codeが複数ある、Rewards形式が崩れているなど曖昧な投稿は自動登録しません。
 - 既存の手動データと報酬・期限が矛盾した場合は自動上書きしません。
 - `hidden` にしたコードは自動処理で `active` に戻しません。
@@ -95,7 +101,8 @@ POST_KEY = 既存の取込認証キー
 
 ```text
 DISCORD_GIFT_GUILD_ID = サーバーID
-DISCORD_GIFT_SOURCE_WEBHOOK_ID = 公式転送Webhook ID
+DISCORD_GIFT_SOURCE_WEBHOOK_ID = 最初に学習した公式転送Webhook ID（互換用）
+DISCORD_GIFT_SOURCE_WEBHOOK_IDS = 学習済み公式転送Webhook ID一覧（自動管理）
 DISCORD_GIFT_LAST_MESSAGE_ID = 最後に確認したDiscordメッセージID
 DISCORD_GIFT_REVIEW_WEBHOOK_URL = 要確認通知専用Webhook
 GIFT_REWARD_NAME_MAP = 追加の英語名→日本語正式名JSON
@@ -129,7 +136,7 @@ installGiftCodeScheduler
 getGiftCodeAutomationStatus
 ```
 
-Discordのフォロー先を作り直して転送Webhookが変わった場合:
+Discordのフォロー先を作り直した場合や、学習済み転送Webhookをいったん全部リセットしたい場合:
 
 ```text
 resetGiftCodeAutomationSourceWebhook
@@ -163,7 +170,7 @@ expiresAt: 2026-10-01T00:59
 status: active
 ```
 
-Discordの生メッセージが `<t:UNIX:F>` のタイムスタンプを使っている場合もJSTへ変換します。
+Discordの生メッセージが `<t:UNIX:F>` のタイムスタンプを使っている場合もJSTへ変換します。日本語公式投稿の「報酬／ギフトコード／交換期限」ラベルにも対応し、すでに日本語の報酬名は「日本語名未確認」扱いにしません。
 
 ## テスト
 
@@ -171,4 +178,4 @@ Discordの生メッセージが `<t:UNIX:F>` のタイムスタンプを使っ�
 npm run test:gift-discord
 ```
 
-現在のDiscord投稿形式、日本語化、Discord timestamp、未知アイテム、複数コード、曖昧なRewards、通知ループ防止、Snowflake順序、GitHub Actions経由の候補抽出・カーソル更新を回帰テストします。
+旧redeem-code形式、新announcement形式、日本語ラベル、日本語化、Discord timestamp、未知アイテム、複数コード、曖昧なRewards、複数フォローWebhook、通知ループ防止、Snowflake順序、GitHub Actions経由のDiscord候補抽出・カーソル更新、公式Xバックアップの投稿者検証と取込を回帰テストします。
