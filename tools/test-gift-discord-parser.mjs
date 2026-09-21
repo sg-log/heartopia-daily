@@ -146,6 +146,46 @@ test("accepts Discord markdown around labels and inline-code gift code", () => {
   assert.equal(result.reward, "願い星×3\n染色剤×2");
 });
 
+
+test("parses announcement-channel freebies list without a Rewards label", () => {
+  const text = [
+    "Freebies are ready, don't forget to claim them:",
+    "🌟 Wishing star ×3",
+    "🎨 Dye ×2",
+    "💎 Flawless Fluorite ×1",
+    "",
+    "🎁 Gift Code: p5m1k9q6a2r7",
+    "Redemption Deadline: 2026年10月1日 0:59"
+  ].join("\n");
+
+  assert.equal(context.looksLikeDiscordGiftAnnouncement_(text), true);
+  const result = context.parseDiscordGiftAnnouncement_(text, {
+    rewardNameMap: {
+      "Wishing star": "願い星",
+      "Dye": "染色剤",
+      "Flawless Fluorite": "無垢な蛍石"
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.code, "p5m1k9q6a2r7");
+  assert.equal(result.reward, "願い星×3\n染色剤×2\n無垢な蛍石×1");
+  assert.equal(result.expiresAt, "2026-10-01T00:59");
+});
+
+test("accepts Japanese official reward labels without marking Japanese names unresolved", () => {
+  const text = [
+    "報酬：願い星 ×3、染色剤 ×2、無垢な蛍石 ×1",
+    "ギフトコード：jpcode123",
+    "交換期限：2026年10月1日 0:59"
+  ].join("\n");
+
+  const result = context.parseDiscordGiftAnnouncement_(text, { rewardNameMap: {} });
+  assert.equal(result.ok, true);
+  assert.equal(result.reward, "願い星×3\n染色剤×2\n無垢な蛍石×1");
+  assert.deepEqual(Array.from(result.unresolvedRewardNames), []);
+});
+
 test("sorts Discord snowflakes without bigint", () => {
   const ids = ["210", "9", "1000", "99", "010"].sort(context.compareDiscordSnowflakes_);
   assert.deepEqual(Array.from(ids), ["9", "010", "99", "210", "1000"]);
