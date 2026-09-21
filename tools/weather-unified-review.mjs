@@ -13,19 +13,37 @@ export function extractTimedMeteorIntervals(text) {
   for (const rawLine of lines) {
     const line = rawLine.trim().replace(/：/g, ':').replace(/[〜～]/g, '~');
     if (!/(?:流星雨|流星群|meteor\s*shower)/i.test(line)) continue;
-    const match = line.match(/^(翌\s*)?(\d{1,2}):(\d{2})\s*[~\-]\s*(翌\s*)?(\d{1,2}):(\d{2})/i);
-    if (!match) continue;
-    const startHour = Number(match[2]), startMinutePart = Number(match[3]);
-    const endHour = Number(match[5]), endMinutePart = Number(match[6]);
-    if (startHour > 23 || endHour > 23 || startMinutePart > 59 || endMinutePart > 59) continue;
-    let startDay = match[1] ? 1 : 0;
-    let endDay = match[4] ? 1 : startDay;
-    const startClock = startHour * 60 + startMinutePart;
-    const endClock = endHour * 60 + endMinutePart;
-    if (endDay === startDay && endClock < startClock) endDay += 1;
+    const interval = line.match(/^(翌\s*)?(\d{1,2}):(\d{2})\s*[~\-]\s*(翌\s*)?(\d{1,2}):(\d{2})/i);
+    if (interval) {
+      const startHour = Number(interval[2]), startMinutePart = Number(interval[3]);
+      const endHour = Number(interval[5]), endMinutePart = Number(interval[6]);
+      if (startHour > 23 || endHour > 23 || startMinutePart > 59 || endMinutePart > 59) continue;
+      let startDay = interval[1] ? 1 : 0;
+      let endDay = interval[4] ? 1 : startDay;
+      const startClock = startHour * 60 + startMinutePart;
+      const endClock = endHour * 60 + endMinutePart;
+      if (endDay === startDay && endClock < startClock) endDay += 1;
+      out.push({
+        startMinute: startDay * 1440 + startClock,
+        endMinute: endDay * 1440 + endClock,
+        weather: '流星群',
+        sourceLine: rawLine.trim()
+      });
+      continue;
+    }
+
+    // Natural posts often say only "18:00〜流星雨です". Treat that as an
+    // exact slot hint, not an open-ended interval, so it can corroborate or
+    // conflict with the 18:00 icon without spilling into the next 6-hour slot.
+    const point = line.match(/^(翌\s*)?(\d{1,2}):(\d{2})\s*[~\-]\s*.*(?:流星雨|流星群|meteor\s*shower)/i);
+    if (!point) continue;
+    const hour = Number(point[2]), minutePart = Number(point[3]);
+    if (hour > 23 || minutePart > 59) continue;
+    const day = point[1] ? 1 : 0;
+    const absoluteMinute = day * 1440 + hour * 60 + minutePart;
     out.push({
-      startMinute: startDay * 1440 + startClock,
-      endMinute: endDay * 1440 + endClock,
+      startMinute: absoluteMinute,
+      endMinute: absoluteMinute,
       weather: '流星群',
       sourceLine: rawLine.trim()
     });
