@@ -5913,6 +5913,8 @@ function pendingWeatherCard(r){
   const keepsExistingWeeks = pendingKeepsExistingWeeks(r);
   const reportDate = normalizeApiDate(r.date);
   const source = pendingWeatherEvidenceUrl(r.sourceUrl);
+  const weeklySourceMatch = String(r.memo || "").match(/週間別出典:(https?:\/\/\S+)/);
+  const weeklySource = pendingWeatherEvidenceUrl(weeklySourceMatch?.[1] || "");
   const images = Array.isArray(r.sourceImageUrls) ? [...new Set(r.sourceImageUrls.map(url => pendingWeatherEvidenceUrl(url, true)).filter(Boolean))].slice(0, 8) : [];
   const editPrefix = `pending-edit-${r.id}`;
   const weekEditPrefix = `pending-week-${r.id}`;
@@ -5923,7 +5925,8 @@ function pendingWeatherCard(r){
     <p class="pendingWeatherEditNote">${keepsExistingWeeks ? "このデイリー証拠画像には週間が写っていないため、週間は白＝既存データ維持です。必要な日だけ選ぶと、その日だけ更新します。" : "緑は今回更新する値、白は既存データを維持します。必要な日だけ修正できます。"}</p>
     <div class="pendingWeatherWeeks" data-pending-weather-week-editor="${esc(r.id)}">${weekChipGroupHtml(weekEditPrefix, reportDate, true)}</div>
     ${r.evidenceStatus === 'saved' && r.evidenceImages?.length ? `<div class="pendingWeatherImages" data-weather-evidence="${esc(r.id)}" data-evidence-display><p class="pendingWeatherEvidenceStatus">証拠画像を読み込み待ち…</p></div>` : '<p>保存済み証拠画像なし</p>'}
-    ${source ? `<a class="pendingWeatherSourceLink" href="${esc(source)}" target="_blank" rel="noopener noreferrer">元投稿を開く</a>` : "<p>元投稿URLなし</p>"}
+    ${source ? `<a class="pendingWeatherSourceLink" href="${esc(source)}" target="_blank" rel="noopener noreferrer">デイリー元投稿を開く</a>` : "<p>デイリー元投稿URLなし</p>"}
+    ${weeklySource && weeklySource !== source ? `<a class="pendingWeatherSourceLink" href="${esc(weeklySource)}" target="_blank" rel="noopener noreferrer">週間元投稿を開く</a>` : ""}
     <div class="buttons pendingWeatherActions"><button type="button" data-approve-weather="${esc(r.id)}">この内容で承認</button><button type="button" class="danger" data-reject-weather="${esc(r.id)}">却下</button></div>
     <details class="pendingWeatherDetails"><summary>詳細情報</summary><div class="pendingWeatherDetailsBody">
       <p>取得元：${esc(r.sourceType || '未記録')}<br>取得日時：${esc(r.retrievedAt || '未記録')}</p>
