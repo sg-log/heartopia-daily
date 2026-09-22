@@ -99,8 +99,7 @@ function Confirm-UnifiedStoredEvidence {
         [Parameter(Mandatory)] [object] $Report,
         [Parameter(Mandatory)] [object] $Artifact,
         [Parameter(Mandatory)] [string] $ApiUrl,
-        [Parameter(Mandatory)] [Security.SecureString] $AdminKey,
-        [bool] $IgnoreWeeks = $false
+        [Parameter(Mandatory)] [Security.SecureString] $AdminKey
     )
     if ([string]$Report.evidenceStatus -cne 'saved' -or @($Report.evidenceImages).Count -ne 1 -or
         [string]$Report.evidenceImages[0].sha256 -cne [string]$Artifact.sha256) { return $false }
@@ -147,7 +146,8 @@ function Find-UnifiedPendingAfterNetworkError {
         [Parameter(Mandatory)] [System.Collections.IDictionary] $Payload,
         [Parameter(Mandatory)] [object] $Artifact,
         [Parameter(Mandatory)] [string] $ApiUrl,
-        [Parameter(Mandatory)] [Security.SecureString] $AdminKey
+        [Parameter(Mandatory)] [Security.SecureString] $AdminKey,
+        [bool] $IgnoreWeeks = $false
     )
     $sawExactReport = $false
     foreach ($delaySeconds in @(0, 2, 4)) {
