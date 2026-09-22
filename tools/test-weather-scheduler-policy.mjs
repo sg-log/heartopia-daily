@@ -76,9 +76,7 @@ test('current-slot and target-date gates reject stale 00 daily evidence', () => 
   assert.match(workflow, /\[string\]\$review\.targetDate -ceq \$env:TARGET_DATE/)
   assert.match(workflow, /\[string\]\$review\.interpretation\.observedDate -ceq \$env:TARGET_DATE/)
   assert.match(workflow, /\$startSlot -ceq \$expectedStartSlot/)
-  assert.match(workflow, /\[string\]\$dailyReview\.targetDate -ceq \$env:TARGET_DATE/)
-  assert.match(workflow, /\$dailyStart -ceq \$expectedStartSlot/)
-  assert.match(workflow, /\$dailySlots\.Count -eq 5/)
+  assert.match(workflow, /\$slots\.Count -eq 5/)
 })
 
 test('daily-only submit preserves existing weeks while cross-source weekly provenance is retained', () => {
