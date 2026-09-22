@@ -47,33 +47,28 @@ test('scheduler accepts the current public-discovery schema version', () => {
   assert.ok(accepted.includes(currentSchema), `workflow must accept discovery schemaVersion ${currentSchema}`)
 })
 
-test('scheduler reviews each Web or X candidate as same-image unified first, then daily-only', () => {
+test('scheduler reviews daily and weekly evidence independently and can compose cross-source proof', () => {
   assert.match(workflow, /weather-x-embed-evidence\.mjs/)
   assert.match(workflow, /weather-cloud-url-evidence\.mjs/)
-  assert.match(workflow, /sourceType -eq 'x'/)
-  assert.match(workflow, /sourceType -eq 'web'/)
-  assert.match(workflow, /weather-unified-review\.mjs/)
   assert.match(workflow, /weather-direct-daily-panel-review\.mjs/)
-  assert.match(workflow, /weeklyCount/)
-  assert.match(workflow, /weather-artifact-review-bridge\.ps1/)
-  assert.match(workflow, /weather-cloud-submit-unified\.ps1/)
-  const unifiedReview = workflow.indexOf('weather-unified-review.mjs')
-  const dailyOnlyReview = workflow.indexOf('weather-direct-daily-panel-review.mjs')
-  assert.ok(unifiedReview >= 0 && dailyOnlyReview > unifiedReview, 'unified review must run before daily-only review for each candidate')
-  assert.match(workflow, /\$completeSearchLimit = \$candidates\.Count/)
-  assert.match(workflow, /Hold current-slot daily-only fallback/)
-  assert.match(workflow, /Select complete current-slot daily\+weekly evidence/)
-  assert.match(workflow, /No complete daily\+weekly candidate found in the full bounded candidate pool; select verified daily-only fallback/)
+  assert.match(workflow, /weather-weekly-screenshot-review\.mjs/)
+  assert.match(workflow, /weather-cross-source-compose\.mjs/)
+  assert.match(workflow, /WEEKLY_CANDIDATE_PATH/)
+  assert.match(workflow, /selected_source_handle/)
+  assert.match(workflow, /weekly_source_url/)
+  assert.match(workflow, /daily-weekly-cross-source/)
+  assert.match(workflow, /No verified weekly evidence found; keep existing weekly forecast/)
   assert.match(workflow, /\$global:LASTEXITCODE = 0/)
-  const fallbackMessage = workflow.indexOf('No complete daily+weekly candidate found in the full bounded candidate pool; select verified daily-only fallback')
-  const resetExit = workflow.indexOf('$global:LASTEXITCODE = 0')
-  const selectedOutput = workflow.indexOf('"selected_dir=$env:SELECTED_DIR"')
-  assert.ok(fallbackMessage >= 0 && resetExit > fallbackMessage && selectedOutput > resetExit, 'verified fallback must clear stale native exit code before step outputs')
-  const completeSelection = workflow.indexOf("$selectionMode = 'daily-weekly'")
-  const fallbackSelection = workflow.indexOf("$selectionMode = 'daily-only'")
-  assert.ok(completeSelection >= 0 && fallbackSelection > completeSelection, 'complete daily+weekly must be preferred before daily-only fallback')
-  assert.doesNotMatch(workflow, /weather-cross-source-review\.mjs|\$dailyDir|\$weeklyDir|weekly-only-review\.json/)
+  assert.doesNotMatch(workflow, /\$completeSearchLimit/)
   assert.doesNotMatch(workflow, /OPENAI_API_KEY/)
+})
+
+test('scheduler has a true dry-run that never submits or notifies', () => {
+  assert.match(workflow, /dry_run:/)
+  assert.match(workflow, /steps\.slot\.outputs\.dry_run != 'true'/)
+  assert.match(workflow, /DRY_RUN:/)
+  assert.match(workflow, /Dry-run completed/)
+  assert.match(workflow, /new_pending', 'false'/)
 })
 
 test('current-slot and target-date gates reject stale 00 daily evidence', () => {
@@ -86,11 +81,12 @@ test('current-slot and target-date gates reject stale 00 daily evidence', () => 
   assert.match(workflow, /\$dailySlots\.Count -eq 5/)
 })
 
-test('daily-only submit stores seven blank weeks while unified submit keeps same-image weeks', () => {
+test('daily-only submit preserves existing weeks while cross-source weekly provenance is retained', () => {
   assert.match(unifiedSubmit, /1\.\.7 \| ForEach-Object \{ \$weeks\["week\$_"\] = @\(\) \}/)
   assert.match(unifiedSubmit, /if \(\$days\.Count -eq 0\) \{ return \[pscustomobject\]@\{ weeks = \$weeks; count = 0 \} \}/)
   assert.match(unifiedSubmit, /デイリーのみ（週間は既存維持）/)
-  assert.doesNotMatch(unifiedSubmit, /crossSource|週間出典:/)
+  assert.match(unifiedSubmit, /IgnoreWeeks/)
+  assert.match(unifiedSubmit, /週間別出典:/)
 })
 
 test('failed candidate diagnostics artifact remains enabled', () => {
