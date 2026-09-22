@@ -16,6 +16,11 @@ const TEMPLATE_FILES = [
   ['雨', 'rain.png']
 ];
 
+function publishedDateMatchesTarget(capture,targetDate){
+  const ms=Date.parse(String(capture?.sourcePublishedAt||''));
+  if(!Number.isFinite(ms))return false;
+  return new Date(ms+9*60*60*1000).toISOString().slice(0,10)===targetDate;
+}
 function addDays(dateText, amount) {
   const date = new Date(`${normalizeTargetDate(dateText)}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + amount);
@@ -136,7 +141,8 @@ export async function inspectWeeklyScreenshot({ captureDir, targetDate, repoRoot
   if(capture?.status!=='captured') return {ready:false,reason:'captureNotReady'};
   const postText=await readFile(path.join(captureDir,capture.postContent?.file||'post-content.txt'),'utf8');
   const postDates=extractPostDates(postText);
-  if(!postDates.includes(targetDate)) return {ready:false,reason:'targetDateNotConfirmed',postDates};
+  const dateConfirmedByPublishedAt=publishedDateMatchesTarget(capture,targetDate);
+  if(!postDates.includes(targetDate)&&!dateConfirmedByPublishedAt) return {ready:false,reason:'targetDateNotConfirmed',postDates};
 
   const candidates=[];
   const weeklyRaw = Array.isArray(capture.rawMedia) ? (capture.adapter==='x-official-embed' ? capture.rawMedia.filter(media=>media?.sourceScope==='exact-status') : capture.rawMedia) : [];
@@ -164,7 +170,7 @@ export async function inspectWeeklyScreenshot({ captureDir, targetDate, repoRoot
         attempts.push({file:candidate.file,kind:candidate.kind,...inspected});
         if(!inspected.ready) continue;
         const days=inspected.days.map((day,index)=>({date:addDays(targetDate,index+1),weather:[day.weather],visible:true,confidence:'high',description:`週間欄アイコン照合 score=${day.bestScore.toFixed(3)} margin=${day.margin.toFixed(3)}`}));
-        return{schemaVersion:1,ready:true,targetDate,selectedImage:{file:candidate.file,mimeType,captureSha256:digest},interpretation:{ready:true,baseDate:targetDate,baseDateDescription:`投稿本文/表示日時で${targetDate}を確認。`,days,confidence:'high',summary:'公開投稿の取得済みゲーム内UI画像から、表示されている5日分のみ判読。',unresolved:[]},diagnostics:{mode:inspected.mode||'weekly-captured-image',selectedKind:candidate.kind,header:inspected.header||null,embeddedPanel:inspected.embeddedPanel||null,panelBackgroundRatio:inspected.panelBackgroundRatio,scores:inspected.days,attempts}};
+        return{schemaVersion:1,ready:true,targetDate,selectedImage:{file:candidate.file,mimeType,captureSha256:digest},interpretation:{ready:true,baseDate:targetDate,baseDateDescription:`投稿本文または公開投稿日時で${targetDate}を確認。`,days,confidence:'high',summary:'公開投稿の取得済みゲーム内UI画像から、表示されている5日分のみ判読。',unresolved:[]},diagnostics:{mode:inspected.mode||'weekly-captured-image',selectedKind:candidate.kind,header:inspected.header||null,embeddedPanel:inspected.embeddedPanel||null,panelBackgroundRatio:inspected.panelBackgroundRatio,scores:inspected.days,attempts}};
       } catch(error) {
         attempts.push({file:candidate.file,kind:candidate.kind,ready:false,reason:'inspectError',message:String(error?.message||error)});
       }
