@@ -75,6 +75,24 @@ function expectedStartSlotFor(slot) {
   return slot === 'morning' ? '06' : slot === 'evening' ? '18' : '';
 }
 
+export function xStatusPublishedAt(sourceId) {
+  try {
+    if (!/^\d{10,25}$/.test(String(sourceId || ''))) return '';
+    const timestampMs = (BigInt(String(sourceId)) >> 22n) + 1288834974657n;
+    const numeric = Number(timestampMs);
+    if (!Number.isFinite(numeric) || numeric < 0) return '';
+    return new Date(numeric).toISOString();
+  } catch {
+    return '';
+  }
+}
+
+function jstDateFromIso(value) {
+  const ms = Date.parse(String(value || ''));
+  if (!Number.isFinite(ms)) return '';
+  return new Date(ms + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 function startSlotTokens(slot) {
   const start = expectedStartSlotFor(slot);
   if (!start) return [];
@@ -266,6 +284,8 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
       const contextText = `${row.text} ${row.parentText}`;
       const relevance = candidateRelevance(contextText, targetDate, slot);
       const sourceHandle = normalized.sourceHandle || (normalized.sourceType === 'x' ? extractXHandleFromText(contextText) : '');
+      const sourcePublishedAt = normalized.sourceType === 'x' ? xStatusPublishedAt(normalized.sourceId) : '';
+      const publishedDateMatched = Boolean(sourcePublishedAt && jstDateFromIso(sourcePublishedAt) === targetDate);
       const searchContextFallback = !relevance.relevant && isSearchContextFallback({
         sourceType: normalized.sourceType,
         searchQuery: query,
@@ -303,6 +323,8 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
         sourcePlatform: normalized.sourcePlatform,
         sourceId: normalized.sourceId,
         sourceHandle,
+        sourcePublishedAt,
+        publishedDateMatched,
         discoverySource: provider,
         searchQuery: query,
         anchorText: row.text.slice(0, 300),
@@ -341,6 +363,9 @@ function rankCandidates(candidates, options = {}) {
     const currentness =
       Number(Boolean(b.dateMatched)) - Number(Boolean(a.dateMatched));
     if (currentness) return currentness;
+    const publishedCurrentness =
+      Number(Boolean(b.publishedDateMatched)) - Number(Boolean(a.publishedDateMatched));
+    if (publishedCurrentness) return publishedCurrentness;
     if (purpose === 'daily') {
       const slot = Number(Boolean(b.startSlotMatched)) - Number(Boolean(a.startSlotMatched));
       if (slot) return slot;
@@ -424,6 +449,8 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = 
       const relevance = candidateRelevance(`${record.anchorText || ''} ${record.context || ''}`, targetDate, slot);
       record.relevanceScore = Math.max(Number(record.relevanceScore || 0), relevance.score);
       record.dateMatched = Boolean(record.dateMatched || relevance.dateMatched);
+      record.publishedDateMatched = Boolean(record.publishedDateMatched || c.publishedDateMatched);
+      if (!record.sourcePublishedAt && c.sourcePublishedAt) record.sourcePublishedAt = c.sourcePublishedAt;
       record.forecastMatched = Boolean(record.forecastMatched || relevance.forecastMatched);
       record.startSlotMatched = Boolean(record.startSlotMatched || relevance.startSlotMatched);
       record.strictTextRelevant = Boolean(record.strictTextRelevant || relevance.relevant);
@@ -455,6 +482,8 @@ export function mergeAndRankWeeklyCandidates(attempts, targetDate, limit = 24, o
       const relevance = candidateRelevance(`${record.anchorText || ''} ${record.context || ''}`, targetDate, '');
       record.relevanceScore = Math.max(Number(record.relevanceScore || 0), Number(c.relevanceScore || 0), relevance.score);
       record.dateMatched = Boolean(record.dateMatched || c.dateMatched || relevance.dateMatched);
+      record.publishedDateMatched = Boolean(record.publishedDateMatched || c.publishedDateMatched);
+      if (!record.sourcePublishedAt && c.sourcePublishedAt) record.sourcePublishedAt = c.sourcePublishedAt;
       record.forecastMatched = Boolean(record.forecastMatched || c.forecastMatched || relevance.forecastMatched);
       record.startSlotMatched = Boolean(record.startSlotMatched || c.startSlotMatched);
       record.strictTextRelevant = Boolean(record.strictTextRelevant || c.strictTextRelevant || relevance.relevant);
@@ -599,6 +628,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       sourceType: candidate.sourceType,
       sourcePlatform: candidate.sourcePlatform,
       sourceHandle: candidate.sourceHandle || '',
+      sourcePublishedAt: candidate.sourcePublishedAt || '',
+      publishedDateMatched: Boolean(candidate.publishedDateMatched),
       relevanceScore: candidate.relevanceScore,
       dateMatched: candidate.dateMatched,
       startSlotMatched: candidate.startSlotMatched,
@@ -618,6 +649,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       sourceType: candidate.sourceType,
       sourcePlatform: candidate.sourcePlatform,
       sourceHandle: candidate.sourceHandle || '',
+      sourcePublishedAt: candidate.sourcePublishedAt || '',
+      publishedDateMatched: Boolean(candidate.publishedDateMatched),
       relevanceScore: candidate.relevanceScore,
       dateMatched: candidate.dateMatched,
       forecastMatched: candidate.forecastMatched,
