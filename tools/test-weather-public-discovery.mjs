@@ -13,7 +13,8 @@ import {
   mergeAndRankCandidates,
   mergeAndRankWeeklyCandidates,
   selectDiversifiedCandidates,
-  targetDateTokens
+  targetDateTokens,
+  xStatusPublishedAt
 } from './weather-public-discovery.mjs';
 
 test('normalizes X status URLs without account dependency', () => {
@@ -456,3 +457,7 @@ test('weekly ranking prefers dated weekly forecast evidence without requiring cu
   assert.equal(ranked[0].sourceHandle, 'weekly');
 });
 
+
+test('decodes X snowflake publication time for freshness ranking', () => {
+  assert.equal(xStatusPublishedAt('2102146260182646791'), '2026-09-21T21:21:39.073Z');
+});
