@@ -394,7 +394,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: weather-scheduled-failure-${{ github.run_id }}
-          path: ${{ runner.temp }}/weather-candidate-*
+          path: |
+            ${{ runner.temp }}/weather-daily-candidate-*
+            ${{ runner.temp }}/weather-weekly-candidate-*
           if-no-files-found: warn
           retention-days: 3
 
