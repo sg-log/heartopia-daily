@@ -11,6 +11,7 @@ import {
   isSearchContextFallback,
   isDynamicAuthorFallback,
   mergeAndRankCandidates,
+  mergeAndRankWeeklyCandidates,
   selectDiversifiedCandidates,
   targetDateTokens
 } from './weather-public-discovery.mjs';
@@ -390,5 +391,68 @@ test('merge preserves an X handle recovered by a later discovery route for the s
   ], '2026-09-22', 24, 'morning');
   assert.equal(ranked.length, 1);
   assert.equal(ranked[0].sourceHandle, 'weatherfan');
+});
+
+test('recently used author is deprioritized only when an equally current alternative exists', () => {
+  const attempts = [{
+    candidates: [
+      {
+        sourceUrl:'https://x.com/i/status/1001', sourceType:'x', sourcePlatform:'x', sourceId:'1001',
+        sourceHandle:'recent_author', discoverySource:'yahoo-realtime', searchQuery:'q',
+        anchorText:'ハートピア 天気', context:'2026/09/22 06:00 ハートピア 天気',
+        relevanceScore:22, dateMatched:true, forecastMatched:true, startSlotMatched:true, strictTextRelevant:true
+      },
+      {
+        sourceUrl:'https://x.com/i/status/1002', sourceType:'x', sourcePlatform:'x', sourceId:'1002',
+        sourceHandle:'fresh_author', discoverySource:'yahoo-realtime', searchQuery:'q',
+        anchorText:'ハートピア 天気', context:'2026/09/22 06:00 ハートピア 天気',
+        relevanceScore:20, dateMatched:true, forecastMatched:true, startSlotMatched:true, strictTextRelevant:true
+      }
+    ]
+  }];
+  const ranked = mergeAndRankCandidates(attempts, '2026-09-22', 24, 'morning', {recentHandles:['recent_author']});
+  assert.equal(ranked[0].sourceHandle, 'fresh_author');
+});
+
+test('recent author remains available as fallback when it is the only current-slot candidate', () => {
+  const attempts = [{
+    candidates: [
+      {
+        sourceUrl:'https://x.com/i/status/1001', sourceType:'x', sourcePlatform:'x', sourceId:'1001',
+        sourceHandle:'recent_author', discoverySource:'yahoo-realtime', searchQuery:'q',
+        anchorText:'ハートピア 天気', context:'2026/09/22 06:00 ハートピア 天気',
+        relevanceScore:22, dateMatched:true, forecastMatched:true, startSlotMatched:true, strictTextRelevant:true
+      },
+      {
+        sourceUrl:'https://x.com/i/status/1002', sourceType:'x', sourcePlatform:'x', sourceId:'1002',
+        sourceHandle:'fresh_author', discoverySource:'yahoo-realtime', searchQuery:'q',
+        anchorText:'ハートピア 天気', context:'2026/09/22 00:00 ハートピア 天気',
+        relevanceScore:20, dateMatched:true, forecastMatched:true, startSlotMatched:false, strictTextRelevant:true
+      }
+    ]
+  }];
+  const ranked = mergeAndRankCandidates(attempts, '2026-09-22', 24, 'morning', {recentHandles:['recent_author']});
+  assert.equal(ranked[0].sourceHandle, 'recent_author');
+});
+
+test('weekly ranking prefers dated weekly forecast evidence without requiring current-slot text', () => {
+  const attempts = [{
+    candidates: [
+      {
+        sourceUrl:'https://x.com/i/status/2001', sourceType:'x', sourcePlatform:'x', sourceId:'2001',
+        sourceHandle:'daily', discoverySource:'yahoo-realtime', searchQuery:'q',
+        anchorText:'ハートピア 天気', context:'2026/09/22 06:00 ハートピア 天気',
+        relevanceScore:22, dateMatched:true, forecastMatched:false, startSlotMatched:true, strictTextRelevant:true
+      },
+      {
+        sourceUrl:'https://x.com/i/status/2002', sourceType:'x', sourcePlatform:'x', sourceId:'2002',
+        sourceHandle:'weekly', discoverySource:'yahoo-realtime', searchQuery:'q',
+        anchorText:'ハートピア 週間天気', context:'2026/09/22 ハートピア 週間予報',
+        relevanceScore:18, dateMatched:true, forecastMatched:true, startSlotMatched:false, strictTextRelevant:true
+      }
+    ]
+  }];
+  const ranked = mergeAndRankWeeklyCandidates(attempts, '2026-09-22');
+  assert.equal(ranked[0].sourceHandle, 'weekly');
 });
 
