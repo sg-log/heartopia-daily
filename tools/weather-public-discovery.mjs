@@ -511,10 +511,9 @@ export async function discover(targetDate, slot = '', history = {}) {
         if (!current || score > current.score) handleScores.set(key, { handle, score });
       }
     }
-    const handlesToCheck = [...handleScores.values()]
-      .sort((a, b) => b.score - a.score || a.handle.localeCompare(b.handle))
-      .slice(0, 12)
-      .map((item) => item.handle);
+    const runtimeHandleRanking = [...handleScores.values()]
+      .sort((a, b) => b.score - a.score || a.handle.localeCompare(b.handle));
+    const handlesToCheck = runtimeHandleRanking.slice(0, 12).map((item) => item.handle);
 
     for (const handle of handlesToCheck) {
       const check = await inspectPublicXProfile(page, handle);
@@ -522,10 +521,22 @@ export async function discover(targetDate, slot = '', history = {}) {
       if (check.heartopiaMatched) dynamicHandles.push(handle);
     }
 
-    // Second pass: expand only authors discovered in this run whose public profile
-    // contains Heartopia context. This is dynamic and never relies on a saved person.
-    for (const provider of providers) {
-      for (const handle of dynamicHandles) {
+    // Profile text is only a weak optional signal. A public search result that already
+    // contains strong target-date/current-slot Heartopia-weather clues is sufficient to
+    // try that runtime-discovered author too. This avoids silently collapsing back to
+    // the one author whose profile happens to expose a Heartopia keyword.
+    for (const item of runtimeHandleRanking.filter(item => item.score >= 4).slice(0, 4)) {
+      if (!dynamicHandles.some(handle => handle.toLowerCase() === item.handle.toLowerCase())) {
+        dynamicHandles.push(item.handle);
+      }
+    }
+
+    // Dynamic author expansion is auxiliary: broad discovery above still uses every
+    // configured provider. For author-specific queries use two independent public
+    // routes that can resolve X status results without login.
+    const dynamicProviders = ['yahoo-realtime', 'google'];
+    for (const provider of dynamicProviders) {
+      for (const handle of dynamicHandles.slice(0, 4)) {
         for (const query of buildDynamicAuthorQueries(provider, handle, targetDate, slot)) {
           attempts.push(await collectFromPage(page, provider, query, targetDate, slot, 20, handle));
         }
