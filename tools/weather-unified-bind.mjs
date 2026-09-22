@@ -27,7 +27,10 @@ export function buildUnifiedBindings(draft, artifact) {
       !Array.isArray(day?.weather) || day.weather.length < 1 || day.weather.length > 4) throw new Error('unifiedWeeklyNotReady');
   }
 
-  const fullEnvelope = bindReviewEnvelope(draft, artifact);
+  let fullEnvelope = bindReviewEnvelope(draft, artifact);
+  if (draft.sources && typeof draft.sources === 'object') {
+    fullEnvelope = { ...fullEnvelope, sources: draft.sources };
+  }
   const { weeklyDays: _weeklyDays, ...dailyInterpretation } = fullEnvelope.interpretation;
   const bridgeEnvelope = { ...fullEnvelope, interpretation: dailyInterpretation };
   return { fullEnvelope, bridgeEnvelope, weeklyCount: weeklyDays.length };
