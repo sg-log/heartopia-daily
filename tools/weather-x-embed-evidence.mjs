@@ -53,6 +53,16 @@ export function chooseEmbedEvidence(images) {
   return selected ? { kind: "image-screenshot", selected } : { kind: "embed-screenshot", selected: null };
 }
 
+export function xStatusPublishedAt(sourceId) {
+  try {
+    if (!/^\d{10,25}$/.test(String(sourceId || ""))) return "";
+    const timestampMs = (BigInt(String(sourceId)) >> 22n) + 1288834974657n;
+    return new Date(Number(timestampMs)).toISOString();
+  } catch {
+    return "";
+  }
+}
+
 function setPathway(pathways, name, httpStatus) {
   if (!name) return;
   const prior = pathways.find((item) => item.name === name);
@@ -153,6 +163,9 @@ async function captureXEmbed({ post, outputDir }) {
     await frame.waitForTimeout(2_000);
 
     const postText = (await frame.locator("body").innerText({ timeout: 10_000 })).trim();
+    const timeValue = await frame.locator("time").first().getAttribute("datetime").catch(() => "");
+    const parsedTime = timeValue && Number.isFinite(Date.parse(timeValue)) ? new Date(timeValue).toISOString() : "";
+    const sourcePublishedAt = parsedTime || xStatusPublishedAt(post.sourceId);
     const postLinks = await frame.locator('a[href*="/status/"]').evaluateAll((nodes) => nodes.map((node) => node.href));
     if (postText.length < 10 || !postLinks.some((href) => href.includes(`/status/${post.sourceId}`))) {
       throw new WeatherCloudError("embedPostNotConfirmed");
@@ -300,6 +313,7 @@ async function captureXEmbed({ post, outputDir }) {
       finalUrl: post.sourceUrl,
       sourceType: "x",
       sourceId: post.sourceId,
+      sourcePublishedAt,
       capturedAt,
       pathways,
       postContent: { file: "post-content.txt" },
