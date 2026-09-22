@@ -224,11 +224,11 @@ jobs:
           $fallback = $null
           $fallbackDir = ''
           $fallbackReviewPath = ''
-          $completeSearchLimit = [Math]::Min($candidates.Count, 8)
+          $completeSearchLimit = $candidates.Count
 
           for ($i = 0; $i -lt $candidates.Count; $i++) {
             if ($null -ne $fallback -and $i -ge $completeSearchLimit) {
-              Write-Host "Complete daily+weekly search budget exhausted after $completeSearchLimit candidates; using the best verified daily fallback if no complete source was found."
+              Write-Host "Complete daily+weekly search checked the full bounded candidate pool ($completeSearchLimit); using the best verified daily fallback if no complete source was found."
               break
             }
 
@@ -322,7 +322,7 @@ jobs:
             Move-Item -LiteralPath $fallbackDir -Destination $env:SELECTED_DIR
             $selected = $fallback
             $selectionMode = 'daily-only'
-            Write-Host "No complete daily+weekly candidate found in the bounded search; select verified daily-only fallback from $([string]$fallback.sourceUrl)."
+            Write-Host "No complete daily+weekly candidate found in the full bounded candidate pool; select verified daily-only fallback from $([string]$fallback.sourceUrl)."
           }
 
           if ($null -eq $selected) { throw 'No captured public candidate produced current-slot daily weather.' }
