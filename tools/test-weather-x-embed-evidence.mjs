@@ -86,3 +86,8 @@ test("fails closed on redirects and content-type mismatches", async () => {
     fetchImpl: async () => new Response(jpeg, { status: 200, headers: { "content-type": "image/png" } })
   }), WeatherCloudError);
 });
+
+
+test('derives X publication time from the exact status id', () => {
+  assert.equal(xStatusPublishedAt('2102146260182646791'), '2026-09-21T21:21:39.073Z');
+});
