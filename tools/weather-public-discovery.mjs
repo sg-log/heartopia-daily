@@ -360,12 +360,18 @@ function rankCandidates(candidates, options = {}) {
   const recentUrls = options.recentUrls || [];
   const purpose = options.purpose || 'daily';
   return [...candidates].sort((a, b) => {
-    const currentness =
-      Number(Boolean(b.dateMatched)) - Number(Boolean(a.dateMatched));
+    const aTargetDate = Boolean(a.dateMatched || a.publishedDateMatched);
+    const bTargetDate = Boolean(b.dateMatched || b.publishedDateMatched);
+    const currentness = Number(bTargetDate) - Number(aTargetDate);
     if (currentness) return currentness;
-    const publishedCurrentness =
-      Number(Boolean(b.publishedDateMatched)) - Number(Boolean(a.publishedDateMatched));
-    if (publishedCurrentness) return publishedCurrentness;
+
+    // Once two candidates are both plausibly from the target date, diversify
+    // before trusting snippet-level slot/forecast text. The later image review
+    // still requires the exact 06/18 slot and game UI, so a fresh author can be
+    // tried first without weakening correctness; recent authors remain fallback.
+    const history = candidateHistoryPenalty(a, recentHandles, recentUrls) - candidateHistoryPenalty(b, recentHandles, recentUrls);
+    if (history) return history;
+
     if (purpose === 'daily') {
       const slot = Number(Boolean(b.startSlotMatched)) - Number(Boolean(a.startSlotMatched));
       if (slot) return slot;
@@ -373,9 +379,8 @@ function rankCandidates(candidates, options = {}) {
       const weekly = Number(Boolean(b.forecastMatched)) - Number(Boolean(a.forecastMatched));
       if (weekly) return weekly;
     }
-    const history = candidateHistoryPenalty(a, recentHandles, recentUrls) - candidateHistoryPenalty(b, recentHandles, recentUrls);
-    if (history) return history;
     return (
+      Number(Boolean(b.dateMatched)) - Number(Boolean(a.dateMatched)) ||
       Number(Boolean(b.profileHeartopiaMatched)) - Number(Boolean(a.profileHeartopiaMatched)) ||
       (purpose === 'daily'
         ? Number(Boolean(b.forecastMatched)) - Number(Boolean(a.forecastMatched))
