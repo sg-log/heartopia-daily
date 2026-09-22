@@ -48,22 +48,32 @@ function Get-UnifiedWeeks {
 }
 
 function Test-UnifiedWeatherMatch {
-    param([Parameter(Mandatory)] [object] $Report, [Parameter(Mandatory)] [System.Collections.IDictionary] $Payload)
+    param(
+        [Parameter(Mandatory)] [object] $Report,
+        [Parameter(Mandatory)] [System.Collections.IDictionary] $Payload,
+        [bool] $IgnoreWeeks = $false
+    )
     if ([string]$Report.date -cne [string]$Payload.date -or [string]$Report.startSlot -cne [string]$Payload.startSlot) { return $false }
     foreach ($index in 0..4) {
         if ((@($Report.slots."slot$index") -join ',') -cne (@($Payload.slots["slot$index"]) -join ',')) { return $false }
     }
-    foreach ($index in 1..7) {
-        $reportWeek = if ($null -eq $Report.weeks) { @() } else { @($Report.weeks."week$index") }
-        $payloadWeek = if ($null -eq $Payload.weeks) { @() } else { @($Payload.weeks["week$index"]) }
-        if (($reportWeek -join ',') -cne ($payloadWeek -join ',')) { return $false }
+    if (-not $IgnoreWeeks) {
+        foreach ($index in 1..7) {
+            $reportWeek = if ($null -eq $Report.weeks) { @() } else { @($Report.weeks."week$index") }
+            $payloadWeek = if ($null -eq $Payload.weeks) { @() } else { @($Payload.weeks["week$index"]) }
+            if (($reportWeek -join ',') -cne ($payloadWeek -join ',')) { return $false }
+        }
     }
     $true
 }
 
 function Test-UnifiedReportMatch {
-    param([Parameter(Mandatory)] [object] $Report, [Parameter(Mandatory)] [System.Collections.IDictionary] $Payload)
-    (Test-UnifiedWeatherMatch $Report $Payload) -and [string]$Report.sourceUrl -ceq [string]$Payload.sourceUrl
+    param(
+        [Parameter(Mandatory)] [object] $Report,
+        [Parameter(Mandatory)] [System.Collections.IDictionary] $Payload,
+        [bool] $IgnoreWeeks = $false
+    )
+    (Test-UnifiedWeatherMatch $Report $Payload -IgnoreWeeks:$IgnoreWeeks) -and [string]$Report.sourceUrl -ceq [string]$Payload.sourceUrl
 }
 
 function Invoke-UnifiedPrivateRead {
@@ -89,7 +99,8 @@ function Confirm-UnifiedStoredEvidence {
         [Parameter(Mandatory)] [object] $Report,
         [Parameter(Mandatory)] [object] $Artifact,
         [Parameter(Mandatory)] [string] $ApiUrl,
-        [Parameter(Mandatory)] [Security.SecureString] $AdminKey
+        [Parameter(Mandatory)] [Security.SecureString] $AdminKey,
+        [bool] $IgnoreWeeks = $false
     )
     if ([string]$Report.evidenceStatus -cne 'saved' -or @($Report.evidenceImages).Count -ne 1 -or
         [string]$Report.evidenceImages[0].sha256 -cne [string]$Artifact.sha256) { return $false }
@@ -147,7 +158,7 @@ function Find-UnifiedPendingAfterNetworkError {
             throw 'WEATHER_SAFE:pendingLookupFailed'
         }
         if ($call.data.ok -ne $true) { throw 'WEATHER_SAFE:pendingLookupFailed' }
-        $matches = @($call.data.reports | Where-Object { Test-UnifiedReportMatch $_ $Payload })
+        $matches = @($call.data.reports | Where-Object { Test-UnifiedReportMatch $_ $Payload -IgnoreWeeks:$IgnoreWeeks })
         if ($matches.Count -gt 1) { throw 'WEATHER_SAFE:duplicateConflict' }
         if ($matches.Count -eq 1) {
             $sawExactReport = $true
@@ -183,8 +194,13 @@ try {
     $weekly = Get-UnifiedWeeks -Review $review -BaseDate ([string]$candidate.hourlyForecast.observedDate)
     $preview.payload.weeks = $weekly.weeks
     $result.weeklyCount = $weekly.count
+    $ignoreWeeksForDuplicate = $weekly.count -eq 0
     $weeklyMemo = if ($weekly.count -gt 0) { "週間:$($weekly.count)日判読済み" } else { 'デイリーのみ（週間は既存維持）' }
     $preview.payload.memo = ([string]$preview.payload.memo).Replace('現在・週間:送信対象外', $weeklyMemo)
+    $weeklySourceUrl = [string]$review.sources.weekly.sourceUrl
+    if ($weekly.count -gt 0 -and -not [string]::IsNullOrWhiteSpace($weeklySourceUrl) -and $weeklySourceUrl -cne [string]$preview.payload.sourceUrl) {
+        $preview.payload.memo = (([string]$preview.payload.memo).Trim() + " 週間別出典:$weeklySourceUrl").Trim()
+    }
     if (([string]$preview.payload.memo).Length -gt 1000) { throw 'WEATHER_SAFE:memoTooLong' }
 
     $apiUrl = Get-WeatherApiUrlFromSiteConfig
@@ -207,18 +223,18 @@ try {
     })
     if ($sameSource.Count -gt 1) { throw 'WEATHER_SAFE:duplicateConflict' }
     if ($sameSource.Count -eq 1) {
-        if (-not (Test-UnifiedReportMatch $sameSource[0] $preview.payload)) { throw 'WEATHER_SAFE:duplicateConflict' }
+        if (-not (Test-UnifiedReportMatch $sameSource[0] $preview.payload -IgnoreWeeks:$ignoreWeeksForDuplicate)) { throw 'WEATHER_SAFE:duplicateConflict' }
         if (-not (Confirm-UnifiedStoredEvidence $sameSource[0] $artifact $apiUrl $adminKey)) { throw 'WEATHER_SAFE:duplicateConflict' }
         $result.duplicate=$true; $result.reportId=[string]$sameSource[0].id; $result.apiSuccess=$true
         $result.driveSaved=$true; $result.pendingRegistered=$true; $result.sha256Match=$true; $result.imageRetrieved=$true; $result.stage='complete'
     } else {
-        $contentPending = @($pendingReports | Where-Object { Test-UnifiedWeatherMatch $_ $preview.payload })
+        $contentPending = @($pendingReports | Where-Object { Test-UnifiedWeatherMatch $_ $preview.payload -IgnoreWeeks:$ignoreWeeksForDuplicate })
         if ($contentPending.Count) {
             $result.duplicate=$true; $result.reportId=[string]$contentPending[0].id; $result.apiSuccess=$true; $result.pendingRegistered=$true; $result.stage='contentDuplicatePending'
         } else {
             $approvedCall = Invoke-WeatherPublicApprovedRead -ApiUrl $apiUrl
             if ($approvedCall.diagnostic.failureCode -or $approvedCall.data.ok -ne $true) { throw 'WEATHER_SAFE:approvedLookupFailed' }
-            $contentApproved = @($approvedCall.data.reports | Where-Object { Test-UnifiedWeatherMatch $_ $preview.payload })
+            $contentApproved = @($approvedCall.data.reports | Where-Object { Test-UnifiedWeatherMatch $_ $preview.payload -IgnoreWeeks:$ignoreWeeksForDuplicate })
             if ($contentApproved.Count) {
                 $result.duplicate=$true; $result.reportId=''; $result.apiSuccess=$true; $result.stage='contentDuplicateApproved'
             } else {
@@ -231,7 +247,7 @@ try {
                     if ($_.Exception.Message -cne 'WEATHER_SAFE:networkError') { throw }
                     # Ambiguous timeout: never POST again. The server may already have committed the pending row.
                     $result.stage = 'submissionRecovery'
-                    $recovered = Find-UnifiedPendingAfterNetworkError -Payload $preview.payload -Artifact $artifact -ApiUrl $apiUrl -AdminKey $adminKey
+                    $recovered = Find-UnifiedPendingAfterNetworkError -Payload $preview.payload -Artifact $artifact -ApiUrl $apiUrl -AdminKey $adminKey -IgnoreWeeks:$ignoreWeeksForDuplicate
                     if ($null -eq $recovered) { throw 'WEATHER_SAFE:networkError' }
                     $result.apiSuccess=$true; $result.duplicate=$false; $result.reportId=[string]$recovered.id
                     $result.pendingRegistered=$true; $result.driveSaved=$true; $result.sha256Match=$true; $result.imageRetrieved=$true; $result.stage='complete'
