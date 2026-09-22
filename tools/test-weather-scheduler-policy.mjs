@@ -75,7 +75,7 @@ test('current-slot and target-date gates reject stale 00 daily evidence', () => 
   assert.match(workflow, /RUN_SLOT -eq 'morning'\) \{ '06' \} elseif \(\$env:RUN_SLOT -eq 'evening'\) \{ '18' \}/)
   assert.match(workflow, /\[string\]\$review\.targetDate -ceq \$env:TARGET_DATE/)
   assert.match(workflow, /\[string\]\$review\.interpretation\.observedDate -ceq \$env:TARGET_DATE/)
-  assert.match(workflow, /\$actualStartSlot -ceq \$expectedStartSlot/)
+  assert.match(workflow, /\$startSlot -ceq \$expectedStartSlot/)
   assert.match(workflow, /\[string\]\$dailyReview\.targetDate -ceq \$env:TARGET_DATE/)
   assert.match(workflow, /\$dailyStart -ceq \$expectedStartSlot/)
   assert.match(workflow, /\$dailySlots\.Count -eq 5/)
