@@ -404,6 +404,7 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = 
       record.dynamicAuthorFallback = Boolean(record.dynamicAuthorFallback || c.dynamicAuthorFallback);
       record.profileHeartopiaMatched = Boolean(record.profileHeartopiaMatched || c.profileHeartopiaMatched);
       record.profileHeartopiaTerms = [...new Set([...(record.profileHeartopiaTerms || []), ...(c.profileHeartopiaTerms || [])])];
+      if (!record.sourceHandle && c.sourceHandle) record.sourceHandle = c.sourceHandle;
       if (!record.profileCheckStatus && c.profileCheckStatus) record.profileCheckStatus = c.profileCheckStatus;
       if (!record.dynamicHandle && c.dynamicHandle) record.dynamicHandle = c.dynamicHandle;
     }
