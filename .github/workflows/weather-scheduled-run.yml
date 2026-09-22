@@ -46,7 +46,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - name: Resolve JST update slot
         id: slot
@@ -171,13 +171,38 @@ jobs:
         if: ${{ steps.guard.outputs.already_succeeded != 'true' }}
         run: npx playwright install --with-deps chromium
 
+      - name: Load recent weather source history
+        id: source_history
+        if: ${{ steps.guard.outputs.already_succeeded != 'true' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.rest.issues.listForRepo({ ...context.repo, state:'all', per_page:100, sort:'created', direction:'desc' })
+            const records = []
+            for (const issue of data) {
+              if (issue.pull_request || typeof issue.body !== 'string' || !issue.body.includes('heartopia-weather-scheduled-v4')) continue
+              const match = issue.body.match(/```json\s*([\s\S]*?)\s*```/)
+              if (!match) continue
+              try {
+                const record = JSON.parse(match[1])
+                if (record && ['pending','content-duplicate'].includes(record.status) && record.sourceUrl) records.push(record)
+              } catch {}
+              if (records.length >= 8) break
+            }
+            const handles = [...new Set(records.map(r => String(r.sourceHandle || '').toLowerCase()).filter(Boolean))].slice(0,5)
+            const urls = [...new Set(records.map(r => String(r.sourceUrl || '')).filter(Boolean))].slice(0,8)
+            core.setOutput('handles', handles.join(','))
+            core.setOutput('urls', urls.join('|'))
+
       - name: Discover public weather candidates
         if: ${{ steps.guard.outputs.already_succeeded != 'true' }}
         env:
           TARGET_DATE: ${{ steps.slot.outputs.target_date }}
           RESULT_PATH: ${{ runner.temp }}/weather-public-discovery.json
           RUN_SLOT: ${{ steps.slot.outputs.slot }}
-        run: node tools/weather-public-discovery.mjs --target-date "$TARGET_DATE" --slot "$RUN_SLOT" --out "$RESULT_PATH"
+          RECENT_HANDLES: ${{ steps.source_history.outputs.handles }}
+          RECENT_URLS: ${{ steps.source_history.outputs.urls }}
+        run: node tools/weather-public-discovery.mjs --target-date "$TARGET_DATE" --slot "$RUN_SLOT" --recent-handles "$RECENT_HANDLES" --recent-urls "$RECENT_URLS" --out "$RESULT_PATH"
 
       - name: Prepare public evidence candidates
         id: publish
@@ -186,6 +211,7 @@ jobs:
         env:
           RESULT_PATH: ${{ runner.temp }}/weather-public-discovery.json
           CANDIDATE_PATH: ${{ runner.temp }}/weather-scheduled-candidates.json
+          WEEKLY_CANDIDATE_PATH: ${{ runner.temp }}/weather-scheduled-weekly-candidates.json
         with:
           script: |
             const fs = require('fs')
@@ -199,9 +225,16 @@ jobs:
               if (c.sourceType === 'x') return /^https:\/\/x\.com\/i\/status\/\d+$/.test(c.sourceUrl || '')
               return /^https:\/\//.test(c.sourceUrl || '')
             }).slice(0, 24)
+            const weeklyUsable = (Array.isArray(result.weeklyCandidates) ? result.weeklyCandidates : result.candidates).filter(c => {
+              if (!c || !['x','web'].includes(c.sourceType)) return false
+              if (c.sourceType === 'x') return /^https:\/\/x\.com\/i\/status\/\d+$/.test(c.sourceUrl || '')
+              return /^https:\/\//.test(c.sourceUrl || '')
+            }).slice(0, 24)
             fs.writeFileSync(process.env.CANDIDATE_PATH, JSON.stringify(usable), 'utf8')
+            fs.writeFileSync(process.env.WEEKLY_CANDIDATE_PATH, JSON.stringify(weeklyUsable), 'utf8')
             core.setOutput('candidate_count', String(result.candidates.length))
             core.setOutput('usable_candidate_count', String(usable.length))
+            core.setOutput('weekly_candidate_count', String(weeklyUsable.length))
             if (result.candidates.length === 0) core.setFailed('No public weather candidates found.')
             else if (usable.length === 0) core.setFailed('No supported public evidence candidate found.')
 
@@ -211,6 +244,7 @@ jobs:
         shell: pwsh
         env:
           CANDIDATE_PATH: ${{ runner.temp }}/weather-scheduled-candidates.json
+          WEEKLY_CANDIDATE_PATH: ${{ runner.temp }}/weather-scheduled-weekly-candidates.json
           TARGET_DATE: ${{ steps.slot.outputs.target_date }}
           SELECTED_DIR: ${{ runner.temp }}/weather-selected-evidence
           REVIEW_DRAFT: ${{ runner.temp }}/weather-unified-review.json
@@ -218,120 +252,132 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
           $expectedStartSlot = if ($env:RUN_SLOT -eq 'morning') { '06' } elseif ($env:RUN_SLOT -eq 'evening') { '18' } else { throw 'Invalid run slot.' }
-          $candidates = @(Get-Content -LiteralPath $env:CANDIDATE_PATH -Raw -Encoding UTF8 | ConvertFrom-Json)
-          $selected = $null
-          $selectionMode = ''
-          $fallback = $null
-          $fallbackDir = ''
-          $fallbackReviewPath = ''
-          $completeSearchLimit = $candidates.Count
 
-          for ($i = 0; $i -lt $candidates.Count; $i++) {
-            if ($null -ne $fallback -and $i -ge $completeSearchLimit) {
-              Write-Host "Complete daily+weekly search checked the full bounded candidate pool ($completeSearchLimit); using the best verified daily fallback if no complete source was found."
-              break
-            }
-
-            $candidate = $candidates[$i]
-            $dir = Join-Path $env:RUNNER_TEMP ("weather-candidate-" + $i)
-            if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
-            New-Item -ItemType Directory -Path $dir -Force | Out-Null
-
-            if ([string]$candidate.sourceType -eq 'x') {
-              & node tools/weather-x-embed-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
-            } elseif ([string]$candidate.sourceType -eq 'web') {
-              & node tools/weather-cloud-url-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
-            } else { continue }
-            if ($LASTEXITCODE -ne 0) { continue }
-
+          function Capture-Candidate {
+            param([object]$Candidate, [string]$Dir)
+            if (Test-Path $Dir) { Remove-Item -Recurse -Force $Dir }
+            New-Item -ItemType Directory -Path $Dir -Force | Out-Null
+            if ([string]$Candidate.sourceType -eq 'x') {
+              & node tools/weather-x-embed-evidence.mjs --url ([string]$Candidate.sourceUrl) --output-dir $Dir
+            } elseif ([string]$Candidate.sourceType -eq 'web') {
+              & node tools/weather-cloud-url-evidence.mjs --url ([string]$Candidate.sourceUrl) --output-dir $Dir
+            } else { return $false }
+            if ($LASTEXITCODE -ne 0) { return $false }
             try {
               ./tools/weather-cloud-discovery.ps1 `
-                -CapturePath (Join-Path $dir 'capture.json') `
-                -OutputPath (Join-Path $dir 'discovery-candidate.json') `
-                -DiscoverySource ([string]$candidate.discoverySource) `
-                -SearchQuery ([string]$candidate.searchQuery)
-            } catch { continue }
+                -CapturePath (Join-Path $Dir 'capture.json') `
+                -OutputPath (Join-Path $Dir 'discovery-candidate.json') `
+                -DiscoverySource ([string]$Candidate.discoverySource) `
+                -SearchQuery ([string]$Candidate.searchQuery)
+            } catch { return $false }
+            return $true
+          }
 
-            $unifiedPath = Join-Path $dir 'review.json'
-            & node tools/weather-unified-review.mjs --mode inspect --capture-dir $dir --target-date $env:TARGET_DATE --output $unifiedPath
-            $unifiedExit = $LASTEXITCODE
-            if ($unifiedExit -eq 0) {
-              try {
-                $review = Get-Content -LiteralPath $unifiedPath -Raw -Encoding UTF8 | ConvertFrom-Json
-                $actualStartSlot = [string]$review.interpretation.startSlot
-              } catch {
-                Write-Host "Reject candidate: unified review payload could not be read."
-                $review = $null
-                $actualStartSlot = ''
-              }
+          $dailyCandidates = @(Get-Content -LiteralPath $env:CANDIDATE_PATH -Raw -Encoding UTF8 | ConvertFrom-Json)
+          $weeklyCandidates = @(Get-Content -LiteralPath $env:WEEKLY_CANDIDATE_PATH -Raw -Encoding UTF8 | ConvertFrom-Json)
+          $dailySelected = $null
+          $dailyDir = ''
+          $dailyReviewPath = ''
 
-              $weeklyDays = if ($null -ne $review) { @($review.interpretation.weeklyDays | Where-Object { $null -ne $_ }) } else { @() }
-              $isCompleteUnified = $null -ne $review -and
-                $review.ready -eq $true -and
+          for ($i = 0; $i -lt $dailyCandidates.Count; $i++) {
+            $candidate = $dailyCandidates[$i]
+            $dir = Join-Path $env:RUNNER_TEMP ("weather-daily-candidate-" + $i)
+            if (-not (Capture-Candidate -Candidate $candidate -Dir $dir)) { continue }
+            $reviewPath = Join-Path $dir 'daily-only-review.json'
+            & node tools/weather-direct-daily-panel-review.mjs --capture-dir $dir --target-date $env:TARGET_DATE --output $reviewPath
+            if ($LASTEXITCODE -ne 0) { continue }
+            try {
+              $review = Get-Content -LiteralPath $reviewPath -Raw -Encoding UTF8 | ConvertFrom-Json
+              $startSlot = [string]$review.interpretation.startSlot
+              $slots = @($review.interpretation.slots)
+              $ready = $review.ready -eq $true -and
                 [string]$review.targetDate -ceq $env:TARGET_DATE -and
                 [string]$review.interpretation.observedDate -ceq $env:TARGET_DATE -and
-                $actualStartSlot -ceq $expectedStartSlot -and
-                $weeklyDays.Count -ge 5 -and $weeklyDays.Count -le 7
+                $startSlot -ceq $expectedStartSlot -and
+                $slots.Count -eq 5 -and
+                @($slots | Where-Object { $_.visible -ne $true -or $_.confidence -cne 'high' -or @($_.weather | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -lt 1 }).Count -eq 0
+            } catch { $ready = $false }
+            if ($ready) {
+              $dailySelected = $candidate
+              $dailyDir = $dir
+              $dailyReviewPath = $reviewPath
+              Write-Host "Select verified current-slot daily evidence from $([string]$candidate.sourceUrl) start=$startSlot."
+              break
+            }
+          }
+          if ($null -eq $dailySelected) { throw 'No captured public candidate produced current-slot daily weather.' }
 
-              if ($isCompleteUnified) {
-                if (Test-Path $env:SELECTED_DIR) { Remove-Item -Recurse -Force $env:SELECTED_DIR }
-                Copy-Item -LiteralPath $unifiedPath -Destination $env:REVIEW_DRAFT -Force
-                Move-Item -LiteralPath $dir -Destination $env:SELECTED_DIR
-                $selected = $candidate
-                $selectionMode = 'daily-weekly'
-                Write-Host "Select complete current-slot daily+weekly evidence from $([string]$candidate.sourceUrl) start=$actualStartSlot weekly=$($weeklyDays.Count)."
+          $weeklySelected = $null
+          $weeklyDir = ''
+          $weeklyReviewPath = ''
+
+          # First see whether the selected daily post itself also contains a valid
+          # weekly panel. If not, search weekly evidence independently.
+          $sameWeeklyPath = Join-Path $dailyDir 'weekly-only-review.json'
+          & node tools/weather-weekly-screenshot-review.mjs --capture-dir $dailyDir --target-date $env:TARGET_DATE --output $sameWeeklyPath
+          if ($LASTEXITCODE -eq 0) {
+            try {
+              $sameWeekly = Get-Content -LiteralPath $sameWeeklyPath -Raw -Encoding UTF8 | ConvertFrom-Json
+              if ($sameWeekly.ready -eq $true -and @($sameWeekly.interpretation.days).Count -ge 5) {
+                $weeklySelected = $dailySelected
+                $weeklyDir = $dailyDir
+                $weeklyReviewPath = $sameWeeklyPath
+              }
+            } catch {}
+          }
+
+          if ($null -eq $weeklySelected) {
+            for ($i = 0; $i -lt $weeklyCandidates.Count; $i++) {
+              $candidate = $weeklyCandidates[$i]
+              if ([string]$candidate.sourceUrl -ceq [string]$dailySelected.sourceUrl) { continue }
+              $dir = Join-Path $env:RUNNER_TEMP ("weather-weekly-candidate-" + $i)
+              if (-not (Capture-Candidate -Candidate $candidate -Dir $dir)) { continue }
+              $reviewPath = Join-Path $dir 'weekly-only-review.json'
+              & node tools/weather-weekly-screenshot-review.mjs --capture-dir $dir --target-date $env:TARGET_DATE --output $reviewPath
+              if ($LASTEXITCODE -ne 0) { continue }
+              try {
+                $weeklyReview = Get-Content -LiteralPath $reviewPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                $days = @($weeklyReview.interpretation.days)
+                $ready = $weeklyReview.ready -eq $true -and [string]$weeklyReview.targetDate -ceq $env:TARGET_DATE -and
+                  $days.Count -ge 5 -and $days.Count -le 7 -and
+                  @($days | Where-Object { $_.visible -ne $true -or $_.confidence -cne 'high' -or @($_.weather | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -lt 1 }).Count -eq 0
+              } catch { $ready = $false }
+              if ($ready) {
+                $weeklySelected = $candidate
+                $weeklyDir = $dir
+                $weeklyReviewPath = $reviewPath
+                Write-Host "Select verified weekly evidence from $([string]$candidate.sourceUrl) days=$($days.Count)."
                 break
               }
-              if ($actualStartSlot) {
-                Write-Host "Reject complete candidate due to stale start slot: expected=$expectedStartSlot actual=$actualStartSlot source=$([string]$candidate.sourceUrl)"
-              }
-            }
-
-            $dailyOnlyPath = Join-Path $dir 'daily-only-review.json'
-            & node tools/weather-direct-daily-panel-review.mjs --capture-dir $dir --target-date $env:TARGET_DATE --output $dailyOnlyPath
-            if ($LASTEXITCODE -eq 0) {
-              try {
-                $dailyReview = Get-Content -LiteralPath $dailyOnlyPath -Raw -Encoding UTF8 | ConvertFrom-Json
-                $dailyStart = [string]$dailyReview.interpretation.startSlot
-                $dailySlots = @($dailyReview.interpretation.slots)
-                $isCurrentDaily = $dailyReview.ready -eq $true -and
-                  [string]$dailyReview.targetDate -ceq $env:TARGET_DATE -and
-                  [string]$dailyReview.interpretation.observedDate -ceq $env:TARGET_DATE -and
-                  $dailyStart -ceq $expectedStartSlot -and
-                  $dailySlots.Count -eq 5 -and
-                  @($dailySlots | Where-Object { $_.visible -ne $true -or $_.confidence -cne 'high' -or @($_.weather | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -lt 1 }).Count -eq 0
-              } catch {
-                Write-Host "Reject candidate: direct daily-only review payload could not be read."
-                $dailyReview = $null
-                $dailyStart = ''
-                $isCurrentDaily = $false
-              }
-
-              if ($isCurrentDaily -and $null -eq $fallback) {
-                $fallback = $candidate
-                $fallbackDir = $dir
-                $fallbackReviewPath = $dailyOnlyPath
-                Write-Host "Hold current-slot daily-only fallback from $([string]$candidate.sourceUrl) start=$dailyStart while checking later candidates for weekly data."
-              }
             }
           }
 
-          if ($null -eq $selected -and $null -ne $fallback) {
-            if (Test-Path $env:SELECTED_DIR) { Remove-Item -Recurse -Force $env:SELECTED_DIR }
-            Copy-Item -LiteralPath $fallbackReviewPath -Destination $env:REVIEW_DRAFT -Force
-            Move-Item -LiteralPath $fallbackDir -Destination $env:SELECTED_DIR
-            $selected = $fallback
-            $selectionMode = 'daily-only'
-            Write-Host "No complete daily+weekly candidate found in the full bounded candidate pool; select verified daily-only fallback from $([string]$fallback.sourceUrl)."
+          if (Test-Path $env:SELECTED_DIR) { Remove-Item -Recurse -Force $env:SELECTED_DIR }
+          $selectionMode = 'daily-only'
+          $weeklySourceUrl = ''
+          if ($null -ne $weeklySelected) {
+            & node tools/weather-cross-source-compose.mjs `
+              --daily-dir $dailyDir `
+              --daily-review $dailyReviewPath `
+              --weekly-dir $weeklyDir `
+              --weekly-review $weeklyReviewPath `
+              --output-dir $env:SELECTED_DIR `
+              --target-date $env:TARGET_DATE
+            if ($LASTEXITCODE -ne 0) { throw 'Cross-source daily+weekly evidence composition failed.' }
+            Copy-Item -LiteralPath (Join-Path $env:SELECTED_DIR 'review.json') -Destination $env:REVIEW_DRAFT -Force
+            $selectionMode = if ([string]$weeklySelected.sourceUrl -ceq [string]$dailySelected.sourceUrl) { 'daily-weekly-same-source' } else { 'daily-weekly-cross-source' }
+            $weeklySourceUrl = [string]$weeklySelected.sourceUrl
+          } else {
+            Copy-Item -LiteralPath $dailyReviewPath -Destination $env:REVIEW_DRAFT -Force
+            Move-Item -LiteralPath $dailyDir -Destination $env:SELECTED_DIR
+            Write-Host "No verified weekly evidence found; keep existing weekly forecast and submit verified daily only."
           }
 
-          if ($null -eq $selected) { throw 'No captured public candidate produced current-slot daily weather.' }
-          # GitHub's pwsh wrapper exits with the last native process code. A later
-          # rejected candidate can leave LASTEXITCODE=1 even after we successfully
-          # select a verified fallback, producing a false terminal failure.
           $global:LASTEXITCODE = 0
           "selected_dir=$env:SELECTED_DIR" >> $env:GITHUB_OUTPUT
-          "selected_source_url=$([string]$selected.sourceUrl)" >> $env:GITHUB_OUTPUT
+          "selected_source_url=$([string]$dailySelected.sourceUrl)" >> $env:GITHUB_OUTPUT
+          "selected_source_handle=$([string]$dailySelected.sourceHandle)" >> $env:GITHUB_OUTPUT
+          "weekly_source_url=$weeklySourceUrl" >> $env:GITHUB_OUTPUT
           "selection_mode=$selectionMode" >> $env:GITHUB_OUTPUT
 
       - name: Upload failed candidate diagnostics
