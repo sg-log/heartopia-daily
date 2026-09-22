@@ -30,6 +30,11 @@ on:
         type: choice
         options: [manual, primary, retry]
         default: manual
+      dry_run:
+        description: 'Validate discovery/review without creating pending, issue, or Discord notification'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -58,6 +63,7 @@ jobs:
           MANUAL_TARGET_DATE: ${{ inputs.target_date }}
           MANUAL_ORIGIN: ${{ inputs.trigger_origin }}
           MANUAL_ATTEMPT_KIND: ${{ inputs.attempt_kind }}
+          MANUAL_DRY_RUN: ${{ inputs.dry_run }}
         run: |
           $nowUtc = if ([string]::IsNullOrWhiteSpace([string]$env:WEATHER_RESOLVE_NOW_UTC)) {
             [DateTimeOffset]::UtcNow
@@ -77,6 +83,7 @@ jobs:
           $isSnooze = 'false'
           $origin = ''
           $attemptKind = ''
+          $dryRun = 'false'
           if ($env:EVENT_NAME -eq 'schedule') {
             $origin = 'github-backup'
             $attemptKind = 'backup'
@@ -125,12 +132,14 @@ jobs:
             if ($origin -eq 'apps-script' -and $attemptKind -notin @('primary','retry')) { throw 'Apps Script dispatch must use primary or retry.' }
             if ($origin -notin @('manual','apps-script')) { throw 'Invalid trigger origin.' }
             if ($origin -eq 'apps-script' -and $attemptKind -eq 'retry') { $isSnooze = 'true' }
+            if ([string]$env:MANUAL_DRY_RUN -eq 'true') { $dryRun = 'true' }
           }
           "target_date=$targetDate" >> $env:GITHUB_OUTPUT
           "slot=$slot" >> $env:GITHUB_OUTPUT
           "is_snooze=$isSnooze" >> $env:GITHUB_OUTPUT
           "origin=$origin" >> $env:GITHUB_OUTPUT
           "attempt_kind=$attemptKind" >> $env:GITHUB_OUTPUT
+          "dry_run=$dryRun" >> $env:GITHUB_OUTPUT
           "run_key=$targetDate-$slot" >> $env:GITHUB_OUTPUT
 
       - name: Check whether this update slot already succeeded
@@ -441,7 +450,7 @@ jobs:
 
       - name: Register verified weather as one pending
         id: submit
-        if: ${{ success() && steps.bridge.outcome == 'success' }}
+        if: ${{ success() && steps.bridge.outcome == 'success' && steps.slot.outputs.dry_run != 'true' }}
         shell: pwsh
         env:
           WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
@@ -467,14 +476,17 @@ jobs:
           IS_SNOOZE: ${{ steps.slot.outputs.is_snooze }}
           ORIGIN: ${{ steps.slot.outputs.origin }}
           ATTEMPT_KIND: ${{ steps.slot.outputs.attempt_kind }}
+          DRY_RUN: ${{ steps.slot.outputs.dry_run }}
           CANDIDATE_COUNT: ${{ steps.publish.outputs.candidate_count }}
           USABLE_COUNT: ${{ steps.publish.outputs.usable_candidate_count }}
           SUBMIT_OUTCOME: ${{ steps.submit.outcome }}
           REPORT_ID: ${{ steps.submit.outputs.report_id }}
           CONTENT_DUPLICATE: ${{ steps.submit.outputs.duplicate }}
           PENDING_REGISTERED: ${{ steps.submit.outputs.pending_registered }}
-          WEEKLY_COUNT: ${{ steps.submit.outputs.weekly_count }}
+          WEEKLY_COUNT: ${{ steps.submit.outputs.weekly_count || steps.bind.outputs.weekly_count }}
           SOURCE_URL: ${{ steps.capture.outputs.selected_source_url }}
+          SOURCE_HANDLE: ${{ steps.capture.outputs.selected_source_handle }}
+          WEEKLY_SOURCE_URL: ${{ steps.capture.outputs.weekly_source_url }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
@@ -482,6 +494,14 @@ jobs:
               core.setOutput('terminal_success', 'true')
               core.setOutput('new_pending', 'false')
               core.setOutput('notify_failure', 'false')
+              return
+            }
+            if (process.env.DRY_RUN === 'true') {
+              core.notice(`Dry-run completed for ${process.env.RUN_KEY}; no pending, issue, or Discord notification was created.`)
+              core.setOutput('terminal_success', 'true')
+              core.setOutput('new_pending', 'false')
+              core.setOutput('notify_failure', 'false')
+              core.setOutput('report_id', '')
               return
             }
             const submitSucceeded = process.env.SUBMIT_OUTCOME === 'success' && (process.env.PENDING_REGISTERED === 'true' || process.env.CONTENT_DUPLICATE === 'true')
@@ -513,6 +533,8 @@ jobs:
               usableCandidateCount: Number(process.env.USABLE_COUNT || 0),
               weeklyCount: Number(process.env.WEEKLY_COUNT || 0),
               sourceUrl: process.env.SOURCE_URL || '',
+              sourceHandle: process.env.SOURCE_HANDLE || '',
+              weeklySourceUrl: process.env.WEEKLY_SOURCE_URL || '',
               reportId: process.env.REPORT_ID || '',
               duplicate: process.env.CONTENT_DUPLICATE === 'true',
               runUrl: process.env.RUN_URL
