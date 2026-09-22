@@ -415,7 +415,7 @@ test('recently used author is deprioritized only when an equally current alterna
   assert.equal(ranked[0].sourceHandle, 'fresh_author');
 });
 
-test('recent author remains available as fallback when it is the only current-slot candidate', () => {
+test('fresh target-date author is tried before recent source while recent source remains fallback', () => {
   const attempts = [{
     candidates: [
       {
@@ -433,7 +433,8 @@ test('recent author remains available as fallback when it is the only current-sl
     ]
   }];
   const ranked = mergeAndRankCandidates(attempts, '2026-09-22', 24, 'morning', {recentHandles:['recent_author']});
-  assert.equal(ranked[0].sourceHandle, 'recent_author');
+  assert.equal(ranked[0].sourceHandle, 'fresh_author');
+  assert.ok(ranked.some(item => item.sourceHandle === 'recent_author'));
 });
 
 test('weekly ranking prefers dated weekly forecast evidence without requiring current-slot text', () => {
