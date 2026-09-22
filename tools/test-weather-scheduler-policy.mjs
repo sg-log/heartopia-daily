@@ -90,7 +90,8 @@ test('daily-only submit preserves existing weeks while cross-source weekly prove
 test('failed candidate diagnostics artifact remains enabled', () => {
   assert.match(workflow, /name: Upload failed candidate diagnostics/)
   assert.match(workflow, /name: weather-scheduled-failure-\$\{\{ github\.run_id \}\}/)
-  assert.match(workflow, /path: \$\{\{ runner\.temp \}\}\/weather-candidate-\*/)
+  assert.match(workflow, /weather-daily-candidate-\*/)
+  assert.match(workflow, /weather-weekly-candidate-\*/)
   assert.match(workflow, /retention-days: 3/)
 })
 
