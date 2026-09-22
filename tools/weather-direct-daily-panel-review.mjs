@@ -22,6 +22,11 @@ function mimeFromBytes(bytes){
   if(bytes.length>=3&&bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff)return'image/jpeg';
   throw new Error('unsupportedEvidenceType');
 }
+function publishedDateMatchesTarget(capture,targetDate){
+  const ms=Date.parse(String(capture?.sourcePublishedAt||''));
+  if(!Number.isFinite(ms))return false;
+  return new Date(ms+9*60*60*1000).toISOString().slice(0,10)===targetDate;
+}
 function inferStartSlot(mapped){
   const observed=mapped.filter(v=>START_SLOTS.includes(v)).length;
   if(observed<3)return null;
@@ -107,7 +112,9 @@ export async function inspectDirectDailyPanelCapture({captureDir,targetDate,repo
   const capture=JSON.parse(await readFile(path.join(captureDir,'capture.json'),'utf8'));
   if(capture?.status!=='captured'||!Array.isArray(capture.rawMedia)||!capture.rawMedia.length)return{ready:false,targetDate,diagnostics:{reason:'captureNotReady'}};
   const postText=await readFile(path.join(captureDir,capture.postContent?.file||'post-content.txt'),'utf8');
-  if(!extractPostDates(postText).includes(targetDate))return{ready:false,targetDate,diagnostics:{reason:'targetDateNotConfirmed'}};
+  const dateConfirmedByText=extractPostDates(postText).includes(targetDate);
+  const dateConfirmedByPublishedAt=publishedDateMatchesTarget(capture,targetDate);
+  if(!dateConfirmedByText&&!dateConfirmedByPublishedAt)return{ready:false,targetDate,diagnostics:{reason:'targetDateNotConfirmed'}};
   const templates=await loadTemplates(repoRoot),browser=await chromium.launch({headless:true}),attempts=[];
   try{
     const page=await browser.newPage();
@@ -121,7 +128,7 @@ export async function inspectDirectDailyPanelCapture({captureDir,targetDate,repo
       const inferred=inferStartSlot(inspected.mapped);attempt.inferred=inferred;
       if(!inferred||!inspected.scores.every(s=>s.high&&s.value))continue;
       const slots=inspected.scores.map((s,i)=>({slot:`slot${i}`,visible:true,weather:[s.value],confidence:'high',description:`デイリー専用UI画像判定 score=${s.bestScore.toFixed(3)} margin=${s.margin.toFixed(3)} template=${s.templateValue}`}));
-      const visual={schemaVersion:1,ready:true,targetDate,selectedImage:{file:media.file,mimeType:media.mimeType,captureSha256:media.sha256},interpretation:{ready:true,observedDate:targetDate,startSlot:inferred.startSlot,slots,confidence:'high',summary:`投稿本文で${targetDate}を確認し、同一投稿のデイリー天気UIから5枠と時刻ラベルを直接判読。`,unresolved:[]},diagnostics:{mode:'direct-daily-only-panel',selectedOriginal:media.file,structure:{width:inspected.width,height:inspected.height,blueRatio:inspected.blueRatio},mapped:inspected.mapped,ocrAttempts:inspected.ocrAttempts,scores:inspected.scores,attempts}};
+      const visual={schemaVersion:1,ready:true,targetDate,selectedImage:{file:media.file,mimeType:media.mimeType,captureSha256:media.sha256},interpretation:{ready:true,observedDate:targetDate,startSlot:inferred.startSlot,slots,confidence:'high',summary:`投稿本文または公開投稿日時で${targetDate}を確認し、同一投稿のデイリー天気UIから5枠と時刻ラベルを直接判読。`,unresolved:[]},diagnostics:{mode:'direct-daily-only-panel',selectedOriginal:media.file,structure:{width:inspected.width,height:inspected.height,blueRatio:inspected.blueRatio},mapped:inspected.mapped,ocrAttempts:inspected.ocrAttempts,scores:inspected.scores,attempts}};
       const checked=applyTimedSpecialWeatherHints(visual,postText);
       if(!checked.ready){attempt.textWeatherConflict=checked.diagnostics?.textWeatherConflicts||[];continue;}
       return checked;
