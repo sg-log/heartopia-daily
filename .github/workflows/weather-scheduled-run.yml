@@ -326,6 +326,10 @@ jobs:
           }
 
           if ($null -eq $selected) { throw 'No captured public candidate produced current-slot daily weather.' }
+          # GitHub's pwsh wrapper exits with the last native process code. A later
+          # rejected candidate can leave LASTEXITCODE=1 even after we successfully
+          # select a verified fallback, producing a false terminal failure.
+          $global:LASTEXITCODE = 0
           "selected_dir=$env:SELECTED_DIR" >> $env:GITHUB_OUTPUT
           "selected_source_url=$([string]$selected.sourceUrl)" >> $env:GITHUB_OUTPUT
           "selection_mode=$selectionMode" >> $env:GITHUB_OUTPUT
