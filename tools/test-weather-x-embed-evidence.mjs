@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { WeatherCloudError } from "./weather-cloud-url-evidence.mjs";
-import { chooseEmbedEvidence, getOfficialPathwayName, parseXPostUrl } from "./weather-x-embed-evidence.mjs";
+import { chooseEmbedEvidence, getOfficialPathwayName, parseXPostUrl, xStatusPublishedAt } from "./weather-x-embed-evidence.mjs";
 import { collectXPublicMedia, downloadXPublicMedia, parseXPublicMediaUrl } from "./weather-x-raw-media.mjs";
 
 test("normalizes public X post URLs without depending on account name", () => {
@@ -85,4 +85,9 @@ test("fails closed on redirects and content-type mismatches", async () => {
     hostnameVerifier: async () => {},
     fetchImpl: async () => new Response(jpeg, { status: 200, headers: { "content-type": "image/png" } })
   }), WeatherCloudError);
+});
+
+
+test('derives X publication time from the exact status id', () => {
+  assert.equal(xStatusPublishedAt('2102146260182646791'), '2026-09-21T21:21:39.073Z');
 });

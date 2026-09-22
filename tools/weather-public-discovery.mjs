@@ -8,7 +8,9 @@ function parseArgs(argv) {
   if (!args['--out']) throw new Error('Missing --out');
   const slot = String(args['--slot'] || '').trim();
   if (slot && !['morning','evening'].includes(slot)) throw new Error('Invalid --slot');
-  return { targetDate: args['--target-date'], out: args['--out'], slot };
+  const recentHandles = String(args['--recent-handles'] || '').split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
+  const recentUrls = String(args['--recent-urls'] || '').split('|').map(v => v.trim()).filter(Boolean);
+  return { targetDate: args['--target-date'], out: args['--out'], slot, recentHandles, recentUrls };
 }
 
 function sourcePlatformForHost(host) {
@@ -71,6 +73,24 @@ export function normalizeCandidateUrl(raw) {
 
 function expectedStartSlotFor(slot) {
   return slot === 'morning' ? '06' : slot === 'evening' ? '18' : '';
+}
+
+export function xStatusPublishedAt(sourceId) {
+  try {
+    if (!/^\d{10,25}$/.test(String(sourceId || ''))) return '';
+    const timestampMs = (BigInt(String(sourceId)) >> 22n) + 1288834974657n;
+    const numeric = Number(timestampMs);
+    if (!Number.isFinite(numeric) || numeric < 0) return '';
+    return new Date(numeric).toISOString();
+  } catch {
+    return '';
+  }
+}
+
+function jstDateFromIso(value) {
+  const ms = Date.parse(String(value || ''));
+  if (!Number.isFinite(ms)) return '';
+  return new Date(ms + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 function startSlotTokens(slot) {
@@ -264,6 +284,8 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
       const contextText = `${row.text} ${row.parentText}`;
       const relevance = candidateRelevance(contextText, targetDate, slot);
       const sourceHandle = normalized.sourceHandle || (normalized.sourceType === 'x' ? extractXHandleFromText(contextText) : '');
+      const sourcePublishedAt = normalized.sourceType === 'x' ? xStatusPublishedAt(normalized.sourceId) : '';
+      const publishedDateMatched = Boolean(sourcePublishedAt && jstDateFromIso(sourcePublishedAt) === targetDate);
       const searchContextFallback = !relevance.relevant && isSearchContextFallback({
         sourceType: normalized.sourceType,
         searchQuery: query,
@@ -301,6 +323,8 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
         sourcePlatform: normalized.sourcePlatform,
         sourceId: normalized.sourceId,
         sourceHandle,
+        sourcePublishedAt,
+        publishedDateMatched,
         discoverySource: provider,
         searchQuery: query,
         anchorText: row.text.slice(0, 300),
@@ -323,20 +347,53 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
   return result;
 }
 
-function rankCandidates(candidates) {
-  return [...candidates].sort((a, b) =>
-    Number(Boolean(b.dateMatched)) - Number(Boolean(a.dateMatched)) ||
-    Number(Boolean(b.startSlotMatched)) - Number(Boolean(a.startSlotMatched)) ||
-    Number(Boolean(b.profileHeartopiaMatched)) - Number(Boolean(a.profileHeartopiaMatched)) ||
-    Number(Boolean(b.forecastMatched)) - Number(Boolean(a.forecastMatched)) ||
-    Number(b.relevanceScore || 0) - Number(a.relevanceScore || 0) ||
-    b.discoveries.length - a.discoveries.length ||
-    String(a.sourceUrl).localeCompare(String(b.sourceUrl))
-  );
+function candidateHistoryPenalty(candidate, recentHandles = [], recentUrls = []) {
+  const handle = String(candidate?.sourceHandle || '').toLowerCase();
+  const url = String(candidate?.sourceUrl || '');
+  if (url && recentUrls.includes(url)) return 2;
+  if (handle && recentHandles.includes(handle)) return 1;
+  return 0;
 }
 
-export function selectDiversifiedCandidates(candidates, limit = 24) {
-  const ranked = rankCandidates(candidates);
+function rankCandidates(candidates, options = {}) {
+  const recentHandles = options.recentHandles || [];
+  const recentUrls = options.recentUrls || [];
+  const purpose = options.purpose || 'daily';
+  return [...candidates].sort((a, b) => {
+    const aTargetDate = Boolean(a.dateMatched || a.publishedDateMatched);
+    const bTargetDate = Boolean(b.dateMatched || b.publishedDateMatched);
+    const currentness = Number(bTargetDate) - Number(aTargetDate);
+    if (currentness) return currentness;
+
+    // Once two candidates are both plausibly from the target date, diversify
+    // before trusting snippet-level slot/forecast text. The later image review
+    // still requires the exact 06/18 slot and game UI, so a fresh author can be
+    // tried first without weakening correctness; recent authors remain fallback.
+    const history = candidateHistoryPenalty(a, recentHandles, recentUrls) - candidateHistoryPenalty(b, recentHandles, recentUrls);
+    if (history) return history;
+
+    if (purpose === 'daily') {
+      const slot = Number(Boolean(b.startSlotMatched)) - Number(Boolean(a.startSlotMatched));
+      if (slot) return slot;
+    } else {
+      const weekly = Number(Boolean(b.forecastMatched)) - Number(Boolean(a.forecastMatched));
+      if (weekly) return weekly;
+    }
+    return (
+      Number(Boolean(b.dateMatched)) - Number(Boolean(a.dateMatched)) ||
+      Number(Boolean(b.profileHeartopiaMatched)) - Number(Boolean(a.profileHeartopiaMatched)) ||
+      (purpose === 'daily'
+        ? Number(Boolean(b.forecastMatched)) - Number(Boolean(a.forecastMatched))
+        : Number(Boolean(b.startSlotMatched)) - Number(Boolean(a.startSlotMatched))) ||
+      Number(b.relevanceScore || 0) - Number(a.relevanceScore || 0) ||
+      b.discoveries.length - a.discoveries.length ||
+      String(a.sourceUrl).localeCompare(String(b.sourceUrl))
+    );
+  });
+}
+
+export function selectDiversifiedCandidates(candidates, limit = 24, options = {}) {
+  const ranked = rankCandidates(candidates, options);
   const selected = [];
   const selectedUrls = new Set();
   const providerCounts = new Map();
@@ -385,7 +442,7 @@ export function selectDiversifiedCandidates(candidates, limit = 24) {
   return selected;
 }
 
-export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = '') {
+export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = '', options = {}) {
   const merged = new Map();
   for (const attempt of attempts || []) {
     for (const c of attempt.candidates || []) {
@@ -397,6 +454,8 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = 
       const relevance = candidateRelevance(`${record.anchorText || ''} ${record.context || ''}`, targetDate, slot);
       record.relevanceScore = Math.max(Number(record.relevanceScore || 0), relevance.score);
       record.dateMatched = Boolean(record.dateMatched || relevance.dateMatched);
+      record.publishedDateMatched = Boolean(record.publishedDateMatched || c.publishedDateMatched);
+      if (!record.sourcePublishedAt && c.sourcePublishedAt) record.sourcePublishedAt = c.sourcePublishedAt;
       record.forecastMatched = Boolean(record.forecastMatched || relevance.forecastMatched);
       record.startSlotMatched = Boolean(record.startSlotMatched || relevance.startSlotMatched);
       record.strictTextRelevant = Boolean(record.strictTextRelevant || relevance.relevant);
@@ -404,6 +463,7 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = 
       record.dynamicAuthorFallback = Boolean(record.dynamicAuthorFallback || c.dynamicAuthorFallback);
       record.profileHeartopiaMatched = Boolean(record.profileHeartopiaMatched || c.profileHeartopiaMatched);
       record.profileHeartopiaTerms = [...new Set([...(record.profileHeartopiaTerms || []), ...(c.profileHeartopiaTerms || [])])];
+      if (!record.sourceHandle && c.sourceHandle) record.sourceHandle = c.sourceHandle;
       if (!record.profileCheckStatus && c.profileCheckStatus) record.profileCheckStatus = c.profileCheckStatus;
       if (!record.dynamicHandle && c.dynamicHandle) record.dynamicHandle = c.dynamicHandle;
     }
@@ -412,10 +472,44 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = 
     const strict = candidateRelevance(`${candidate.anchorText || ''} ${candidate.context || ''}`, targetDate, slot).relevant;
     return strict || candidate.searchContextFallback === true || candidate.dynamicAuthorFallback === true;
   });
-  return selectDiversifiedCandidates(relevant, limit);
+  return selectDiversifiedCandidates(relevant, limit, { ...options, purpose: 'daily' });
 }
 
-export async function discover(targetDate, slot = '') {
+export function mergeAndRankWeeklyCandidates(attempts, targetDate, limit = 24, options = {}) {
+  const merged = new Map();
+  for (const attempt of attempts || []) {
+    for (const c of attempt.candidates || []) {
+      const key = c.sourceUrl;
+      if (!key) continue;
+      if (!merged.has(key)) merged.set(key, { ...c, discoveries: [] });
+      const record = merged.get(key);
+      record.discoveries.push({ discoverySource: c.discoverySource, searchQuery: c.searchQuery });
+      const relevance = candidateRelevance(`${record.anchorText || ''} ${record.context || ''}`, targetDate, '');
+      record.relevanceScore = Math.max(Number(record.relevanceScore || 0), Number(c.relevanceScore || 0), relevance.score);
+      record.dateMatched = Boolean(record.dateMatched || c.dateMatched || relevance.dateMatched);
+      record.publishedDateMatched = Boolean(record.publishedDateMatched || c.publishedDateMatched);
+      if (!record.sourcePublishedAt && c.sourcePublishedAt) record.sourcePublishedAt = c.sourcePublishedAt;
+      record.forecastMatched = Boolean(record.forecastMatched || c.forecastMatched || relevance.forecastMatched);
+      record.startSlotMatched = Boolean(record.startSlotMatched || c.startSlotMatched);
+      record.strictTextRelevant = Boolean(record.strictTextRelevant || c.strictTextRelevant || relevance.relevant);
+      record.searchContextFallback = Boolean(record.searchContextFallback || c.searchContextFallback);
+      record.dynamicAuthorFallback = Boolean(record.dynamicAuthorFallback || c.dynamicAuthorFallback);
+      record.profileHeartopiaMatched = Boolean(record.profileHeartopiaMatched || c.profileHeartopiaMatched);
+      record.profileHeartopiaTerms = [...new Set([...(record.profileHeartopiaTerms || []), ...(c.profileHeartopiaTerms || [])])];
+      if (!record.sourceHandle && c.sourceHandle) record.sourceHandle = c.sourceHandle;
+      if (!record.profileCheckStatus && c.profileCheckStatus) record.profileCheckStatus = c.profileCheckStatus;
+      if (!record.dynamicHandle && c.dynamicHandle) record.dynamicHandle = c.dynamicHandle;
+    }
+  }
+  const relevant = [...merged.values()].filter(candidate => {
+    const text = `${candidate.anchorText || ''} ${candidate.context || ''}`;
+    const strict = candidateRelevance(text, targetDate, '').relevant;
+    return strict || candidate.forecastMatched === true || candidate.searchContextFallback === true || candidate.dynamicAuthorFallback === true;
+  });
+  return selectDiversifiedCandidates(relevant, limit, { ...options, purpose: 'weekly' });
+}
+
+export async function discover(targetDate, slot = '', history = {}) {
   const queries = buildQueries(targetDate, slot);
   // Invariant: no person and no single search provider is fixed as the truth source.
   // Every configured public search route gets the same generic Heartopia-weather
@@ -451,10 +545,9 @@ export async function discover(targetDate, slot = '') {
         if (!current || score > current.score) handleScores.set(key, { handle, score });
       }
     }
-    const handlesToCheck = [...handleScores.values()]
-      .sort((a, b) => b.score - a.score || a.handle.localeCompare(b.handle))
-      .slice(0, 12)
-      .map((item) => item.handle);
+    const runtimeHandleRanking = [...handleScores.values()]
+      .sort((a, b) => b.score - a.score || a.handle.localeCompare(b.handle));
+    const handlesToCheck = runtimeHandleRanking.slice(0, 12).map((item) => item.handle);
 
     for (const handle of handlesToCheck) {
       const check = await inspectPublicXProfile(page, handle);
@@ -462,10 +555,22 @@ export async function discover(targetDate, slot = '') {
       if (check.heartopiaMatched) dynamicHandles.push(handle);
     }
 
-    // Second pass: expand only authors discovered in this run whose public profile
-    // contains Heartopia context. This is dynamic and never relies on a saved person.
-    for (const provider of providers) {
-      for (const handle of dynamicHandles) {
+    // Profile text is only a weak optional signal. A public search result that already
+    // contains strong target-date/current-slot Heartopia-weather clues is sufficient to
+    // try that runtime-discovered author too. This avoids silently collapsing back to
+    // the one author whose profile happens to expose a Heartopia keyword.
+    for (const item of runtimeHandleRanking.filter(item => item.score >= 4).slice(0, 4)) {
+      if (!dynamicHandles.some(handle => handle.toLowerCase() === item.handle.toLowerCase())) {
+        dynamicHandles.push(item.handle);
+      }
+    }
+
+    // Dynamic author expansion is auxiliary: broad discovery above still uses every
+    // configured provider. For author-specific queries use two independent public
+    // routes that can resolve X status results without login.
+    const dynamicProviders = ['yahoo-realtime', 'google'];
+    for (const provider of dynamicProviders) {
+      for (const handle of dynamicHandles.slice(0, 4)) {
         for (const query of buildDynamicAuthorQueries(provider, handle, targetDate, slot)) {
           attempts.push(await collectFromPage(page, provider, query, targetDate, slot, 20, handle));
         }
@@ -488,8 +593,11 @@ export async function discover(targetDate, slot = '') {
     await browser.close();
   }
 
-  const candidates = mergeAndRankCandidates(attempts, targetDate, 24, slot);
-  const selectedUrls = new Set(candidates.map((candidate) => candidate.sourceUrl));
+  const recentHandles = history.recentHandles || [];
+  const recentUrls = history.recentUrls || [];
+  const candidates = mergeAndRankCandidates(attempts, targetDate, 24, slot, { recentHandles, recentUrls });
+  const weeklyCandidates = mergeAndRankWeeklyCandidates(attempts, targetDate, 24, { recentHandles, recentUrls });
+  const selectedUrls = new Set([...candidates, ...weeklyCandidates].map((candidate) => candidate.sourceUrl));
   const xTrace = attempts.flatMap((attempt) =>
     (attempt.diagnostics || []).map((item) => ({
       provider: attempt.provider,
@@ -508,13 +616,15 @@ export async function discover(targetDate, slot = '') {
     attempts: attempts.map(({ provider, query, status, error, linksSeen, candidates }) => ({ provider, query, status, error, linksSeen, candidateCount: candidates.length })),
     profileChecks,
     xTrace,
-    candidates
+    recentSourceHistory: { handles: recentHandles, urls: recentUrls },
+    candidates,
+    weeklyCandidates
   };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const { targetDate, out, slot } = parseArgs(process.argv.slice(2));
-  const result = await discover(targetDate, slot);
+  const { targetDate, out, slot, recentHandles, recentUrls } = parseArgs(process.argv.slice(2));
+  const result = await discover(targetDate, slot, { recentHandles, recentUrls });
   await fs.writeFile(out, `${JSON.stringify(result)}\n`, 'utf8');
   console.log(JSON.stringify({
     candidateCount: result.candidates.length,
@@ -522,6 +632,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       sourceUrl: candidate.sourceUrl,
       sourceType: candidate.sourceType,
       sourcePlatform: candidate.sourcePlatform,
+      sourceHandle: candidate.sourceHandle || '',
+      sourcePublishedAt: candidate.sourcePublishedAt || '',
+      publishedDateMatched: Boolean(candidate.publishedDateMatched),
       relevanceScore: candidate.relevanceScore,
       dateMatched: candidate.dateMatched,
       startSlotMatched: candidate.startSlotMatched,
@@ -534,6 +647,19 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       profileHeartopiaTerms: candidate.profileHeartopiaTerms || [],
       discoverySource: candidate.discoverySource,
       discoveryCount: candidate.discoveries?.length || 0
+    })),
+    weeklyCandidateCount: result.weeklyCandidates?.length || 0,
+    weeklyCandidates: (result.weeklyCandidates || []).map(candidate => ({
+      sourceUrl: candidate.sourceUrl,
+      sourceType: candidate.sourceType,
+      sourcePlatform: candidate.sourcePlatform,
+      sourceHandle: candidate.sourceHandle || '',
+      sourcePublishedAt: candidate.sourcePublishedAt || '',
+      publishedDateMatched: Boolean(candidate.publishedDateMatched),
+      relevanceScore: candidate.relevanceScore,
+      dateMatched: candidate.dateMatched,
+      forecastMatched: candidate.forecastMatched,
+      discoverySource: candidate.discoverySource
     })),
     providers: result.providers,
     dynamicHandles: result.dynamicHandles,
