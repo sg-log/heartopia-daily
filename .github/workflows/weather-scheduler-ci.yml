@@ -13,6 +13,7 @@ on:
       - 'tools/test-weather-deterministic-review.mjs'
       - 'tools/weather-unified-review.mjs'
       - 'tools/test-weather-unified-review.mjs'
+      - 'tools/weather-cross-source-compose.mjs'
       - 'tools/weather-cloud-submit-unified.ps1'
       - 'tools/weather-cloud-url-evidence.mjs'
       - 'tools/README-weather-admin-trigger.md'
@@ -49,6 +50,8 @@ jobs:
         run: node --test tools/test-weather-deterministic-review.mjs
       - name: Validate unified daily and weekly review helpers
         run: node --test tools/test-weather-unified-review.mjs
+      - name: Validate cross-source composer syntax
+        run: node --check tools/weather-cross-source-compose.mjs
       - name: Parse unified PowerShell submitter
         shell: pwsh
         run: |
