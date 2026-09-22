@@ -367,3 +367,28 @@ test('diversification does not give any search provider or platform an intrinsic
   assert.ok(selected.some((item) => item.sourceType === 'web'));
   assert.ok(selected.filter((item) => item.discoverySource === 'yahoo-realtime').length <= 4);
 });
+
+test('merge preserves an X handle recovered by a later discovery route for the same status', () => {
+  const base = {
+    sourceUrl: 'https://x.com/i/status/2102146260182646791',
+    sourceType: 'x',
+    sourcePlatform: 'x',
+    sourceId: '2102146260182646791',
+    relevanceScore: 22,
+    dateMatched: true,
+    forecastMatched: true,
+    startSlotMatched: true,
+    strictTextRelevant: true,
+    searchContextFallback: false,
+    dynamicAuthorFallback: false,
+    anchorText: 'ハートピア 今日の天気',
+    context: '2026/09/22 06:00 ハートピア 天気予報'
+  };
+  const ranked = mergeAndRankCandidates([
+    { candidates: [{ ...base, sourceHandle: '', discoverySource: 'yahoo-web', searchQuery: 'ハートピア 天気 9月22日 06:00' }] },
+    { candidates: [{ ...base, sourceHandle: 'weatherfan', discoverySource: 'yahoo-realtime', searchQuery: 'ハートピア 天気' }] }
+  ], '2026-09-22', 24, 'morning');
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].sourceHandle, 'weatherfan');
+});
+
