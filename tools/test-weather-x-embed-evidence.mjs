@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { WeatherCloudError } from "./weather-cloud-url-evidence.mjs";
-import { chooseEmbedEvidence, getOfficialPathwayName, parseXPostUrl } from "./weather-x-embed-evidence.mjs";
+import { chooseEmbedEvidence, getOfficialPathwayName, parseXPostUrl, xStatusPublishedAt } from "./weather-x-embed-evidence.mjs";
 import { collectXPublicMedia, downloadXPublicMedia, parseXPublicMediaUrl } from "./weather-x-raw-media.mjs";
 
 test("normalizes public X post URLs without depending on account name", () => {
