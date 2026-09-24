@@ -5,7 +5,11 @@ import { detectAccessBarrier } from '../weather-cloud-url-evidence.mjs';
 export function queries(targetDate) {
   date(targetDate); const [,m,d]=targetDate.split('-').map(Number);
   return [
-    {lane:'daily',query:`ハートピア 天気 ${targetDate} ${m}月${d}日`},
+    {lane:'daily',query:`ハートピア 天気 ${m}月${d}日`},
+    {lane:'daily',query:`ハートピア 天気 ${m}月${d}日 06:00`},
+    {lane:'daily',query:'ハートピア 天気'},
+    {lane:'weekly',query:'ハートピア 週間天気'},
+    {lane:'weekly',query:'Heartopia weather'},
     {lane:'daily',query:`Heartopia weather ${targetDate}`},
     {lane:'daily',query:`ハートピア お天気 ${m}/${d}`},
     {lane:'weekly',query:`ハートピア 週間 天気 ${targetDate}`},
@@ -32,6 +36,7 @@ export async function discover(targetDate,{config,history=[]}={}) {
           const body=await page.locator('body').innerText({timeout:3000});
           const barrier=detectAccessBarrier({finalUrl:page.url(),title:await page.title(),bodyText:body});
           if(barrier||!response?.ok())throw Error(barrier||`http${response?.status()}`);
+          attempt.title=await page.title();attempt.finalUrl=page.url();attempt.bodyExcerpt=body.slice(0,1600);
           const rows=await page.locator('a[href]').evaluateAll(nodes=>nodes.slice(0,450).map(a=>{
             let node=a,context=a.innerText||'';
             for(let n=0;n<6&&node.parentElement;n++){
@@ -45,8 +50,10 @@ export async function discover(targetDate,{config,history=[]}={}) {
           for(const row of rows){
             const normalized=canonical(row.url);if(!normalized)continue;
             if(!/ハートピア|heartopia/i.test(row.context)||!/天気|weather|予報|forecast/i.test(row.context))continue;
+            if(/乗換|時刻表|路線|レジャー施設|施設の天気/.test(row.context)&&!/ゲーム|スローライフ|heartopia/i.test(row.context))continue;
             attempt.candidates.push({...normalized,context:row.context,author:normalized.author||row.context.match(/@([A-Za-z0-9_]{1,15})\b/)?.[1]||'',provider:task.id,query:task.query,lane:task.lane});
           }
+        if(!attempt.candidates.length)attempt.status='no_candidates';
         }catch(e){attempt.status='unavailable';attempt.reason=e.message;}
         attempts[index]=attempt;
         console.log(JSON.stringify({stage:'search',provider:task.id,lane:task.lane,status:attempt.status,count:attempt.candidates.length}));
