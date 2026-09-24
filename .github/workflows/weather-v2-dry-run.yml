@@ -1,0 +1,51 @@
+name: Weather v2 dry-run
+on:
+  push:
+    branches: [feat/weather-v2-dry-run-20260924]
+    paths: ['tools/weather-v2/**', '.github/workflows/weather-v2-dry-run.yml']
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: Target date (JST)
+        default: '2026-09-22'
+        required: true
+        type: string
+      start_slot:
+        description: Expected first daily time
+        default: '06'
+        required: true
+        type: choice
+        options: ['06', '18']
+permissions:
+  contents: read
+concurrency:
+  group: weather-v2-dry-run-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node --test tools/weather-v2/test.mjs
+      - run: npx playwright install --with-deps chromium
+      - name: Discover, capture and independently review daily and weekly
+        env:
+          TARGET_DATE: ${{ inputs.target_date || '2026-09-22' }}
+          START_SLOT: ${{ inputs.start_slot || '06' }}
+        run: node tools/weather-v2/run.mjs --date "$TARGET_DATE" --start "$START_SLOT" --out "$RUNNER_TEMP/weather-v2"
+      - name: Preserve exact images, provenance, rejected candidates and decisions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weather-v2-${{ github.run_id }}
+          path: ${{ runner.temp }}/weather-v2
+          if-no-files-found: warn
+          retention-days: 14
