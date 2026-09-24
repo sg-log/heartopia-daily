@@ -48,7 +48,7 @@ export function mergeCandidates(rows,targetDate) {
 }
 export function rankLane(candidates,lane,{limit=12,authorLimit=2,history=[]}={}) {
   const ranked=candidates.map(c=>({...c,score:(c.dateMentioned?100:0)+(c.publishedOnTarget?45:0)+(c.lanes.includes(lane)?20:0)+(/週間|weekly|forecast/i.test(c.contexts.join(' '))&&lane==='weekly'?12:0)}))
-    .sort((a,b)=>b.score-a.score || Number(history.includes(a.author))-Number(history.includes(b.author)) || a.sourceUrl.localeCompare(b.sourceUrl));
+    .sort((a,b)=>b.score-a.score || Number(history.includes(a.author)||history.includes(a.sourceUrl))-Number(history.includes(b.author)||history.includes(b.sourceUrl)) || a.sourceUrl.localeCompare(b.sourceUrl));
   const chosen=[],counts=new Map(),hostCounts=new Map();
   // Round-robin by author/host within a date-quality tier. Unknown authors never share one bucket.
   for (const tier of [true,false]) for (let round=0;round<authorLimit;round++) {

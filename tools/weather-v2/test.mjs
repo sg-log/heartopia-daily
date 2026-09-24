@@ -30,3 +30,10 @@ test('workflow has read-only permissions and no production credentials or submit
   const w=await readFile(new URL('../../.github/workflows/weather-v2-dry-run.yml',import.meta.url),'utf8');
   assert.match(w,/contents: read/);assert.doesNotMatch(w,/secrets\.|issues: write|weather-cloud-submit|discord-notify|schedule:/);
 });
+
+test('public redirects are followed with each hostname checked; login redirects stop',async()=>{
+  const {publicGet}=await import('./capture.mjs');const checked=[];let calls=0;
+  const response=await publicGet('https://public.example/a',{hostCheck:async h=>checked.push(h),fetchImpl:async()=>++calls===1?{status:301,headers:new Headers({location:'https://cdn.example/b'})}:{status:200,ok:true}});
+  assert.equal(response.status,200);assert.deepEqual(checked,['public.example','cdn.example']);
+  await assert.rejects(publicGet('https://public.example/a',{hostCheck:async()=>{},fetchImpl:async()=>({status:302,headers:new Headers({location:'/login'})})}),/accessBarrier/);
+});

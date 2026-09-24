@@ -41,6 +41,8 @@ jobs:
           TARGET_DATE: ${{ inputs.target_date || '2026-09-22' }}
           START_SLOT: ${{ inputs.start_slot || '06' }}
         run: node tools/weather-v2/run.mjs --date "$TARGET_DATE" --start "$START_SLOT" --out "$RUNNER_TEMP/weather-v2"
+      - name: Check saved image hashes and result bindings
+        run: node tools/weather-v2/verify.mjs "$RUNNER_TEMP/weather-v2"
       - name: Preserve exact images, provenance, rejected candidates and decisions
         if: always()
         uses: actions/upload-artifact@v4

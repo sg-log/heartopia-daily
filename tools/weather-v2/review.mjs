@@ -16,7 +16,7 @@ export function strictDaily(proposal,expectedStartSlot) {
   return scores.every((s,i)=>{
     const value=proposal.interpretation.slots[i]?.weather?.[0];
     const template=s.templateValue||s.bestValue;
-    return value===template&&s.bestScore>=.43&&s.margin>=.008;
+    return value===template&&s.bestScore>=.65&&s.margin>=.04;
   });
 }
 async function verifyWeeklyDates(bytes,mime,scores,targetDate) {

@@ -14,7 +14,21 @@ const productionNames=['WEATHER_POST_KEY','WEATHER_ADMIN_KEY','WEATHER_DC_WEBHOO
 if(productionNames.some(k=>process.env[k]))throw Error('productionCredentialsForbidden');
 const result={schema:SCHEMA,mode:'dry-run',targetDate,startSlot,createdAt:new Date().toISOString(),pendingCreated:false,discordSent:false,acceptance:'unverified'};
 try{
-  const discovery=await discover(targetDate);
+  const history=[];
+  // Read-only public result history, used only as a ranking tie-break, never as discovery seeds.
+  if(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(process.env.GITHUB_REPOSITORY||'')){
+    try{
+      const r=await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/issues?state=all&per_page=100`,{signal:AbortSignal.timeout(15000)});
+      if(!r.ok)throw Error(`historyHttp${r.status}`);
+      for(const issue of await r.json()){
+        if(!issue.body?.includes('heartopia-weather-scheduled-success:'))continue;
+        const data=issue.body.match(/```json\s*([\s\S]*?)```/)?.[1];if(!data)continue;
+        try{const v=JSON.parse(data);if(v.sourceHandle)history.push(v.sourceHandle.toLowerCase());if(v.sourceUrl)history.push(v.sourceUrl);}catch{}
+      }
+    }catch(e){result.historyWarning=e.message;}
+  }
+  result.historyEntries=history.length;
+  const discovery=await discover(targetDate,{history});
   await writeFile(path.join(out,'discovery.json'),json(discovery));
   const queue=[...new Map([...discovery.daily,...discovery.weekly].map(c=>[c.sourceUrl,c])).values()];
   const inspected=[];
@@ -22,7 +36,8 @@ try{
     const dir=path.join(out,`candidate-${String(index).padStart(2,'0')}`);
     const item={candidate,dir:path.basename(dir),daily:{ready:false},weekly:{ready:false}};
     try{
-      await capture(candidate,dir);
+      const captured=await capture(candidate,dir);
+      item.candidate.author=captured.sourceHandle||item.candidate.author;
       Object.assign(item,await review(dir,targetDate,startSlot));
       await writeFile(path.join(dir,'review.json'),json(item));
     }catch(e){item.error=e.message;}

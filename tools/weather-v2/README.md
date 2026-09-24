@@ -24,7 +24,7 @@ Specification: Notion 「Heartopia Daily｜ゴール・現行仕様・設計図�
 
 `config.json` has replaceable search adapters. Every configured provider gets both daily and weekly queries; none is a required truth source. Candidates and unsuccessful attempts are retained. Canonical URLs merge discovery routes without losing author information. Daily and weekly receive independent bounded queues. There is no fixed author list. Unknown author identities are separate buckets. Recent history can break ties between otherwise equally ranked candidates; it is never a truth signal.
 
-Capture uses public pages and official public X embeds. It never signs in, solves challenges, uses credentialed APIs, or calls a paid model API. X media must be linked to the exact discovered status. Ordinary pages contribute actual image bytes, not a whole-page screenshot masquerading as game UI. `page.png` is diagnostic only.
+Capture uses public pages and official public X embeds. It never signs in, solves challenges, uses credentialed APIs, or calls a paid model API. X media must be linked to the exact discovered status. Ordinary pages contribute actual image bytes, not a whole-page screenshot masquerading as game UI. `page.jpg` is diagnostic only.
 
 V2 treats legacy recognition as proposals. Daily must match the expected start slot, five template matches, and the explicit source date. Heuristic/template disagreement is rejected. Weekly must have recognizable game UI, five weather cells and independently OCR-verified date labels. Publication time is ranking metadata only; query dates and timestamps are never inserted into source text to make an old reader accept a date.
 
