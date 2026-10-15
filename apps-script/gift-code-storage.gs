@@ -172,6 +172,8 @@ function reconcileGiftReviews_(candidates, acknowledgements) {
         return ["https://heartopiaguide.com/codes/", "https://www.heartodex.com/en/codes/"].indexOf(url) >= 0;
       });
       if ((!official && source) || (!official && !listings.length)) return;
+      // Search can return years of old X posts; only current active-list misses alert.
+      if (!listings.length || byCode[code]) return;
       if (rows.slice(1).some(function(row) { return String(row[1]) === code; })) return;
       const row = [Utilities.getUuid(), code, safeSheetText_(String(item.reason || "公式情報の確認が必要です。").slice(0, 300)),
         source, JSON.stringify(listings.slice(0, 2)), safeSheetText_(String(item.excerpt || "").slice(0, 1000)), "pending", now, ""];
@@ -183,8 +185,8 @@ function reconcileGiftReviews_(candidates, acknowledgements) {
       const row = rows[i];
       const gift = byCode[String(row[1])];
       // A deliberate hide is final; do not expose it as a fresh missing-code alert.
-      const resolved = gift && (String(gift[GIFT_HEADERS.indexOf("status")]) === "hidden"
-        || (Boolean(formatDateTimeValue_(gift[GIFT_HEADERS.indexOf("expiresAt")])) && !/既存.*一致/.test(String(row[2]))));
+      const legacy = !JSON.parse(String(row[4] || "[]")).length;
+      const resolved = Boolean(gift) || legacy;
       let changed = false;
       if (resolved && row[6] !== "resolved") { row[6] = "resolved"; changed = true; }
       if (ack.indexOf(String(row[0])) >= 0 && !row[8]) { row[8] = now; changed = true; }
