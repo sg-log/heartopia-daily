@@ -195,6 +195,19 @@ test('a listing link to a different official code cannot approve the listed cand
   assert.equal(result.reviews[0].code, 'missing123');
 });
 
+test('a verified Japanese post takes priority over an English listing link for review evidence', async () => {
+  const jp = { sourceUrl: 'https://x.com/Heartopia_JP/status/2106957555713085600',
+    text: '願い星 ×3\nギフトコード：missing123\n受け取ろう…', incomplete: true };
+  const result = await reconcileGiftListings({ officialPosts: [jp], fetchImpl: async url => {
+    if (String(url).includes('heartopiaguide.com')) return new Response('<code>missing123</code><a href="https://x.com/MyHeartopia/status/2106957555415032211">official</a>Expired Codes (0)');
+    if (String(url).includes('heartodex.com')) return new Response('');
+    return new Response(JSON.stringify({ author_url: 'https://x.com/MyHeartopia', html: '<p>Wishing star ×3<br>Gift Code: missing123<br>Receive now…</p>' }));
+  }});
+  assert.equal(result.posts.length, 0);
+  assert.equal(result.reviews[0].sourceUrl, jp.sourceUrl);
+  assert.equal(result.reviews[0].excerpt, jp.text);
+});
+
 test('full official text found through a public listing can use the existing import path', async () => {
   const result = await reconcileGiftListings({ fetchImpl: async url => {
     if (String(url).includes('heartopiaguide.com')) return new Response('<code>missing123</code><a href="https://x.com/Heartopia_JP/status/2106957555713085600">official</a>Expired Codes (0)');
@@ -250,7 +263,7 @@ test('production poll ignores old search results and registered codes with missi
         throw Error('unexpected request');
       } });
     assert.deepEqual(batch.reviewCandidates.map(item => item.code), ['missing123']);
-    assert.equal(batch.posts.length, 0);
+    assert.ok(batch.posts.every(post => /\/Heartopia_JP\//i.test(post.sourceUrl) && /…$/.test(post.text)));
   } finally {
     assert.equal(path.dirname(path.resolve(dir)), path.resolve(os.tmpdir()));
     fs.rmSync(dir, { recursive: true, force: true });

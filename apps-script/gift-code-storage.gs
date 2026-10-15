@@ -76,7 +76,9 @@ function ingestOfficialXGiftBatch_(body) {
 }
 
 function processOfficialXGiftBatch_(body) {
-  const posts = Array.isArray(body.posts) ? body.posts.slice(0, 20) : [];
+  const posts = Array.isArray(body.posts) ? body.posts.slice(0, 20).sort(function(a, b) {
+    return Number(/\/Heartopia_JP\//i.test(a.sourceUrl || "")) - Number(/\/Heartopia_JP\//i.test(b.sourceUrl || ""));
+  }) : [];
   const reviewCandidates = Array.isArray(body.reviewCandidates) ? body.reviewCandidates.slice(0, 20) : [];
   const counts = {
     created: 0,
@@ -108,6 +110,7 @@ function processOfficialXGiftBatch_(body) {
     const parsed = parseDiscordGiftAnnouncement_(text, {
       rewardNameMap: giftRewardNameMap_()
     });
+    if (parsed.ok && /^Heartopia_JP$/i.test(match[1])) preferJapaneseGiftSource_(sourceUrl, text, parsed);
     if (!parsed.ok || !parsed.expiresAt || /(?:…|\.{3})\s*$/.test(text)) {
       counts.review++;
       if (parsed.code) reviewCandidates.push({ code: parsed.code, sourceUrl: sourceUrl, listingUrls: [],
@@ -143,6 +146,30 @@ function processOfficialXGiftBatch_(body) {
     reviews: body.reconcile ? reconcileGiftReviews_(reviewCandidates, body.ackReviewIds) : [],
     evidenceRequests: body.reconcile ? giftReviewEvidenceRequests_() : []
   };
+}
+
+function preferJapaneseGiftSource_(sourceUrl, text, parsed) {
+  // Partial Japanese posts may improve labels/proof, never supply a deadline or publish a new code.
+  withScriptLock_(function() {
+    const sheet = getGiftReviewSheet_(), rows = sheet.getDataRange().getValues();
+    const index = rows.findIndex(function(row, i) { return i > 0 && String(row[1]) === parsed.code && row[6] === "pending"; });
+    if (index > 0 && rows[index][3] !== sourceUrl) {
+      const row = rows[index]; while (row.length < 11) row.push("");
+      row[3] = sourceUrl; row[5] = safeSheetText_(text.slice(0, 1000)); row[10] = "";
+      sheet.getRange(index + 1, 1, 1, 11).setValues([row]);
+    }
+    const gifts = getGiftSheet_(), values = gifts.getDataRange().getValues();
+    const codeIndex = GIFT_HEADERS.indexOf("code"), sourceIndex = GIFT_HEADERS.indexOf("sourceUrl"), rewardIndex = GIFT_HEADERS.indexOf("reward");
+    const giftIndex = values.findIndex(function(row, i) { return i > 0 && String(row[codeIndex]) === parsed.code; });
+    if (giftIndex < 1) return;
+    const gift = values[giftIndex], priorSource = plainSheetText_(gift[sourceIndex]);
+    if (!/^https:\/\/x\.com\/(?:myheartopia|Heartopia_JP)\/status\/\d+(?:\?.*)?$/i.test(priorSource)
+        || String(gift[GIFT_HEADERS.indexOf("status")]) === "hidden") return;
+    if (priorSource === sourceUrl && plainSheetText_(gift[rewardIndex]) === parsed.reward) return;
+    gift[sourceIndex] = safeSheetText_(sourceUrl); gift[rewardIndex] = safeSheetText_(parsed.reward);
+    gift[GIFT_HEADERS.indexOf("updatedAt")] = new Date().toISOString();
+    gifts.getRange(giftIndex + 1, 1, 1, GIFT_HEADERS.length).setValues([gift]);
+  });
 }
 
 function getGiftReviewSheet_() {
@@ -515,6 +542,8 @@ function saveAutomatedGiftCode_(candidate, options) {
       const existingSource = plainSheetText_(values[i][sourceColumn]).trim();
       const existingMemo = plainSheetText_(values[i][memoColumn]).trim();
       const existingStatus = normalizeGiftStatus_(values[i][statusColumn]);
+      const keepJapaneseReward = /^https:\/\/x\.com\/Heartopia_JP\//i.test(existingSource)
+        && !/^https:\/\/x\.com\/Heartopia_JP\//i.test(incoming.sourceUrl);
 
       const rewardAutoManaged = !existingReward
         || existingReward === incoming.rawReward
@@ -534,7 +563,7 @@ function saveAutomatedGiftCode_(candidate, options) {
       const nextItem = {
         id: String(values[i][idColumn] || Utilities.getUuid()),
         code: code,
-        reward: rewardAutoManaged && incoming.reward ? incoming.reward : existingReward,
+        reward: !keepJapaneseReward && rewardAutoManaged && incoming.reward ? incoming.reward : existingReward,
         expiresAt: existingExpiry || incoming.expiresAt,
         sourceUrl: existingSource || incoming.sourceUrl,
         memo: existingMemo || incoming.memo,
