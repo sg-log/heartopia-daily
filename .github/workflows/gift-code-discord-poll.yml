@@ -45,6 +45,7 @@ jobs:
         run: node tools/gift-discord-poll.mjs
 
       - name: Poll official X backup
+        id: gift_x
         if: ${{ always() }}
         continue-on-error: true
         env:
@@ -52,4 +53,16 @@ jobs:
           WEATHER_DC_WEBHOOK_URL: ${{ secrets.WEATHER_DC_WEBHOOK_URL }}
           GIFT_X_FORCE: ${{ github.event_name == 'push' && '1' || '0' }}
           GIFT_POLL_MODE: ${{ inputs.mode }}
+        run: node tools/gift-x-backup.mjs
+
+      - name: Prepare private evidence capture
+        if: ${{ steps.gift_x.outputs.evidence_needed == 'true' }}
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Capture private gift evidence
+        if: ${{ steps.gift_x.outputs.evidence_needed == 'true' }}
+        continue-on-error: true
+        env:
+          WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
+          GIFT_CAPTURE_ONLY: "1"
         run: node tools/gift-x-backup.mjs

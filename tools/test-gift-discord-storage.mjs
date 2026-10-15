@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
+import { createHash } from "node:crypto";
 
 const source = [
   "../apps-script/gift-code-config.gs",
@@ -43,6 +44,7 @@ function makeHarness(initialRows = []) {
   const context = {
     console,
     adminKey_: () => 'test-admin-key',
+    postKey_: () => 'test-post-key',
     requireKey_: (actual, expected) => { if(actual !== expected) throw Error('管理キーが違います'); },
     json_: value => value,
     GIFT_HEADERS: headers,
@@ -116,7 +118,8 @@ function makeHarness(initialRows = []) {
   context.getGiftReviewSheet_ = () => ({
     getDataRange: () => ({ getValues: () => reviewRows.map(row => row.slice()) }),
     appendRow: row => reviewRows.push(row.slice()),
-    getRange: index => ({ setValues: values => { reviewRows[index - 1] = values[0].slice(); } })
+    getRange: (index, column = 1) => ({ setValues: values => { reviewRows[index - 1] = values[0].slice(); },
+      setValue: value => { reviewRows[index - 1][column - 1] = value; } })
   });
   let nextId = 0;
   context.Utilities.getUuid = () => 'test-uuid-' + (++nextId);
@@ -599,11 +602,58 @@ test('actual API dispatcher rejects unauthenticated review reads and decisions',
   h.context.weatherSubmitFailureCode_ = () => null;
   h.context.weatherSubmitStage_ = () => null;
   vm.runInContext(api.slice(api.indexOf('function doPost(e)'), api.indexOf('function requestWeatherAutomation_')), h.context);
-  for (const action of ['getGiftReviews', 'decideGiftReview']) {
+  for (const action of ['getGiftReviews', 'decideGiftReview', 'getGiftReviewEvidence']) {
     const result = h.context.doPost({ body: { action, adminKey: 'wrong' } });
     assert.equal(result.ok, false);
     assert.match(result.error, /管理キー/);
   }
+  assert.equal(h.context.doPost({ body: { action: 'saveGiftReviewEvidence', postKey: 'wrong' } }).ok, false);
   assert.equal(h.rows.length, 1);
   assert.equal(h.reviewRows.length, 1);
+});
+
+test('evidence captures target only unresolved candidates and back off after a failed capture', () => {
+  const h = makeHarness();
+  const review = addPendingReview(h);
+  assert.equal(h.context.giftReviewEvidenceRequests_().length, 1);
+  h.context.saveGiftReviewEvidence_({ postKey: 'test-post-key', reviewId: review.id,
+    sourceUrl: 'https://x.com/Heartopia_JP/status/2106957555713085600', failed: true });
+  assert.equal(h.context.giftReviewEvidenceRequests_().length, 0);
+  assert.equal(h.context.getGiftReviews_({ adminKey: 'test-admin-key' }).reviews[0].evidenceStatus, 'failed');
+  assert.throws(() => h.context.saveGiftReviewEvidence_({ postKey: 'wrong', reviewId: review.id, failed: true }), /管理キー/);
+});
+
+test('private screenshot reads bind the queued row, validate image bytes, and reject foreign files', () => {
+  const h = makeHarness();
+  const review = addPendingReview(h);
+  const api = fs.readFileSync(new URL('../apps-script/weather-api.gs', import.meta.url), 'utf8');
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO/a4lEAAAAASUVORK5CYII=', 'base64');
+  h.context.Utilities.base64Encode = bytes => Buffer.from(bytes).toString('base64');
+  h.context.Utilities.base64Decode = text => [...Buffer.from(text, 'base64')];
+  h.context.Utilities.DigestAlgorithm = { SHA_256: 'sha256' };
+  h.context.Utilities.computeDigest = (_algorithm, bytes) => [...createHash('sha256').update(Buffer.from(bytes)).digest()];
+  h.context.Utilities.newBlob = bytes => ({ getBytes: () => bytes });
+  h.context.weatherSubmitFailure_ = code => new Error(code);
+  vm.runInContext(api.slice(api.indexOf('function weatherEvidenceTime_'), api.indexOf('function requirePrivateEvidence_')), h.context);
+  let parentId = 'private-folder';
+  const file = { private: true, getId: () => 'private-file', getSize: () => png.length, isTrashed: () => false, setTrashed() {},
+    getBlob: () => ({ getBytes: () => [...png] }), getParents: () => { let pending = true; return {
+      hasNext: () => pending, next: () => { pending = false; return { getId: () => parentId }; } }; } };
+  h.context.weatherEvidenceFolder_ = () => ({ getId: () => 'private-folder', createFile: () => file });
+  h.context.requirePrivateEvidence_ = value => { if (!value.private) throw Error('Evidence must be private'); };
+  h.context.DriveApp = { getFileById: id => { assert.equal(id, 'private-file'); return file; } };
+  const image = { mimeType: 'image/png', byteSize: png.length, sha256: createHash('sha256').update(png).digest('hex'), kind: 'screenshot',
+    capturedAt: new Date().toISOString(), bodyBase64: png.toString('base64') };
+  const save = { postKey: 'test-post-key', reviewId: review.id, sourceUrl: 'https://x.com/Heartopia_JP/status/2106957555713085600', image };
+  assert.throws(() => h.context.saveGiftReviewEvidence_({ ...save, sourceUrl: 'https://x.com/Heartopia_JP/status/2106957555713085601' }), /source mismatch/);
+  assert.equal(h.context.saveGiftReviewEvidence_(save).status, 'saved');
+  const read = { action: 'getGiftReviewEvidence', adminKey: 'test-admin-key', reviewId: review.id };
+  assert.equal(h.context.getGiftReviewEvidence_(read).bodyBase64, image.bodyBase64);
+  assert.equal(h.context.giftReviewEvidenceRequests_().length, 0);
+  assert.ok(!JSON.stringify(h.context.getGiftReviews_({ adminKey: 'test-admin-key' })).includes('private-file'));
+  assert.throws(() => h.context.getGiftReviewEvidence_({ ...read, fileId: 'foreign-file' }), /Invalid/);
+  parentId = 'foreign-folder';
+  assert.throws(() => h.context.getGiftReviewEvidence_(read), /unavailable/);
+  parentId = 'private-folder'; file.private = false;
+  assert.throws(() => h.context.getGiftReviewEvidence_(read), /private/);
 });

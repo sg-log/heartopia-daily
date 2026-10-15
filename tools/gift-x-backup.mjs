@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
+import { createHash } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { extractAppsScriptUrl } from "./gift-discord-poll.mjs";
 
@@ -340,7 +342,67 @@ export async function runGiftXBackup(options = {}) {
   };
 }
 
+export async function captureGiftReviewScreenshot(request, options = {}) {
+  const match = String(request.sourceUrl).match(/^https:\/\/x\.com\/(myheartopia|Heartopia_JP)\/status\/(\d{15,25})$/i);
+  if (!match || !/^[A-Za-z0-9][A-Za-z0-9_-]{5,99}$/.test(String(request.code))) throw Error('Invalid evidence source');
+  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  const endpoint = new URL('https://publish.twitter.com/oembed');
+  endpoint.searchParams.set('url', request.sourceUrl); endpoint.searchParams.set('omit_script', 'true'); endpoint.searchParams.set('dnt', 'true');
+  const response = await fetchImpl(endpoint, { signal: AbortSignal.timeout(15000) });
+  if (!response.ok) throw Error('Official embed unavailable');
+  const embed = await response.json();
+  const code = extractTweetTextFromOembedHtml(embed.html).normalize('NFKC').match(/(?:Gift\s*Code|ギフト\s*コード)\s*:\s*`?([A-Za-z0-9_-]{6,100})/i)?.[1];
+  if (!isOfficialXAuthorUrl(embed.author_url, match[1]) || code !== request.code) throw Error('Evidence code mismatch');
+  const { chromium } = await import('playwright');
+  const browser = await chromium.launch({ headless: true, ...(options.channel ? { channel: options.channel } : {}) });
+  try {
+    const context = await browser.newContext({ viewport: { width: 620, height: 1400 }, locale: 'ja-JP', serviceWorkers: 'block' });
+    const hosts = new Set(['platform.twitter.com', 'cdn.syndication.twimg.com', 'syndication.twitter.com', 'pbs.twimg.com', 'abs.twimg.com', 'abs-0.twimg.com', 'video.twimg.com']);
+    await context.route('**/*', route => {
+      const url = new URL(route.request().url());
+      return url.protocol === 'https:' && hosts.has(url.hostname) ? route.continue() : route.abort();
+    });
+    const page = await context.newPage();
+    await page.setContent(`<html lang="ja"><meta charset="utf-8"><body>${embed.html}<script async src="https://platform.twitter.com/widgets.js"></script></body></html>`, { waitUntil: 'domcontentloaded' });
+    const iframe = page.locator('iframe[id^="twitter-widget-"]').first();
+    await iframe.waitFor({ state: 'visible', timeout: 25000 });
+    const frame = await (await iframe.elementHandle()).contentFrame();
+    await frame.locator('a[href*="/status/' + match[2] + '"]').first().waitFor({ state: 'attached', timeout: 15000 });
+    await frame.waitForTimeout(1500);
+    if (!(await frame.locator('body').innerText()).includes(request.code)) throw Error('Evidence text not confirmed');
+    const bytes = await iframe.screenshot({ type: 'jpeg', quality: 75, animations: 'disabled' });
+    if (!bytes.length || bytes.length > 524288) throw Error('Evidence size exceeded');
+    return { mimeType: 'image/jpeg', byteSize: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'),
+      kind: 'screenshot', capturedAt: new Date().toISOString(), bodyBase64: bytes.toString('base64') };
+  } finally { await browser.close(); }
+}
+
+async function capturePendingGiftEvidence() {
+  const postKey = String(process.env.WEATHER_POST_KEY || '');
+  if (!postKey) throw Error('WEATHER_POST_KEY is missing');
+  const planPath = path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'heartopia-gift-evidence.json');
+  const requests = JSON.parse(fs.readFileSync(planPath, 'utf8')).slice(0, 2);
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const apiUrl = extractAppsScriptUrl(fs.readFileSync(path.join(root, 'index.html'), 'utf8'));
+  const results = [];
+  for (const request of requests) {
+    let image;
+    try { image = await captureGiftReviewScreenshot(request, { channel: process.env.GIFT_EVIDENCE_BROWSER || 'chrome' }); }
+    catch { /* Persist the failure so every poll does not retry the same blocked post. */ }
+    const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'saveGiftReviewEvidence', postKey, reviewId: request.id, sourceUrl: request.sourceUrl,
+        ...(image ? { image } : { failed: true }) }) });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw Error('Private gift evidence save failed');
+    results.push({ id: request.id, status: result.status });
+  }
+  return { ok: true, captures: results };
+}
+
 async function main() {
+  if (process.env.GIFT_CAPTURE_ONLY === '1') {
+    process.stdout.write(JSON.stringify(await capturePendingGiftEvidence()) + '\n'); return;
+  }
   const result = await runGiftXBackup({
     postKey: process.env.WEATHER_POST_KEY,
     mode: process.env.GIFT_POLL_MODE || "poll",
@@ -348,6 +410,11 @@ async function main() {
     reconcile: true,
     reviewWebhookUrl: process.env.WEATHER_DC_WEBHOOK_URL
   });
+  const requests = result.ingest?.evidenceRequests || [];
+  if (process.env.GITHUB_OUTPUT) {
+    fs.appendFileSync(process.env.GITHUB_OUTPUT, 'evidence_needed=' + String(requests.length > 0) + '\n');
+    if (requests.length) fs.writeFileSync(path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'heartopia-gift-evidence.json'), JSON.stringify(requests));
+  }
   process.stdout.write(JSON.stringify(result) + "\n");
 }
 

@@ -106,6 +106,8 @@ function doPost(e) {
     if (action === "ingestOfficialXGiftBatch") return ingestOfficialXGiftBatch_(body);
     if (action === "getGiftReviews") return getGiftReviews_(body);
     if (action === "decideGiftReview") return decideGiftReview_(body);
+    if (action === "saveGiftReviewEvidence") return saveGiftReviewEvidence_(body);
+    if (action === "getGiftReviewEvidence") return getGiftReviewEvidence_(body);
     if (action === "syncGiftClaims") return syncGiftClaims_(body);
     if (action === "setGiftClaimState") return setGiftClaimState_(body);
     if (action === "saveApproved") return saveApproved_(body);
@@ -1311,7 +1313,7 @@ function parseBody_(e) {
     let large;
     try { large = JSON.parse(text); } catch (_) { throw weatherSubmitFailure_("invalidEvidencePayload", "requestParsing"); }
     const evidenceSubmit = large.action === "submit" && Array.isArray(large.evidenceImages) && large.evidenceImages.length === 1;
-    const reviewImage = large.action === "weatherReviewImage" && large.image && typeof large.image === "object";
+    const reviewImage = ["weatherReviewImage", "saveGiftReviewEvidence"].indexOf(large.action) >= 0 && large.image && typeof large.image === "object";
     if (!evidenceSubmit && !reviewImage) throw weatherSubmitFailure_("requestTooLarge", "requestParsing");
     return large;
   }

@@ -1318,7 +1318,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
 
           <div class="card s12">
             <h2>ギフトコードの承認待ち</h2>
-            <p class="small">内容と公式投稿を確認して承認すると、サイトへ登録し、フレンドDiscordへ通知します。</p>
+            <p class="small">通常は自動反映されます。ここには情報が揃わず止まった候補だけが届きます。確認して承認すると、サイトへ登録し、フレンドDiscordへ通知します。</p>
             <div class="buttons"><button type="button" class="secondary" id="refreshPendingGiftsBtn">一覧を更新</button></div>
             <div id="pendingGiftStatus" class="status" role="status"></div>
             <div id="pendingGiftReviews"></div>
@@ -3587,6 +3587,11 @@ async function fetchPendingGiftReviews(){
       <div class="giftCard" id="gift-review-${esc(item.id)}" data-gift-review="${esc(item.id)}" style="margin-top:12px">
         <h3>${esc(item.code)}</h3>
         <p class="small">${esc(item.reason)}</p>
+        <div data-review-evidence>
+          <p class="small" data-review-evidence-status>${item.evidenceAvailable ? "根拠画像を読み込み中です…" : item.evidenceStatus === "failed" ? "根拠画像を取得できませんでした。取得本文と公式投稿を確認してください。" : "根拠画像は取得待ちです。少ししてから一覧を更新してください。"}</p>
+          <img data-review-evidence-image hidden alt="公式投稿の取得時スクリーンショット" style="width:100%;height:auto;max-height:700px;object-fit:contain;border-radius:12px">
+          <p class="small">画像は取得できた表示範囲です。省略された期限まで確認できたことを示すものではありません。</p>
+        </div>
         <label>報酬<textarea data-review-reward>${esc(item.reward || "")}</textarea></label>
         <label>交換期限（日本時間）<input data-review-expiry type="datetime-local" value="${esc(item.expiresAt || "")}"></label>
         <p class="small">${item.expiresAt ? "期限は公開一覧から補った未確認の候補です。公式投稿と一致するか確認してください。" : "交換期限を取得できていません。公式投稿を確認して入力してください。"}</p>
@@ -3612,6 +3617,8 @@ async function fetchPendingGiftReviews(){
       card.querySelectorAll('input,textarea').forEach(input => { input.addEventListener('input', update); input.addEventListener('change', update); });
       approve.onclick = () => decidePendingGiftReview(card, "approve");
       card.querySelector('[data-review-reject]').onclick = () => decidePendingGiftReview(card, "reject");
+      const item = reviews.find(review => review.id === card.dataset.giftReview);
+      if(item?.evidenceAvailable) loadGiftReviewEvidence(card, requestKey);
     });
     if(pendingGiftReviewId() || window.location.hash === "#pendingGiftReviews"){
       setAdminSubtab("daily");
@@ -3621,6 +3628,18 @@ async function fetchPendingGiftReviews(){
       requestAnimationFrame(() => target.scrollIntoView({behavior:"smooth", block:"center"}));
     }
   }catch(error){ E.pendingGiftStatus.textContent = `確認待ちを読み込めませんでした：${error.message}`; }
+}
+async function loadGiftReviewEvidence(card, requestKey){
+  const status = card.querySelector('[data-review-evidence-status]');
+  try{
+    const result = await apiPost({action:"getGiftReviewEvidence", adminKey:requestKey, reviewId:card.dataset.giftReview});
+    if(!card.isConnected || adminKeyValue() !== requestKey) return;
+    if(!result.ok || !["image/jpeg","image/png"].includes(result.mimeType) || typeof result.bodyBase64 !== "string" || result.bodyBase64.length > 699052) throw new Error("画像を読み込めませんでした");
+    const image = card.querySelector('[data-review-evidence-image]');
+    image.src = `data:${result.mimeType};base64,${result.bodyBase64}`;
+    image.hidden = false;
+    status.textContent = "公式投稿の取得時スクリーンショット";
+  }catch(error){ if(card.isConnected && adminKeyValue() === requestKey) status.textContent = "画像を読み込めませんでした。取得本文と公式投稿を確認してください。"; }
 }
 async function decidePendingGiftReview(card, decision){
   const status = card.querySelector('[data-review-status]');
