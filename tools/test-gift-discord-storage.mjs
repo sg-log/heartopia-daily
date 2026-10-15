@@ -125,6 +125,30 @@ function candidate(overrides = {}) {
   };
 }
 
+test('a parser revision silently recovers skipped history once without rewinding the cursor or unhiding codes', () => {
+  const h = makeHarness([['hidden-id','hidden123','願い星×3','2099-10-01T00:59','https://example.com/manual','manual','hidden','','']]);
+  const cursor = '923456789012345678';
+  h.properties.set('DISCORD_GIFT_LAST_MESSAGE_ID', cursor);
+  const message = (id,code) => ({id,channel_id:'123456789012345678',webhook_id:'323456789012345678',
+    content:`Wishing star ×3\nGift Code: ${code}\nRedemption Deadline: 2099/10/01 00:59`});
+  const batch = {channelId:'123456789012345678',guildId:'223456789012345678',latestMessageId:cursor,
+    historyRevision:'gift-formats-20261015',messages:[message('723456789012345678','missed123'),message('823456789012345678','hidden123')]};
+  const first = h.context.processDiscordGiftBatch_(batch);
+  assert.equal(first.historyReplayed, true);
+  assert.equal(first.historyRecovered, 1);
+  assert.equal(first.counts.created, 1);
+  assert.equal(h.rows.length, 3);
+  assert.equal(h.rows[1][6], 'hidden');
+  assert.equal(h.properties.get('DISCORD_GIFT_LAST_MESSAGE_ID'), cursor);
+  assert.deepEqual(h.events.notifications, []);
+  assert.deepEqual(h.events.notices, []);
+  assert.deepEqual(h.events.reviewFetches, []);
+  const again = h.context.processDiscordGiftBatch_(batch);
+  assert.equal(again.historyReplayed, false);
+  assert.equal(again.counts.created, 0);
+  assert.equal(h.rows.length, 3);
+});
+
 test("creates a new active gift code and emits normal site/Discord notifications", () => {
   const h = makeHarness();
   const result = h.context.saveAutomatedGiftCode_(candidate(), { silent: false });
