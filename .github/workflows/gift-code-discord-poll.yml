@@ -43,5 +43,6 @@ jobs:
         continue-on-error: true
         env:
           WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
+          WEATHER_DC_WEBHOOK_URL: ${{ secrets.WEATHER_DC_WEBHOOK_URL }}
           GIFT_POLL_MODE: ${{ inputs.mode }}
         run: node tools/gift-x-backup.mjs
