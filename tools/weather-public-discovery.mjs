@@ -42,6 +42,11 @@ export function normalizeCandidateUrl(raw) {
     const host = u.hostname.toLowerCase();
     const platform = sourcePlatformForHost(host);
 
+    // Search navigation, account and policy links are not result evidence.
+    if (['login.yahoo.co.jp', 'support.yahoo-net.jp', 'btoptout.yahoo.co.jp', 'privacy.lycorp.co.jp',
+      'www.lycorp.co.jp', 'www.lycbiz.com', 'stamp.yahoo.co.jp'].includes(host)) return null;
+    if (['www.yahoo.co.jp', 'yahoo.co.jp', 'chiebukuro.yahoo.co.jp'].includes(host) && u.pathname === '/') return null;
+
     if (platform === 'x') {
       const status = u.pathname.match(/^\/(?:i\/status|[A-Za-z0-9_]+\/status)\/(\d+)(?:\/(?:photo|video)\/[1-4])?\/?$/);
       if (!status) return null;
@@ -406,6 +411,7 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = 
       record.profileHeartopiaTerms = [...new Set([...(record.profileHeartopiaTerms || []), ...(c.profileHeartopiaTerms || [])])];
       if (!record.profileCheckStatus && c.profileCheckStatus) record.profileCheckStatus = c.profileCheckStatus;
       if (!record.dynamicHandle && c.dynamicHandle) record.dynamicHandle = c.dynamicHandle;
+      if (!record.sourceHandle && c.sourceHandle) record.sourceHandle = c.sourceHandle;
     }
   }
   const relevant = [...merged.values()].filter((candidate) => {
