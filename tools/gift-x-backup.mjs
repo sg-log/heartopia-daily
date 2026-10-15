@@ -155,7 +155,9 @@ export function extractListingCandidates(html, listingUrl) {
   return matches.map((match, index) => {
     const block = active.slice(match.index, matches[index + 1]?.index ?? active.length);
     const urls = [...block.matchAll(/https:\/\/x\.com\/(?:myheartopia|Heartopia_JP)\/status\/\d{15,25}/gi)].map(item => item[0]);
-    return { code: match[1], listingUrls: [listingUrl], officialUrls: unique(urls).slice(0, 2) };
+    const plain = decodeHtml(block.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, ' '));
+    const deadlineHint = guide ? (plain.match(/Expires:\s*(20\d{2}[-/]\d{2}[-/]\d{2}\s+\d{1,2}:\d{2}\s*\(UTC[+-]\d{1,2}\))/i)?.[1] || '') : '';
+    return { code: match[1], listingUrls: [listingUrl], officialUrls: unique(urls).slice(0, 2), deadlineHint };
   });
 }
 
@@ -172,6 +174,7 @@ export async function reconcileGiftListings({ fetchImpl = globalThis.fetch, know
         const current = candidates.get(item.code) || { code: item.code, listingUrls: [], officialUrls: [] };
         current.listingUrls = unique([...current.listingUrls, ...item.listingUrls]);
         current.officialUrls = unique([...current.officialUrls, ...item.officialUrls]);
+        current.deadlineHint ||= item.deadlineHint;
         candidates.set(item.code, current);
       }
     } catch { diagnostics.push({ source: 'code-list', url, ok: false }); }
@@ -193,7 +196,7 @@ export async function reconcileGiftListings({ fetchImpl = globalThis.fetch, know
       }
     }
     if (!confirmed) reviews.push({ code: item.code, sourceUrl: item.officialUrls[0] || '', listingUrls: item.listingUrls,
-      excerpt, reason: excerpt ? '公式本文が省略され、交換期限まで確認できません。' : '公開一覧で未登録候補を検出しましたが、公式本文を確認できません。' });
+      excerpt, deadlineHint: item.deadlineHint || '', reason: excerpt ? '公式本文が省略され、交換期限まで確認できません。' : '公開一覧で未登録候補を検出しましたが、公式本文を確認できません。' });
   }
   return { posts, reviews, diagnostics, activeCandidates: candidates.size };
 }
@@ -205,10 +208,10 @@ export async function notifyGiftReviews({ fetchImpl, webhookUrl, reviews, acknow
   const url = new URL(webhookUrl);
   if (url.protocol !== 'https:' || url.hostname !== 'discord.com' || !/^\/api\/webhooks\/\d+\//.test(url.pathname)) throw Error('Invalid personal review webhook');
   const content = ['🎁 未登録ギフトコードの確認待ち',
-    '公式投稿を確認し、サイト管理画面から登録してください。',
+    '管理画面で内容を確認して承認してください。',
     ...pending.map(item => [
       `コード：${item.code}`, String(item.reason).slice(0, 150),
-      `<${item.sourceUrl || item.listingUrls?.[0]}>`
+      `<https://sg-log.github.io/heartopia-daily/?admin=1&giftReview=${encodeURIComponent(item.id)}#pendingGiftReviews>`
     ].join('\n'))].join('\n\n');
   const response = await fetchImpl(webhookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content, allowed_mentions: { parse: [] }, flags: 4 }) });
