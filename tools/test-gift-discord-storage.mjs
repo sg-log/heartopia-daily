@@ -4,6 +4,22 @@ import fs from "node:fs";
 import vm from "node:vm";
 import { createHash } from "node:crypto";
 
+test('public API and gift cards never expose private Discord source links', () => {
+  const api = fs.readFileSync(new URL('../apps-script/weather-api.gs', import.meta.url), 'utf8');
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const context = vm.createContext({});
+  vm.runInContext(api.slice(api.indexOf('function publicGiftItem_'), api.indexOf('function publicNoticeItem_')), context);
+  vm.runInContext(html.slice(html.indexOf('function giftSourceUrl('), html.indexOf('function giftClaimKey(')), context);
+  for (const url of ['https://discord.com/channels/111/222/333', 'https://discordapp.com/channels/111/222/333', 'https://discord.gg/private', 'https://example.com']) {
+    assert.equal(context.publicGiftItem_({ sourceUrl: url }).sourceUrl, '');
+    assert.equal(context.giftSourceUrl(url), '');
+  }
+  const official = 'https://x.com/Heartopia_JP/status/2106957555713085600';
+  assert.equal(context.publicGiftItem_({ sourceUrl: official }).sourceUrl, official);
+  assert.equal(context.giftSourceUrl(official), official);
+});
+
+
 const source = [
   "../apps-script/gift-code-config.gs",
   "../apps-script/gift-code-parser.gs",
@@ -595,6 +611,40 @@ test('approval can publish without a friend Discord notification', () => {
   assert.deepEqual(h.events.notifications, []);
 });
 
+test('partial Japanese official posts localize registered codes without changing deadlines or notifying again', () => {
+  const h = makeHarness();
+  const old = 'https://x.com/myheartopia/status/2106957555415032211';
+  h.rows.push(['registered', 'review123', 'Wishing star×3', '2099-12-04T00:59', old, '', 'active', 'before', 'before']);
+  const sourceUrl = 'https://x.com/Heartopia_JP/status/2106957555713085600';
+  h.context.processOfficialXGiftBatch_({ posts: [{ statusId: '2106957555713085600', sourceUrl,
+    text: '願い星×3\nギフトコード：review123\n受け取ろう…' }] });
+  assert.equal(h.rows[1][2], '願い星×3');
+  assert.equal(h.rows[1][3], '2099-12-04T00:59');
+  assert.equal(h.rows[1][4], sourceUrl);
+  assert.deepEqual(h.events.notifications, []);
+  h.context.saveAutomatedGiftCode_(candidate({ code: 'review123', sourceUrl: old, reward: 'Wishing star×3', expiresAt: '2099-12-04T00:59' }));
+  assert.equal(h.rows[1][2], '願い星×3');
+  assert.equal(h.rows[1][4], sourceUrl);
+});
+
+test('Japanese evidence replaces English pending evidence without new alerts or publishing partial data', () => {
+  const h = makeHarness();
+  const review = addPendingReview(h);
+  h.reviewRows[1][3] = 'https://x.com/myheartopia/status/2106957555415032211';
+  h.reviewRows[1][8] = 'already-delivered';
+  h.reviewRows[1][10] = JSON.stringify({ fileId: 'old-private-english-image' });
+  const sourceUrl = 'https://x.com/Heartopia_JP/status/2106957555713085600';
+  h.context.processOfficialXGiftBatch_({ posts: [{ statusId: '2106957555713085600', sourceUrl,
+    text: '願い星×3\nギフトコード：review123\n受け取ろう…' }], reconcile: true });
+  assert.equal(h.rows.length, 1);
+  assert.equal(h.reviewRows[1][0], review.id);
+  assert.equal(h.reviewRows[1][3], sourceUrl);
+  assert.equal(h.reviewRows[1][8], 'already-delivered');
+  assert.equal(h.reviewRows[1][10], '');
+  assert.equal(h.context.giftReviewEvidenceRequests_()[0].sourceUrl, sourceUrl);
+  assert.deepEqual(h.events.notifications, []);
+});
+
 test('friend notifications omit private Discord sources and retain official X posts', () => {
   const h = makeHarness();
   const api = fs.readFileSync(new URL('../apps-script/weather-api.gs', import.meta.url), 'utf8');
@@ -687,19 +737,4 @@ test('private screenshot reads bind the queued row, validate image bytes, and re
   assert.throws(() => h.context.getGiftReviewEvidence_(read), /unavailable/);
   parentId = 'private-folder'; file.private = false;
   assert.throws(() => h.context.getGiftReviewEvidence_(read), /private/);
-});
-
-test('public API and gift cards never expose private Discord source links', () => {
-  const api = fs.readFileSync(new URL('../apps-script/weather-api.gs', import.meta.url), 'utf8');
-  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  const context = vm.createContext({});
-  vm.runInContext(api.slice(api.indexOf('function publicGiftItem_'), api.indexOf('function publicNoticeItem_')), context);
-  vm.runInContext(html.slice(html.indexOf('function giftSourceUrl('), html.indexOf('function giftClaimKey(')), context);
-  for (const url of ['https://discord.com/channels/111/222/333', 'https://discordapp.com/channels/111/222/333', 'https://discord.gg/private', 'https://example.com']) {
-    assert.equal(context.publicGiftItem_({ sourceUrl: url }).sourceUrl, '');
-    assert.equal(context.giftSourceUrl(url), '');
-  }
-  const official = 'https://x.com/Heartopia_JP/status/2106957555713085600';
-  assert.equal(context.publicGiftItem_({ sourceUrl: official }).sourceUrl, official);
-  assert.equal(context.giftSourceUrl(official), official);
 });
