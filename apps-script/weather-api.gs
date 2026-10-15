@@ -581,8 +581,9 @@ function notifyDiscordGiftCode_(item) {
     if (item.expiresAt) {
       lines.push("", "期限：" + formatDiscordGiftExpiry_(item.expiresAt));
     }
-    if (item.sourceUrl) {
-      lines.push("", "元ポスト：" + sanitizeDiscordUrl_(item.sourceUrl));
+    const officialSource = String(item.sourceUrl || "").trim();
+    if (/^https:\/\/(?:x\.com|twitter\.com)\/(?:myheartopia|Heartopia_JP)\/status\/\d{15,25}(?:\?[^\s]*)?$/i.test(officialSource)) {
+      lines.push("", "元ポスト：" + sanitizeDiscordUrl_(officialSource));
     }
     lines.push("", "Heartopia Daily：", HEARTOPIA_DAILY_URL);
 

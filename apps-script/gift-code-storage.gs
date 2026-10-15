@@ -345,7 +345,7 @@ function processGiftReviewDecision_(body) {
     sheet.getRange(index + 1, 1, 1, 11).setValues([row]);
     return { mode: "created", item: item };
   });
-  if (result.mode === "created" && result.item.status === "active") {
+  if (result.mode === "created" && result.item.status === "active" && body.notifyDiscord !== false) {
     const notification = notifyDiscordGiftCode_(result.item);
     result.discordNotified = Boolean(notification.notified);
     if (notification.warning) result.discordWarning = notification.warning;

@@ -583,6 +583,37 @@ test('approval requires explicit confirmation and complete valid fields; rejecti
   assert.deepEqual(h.events.notifications, []);
 });
 
+test('approval can publish without a friend Discord notification', () => {
+  const h = makeHarness();
+  const review = addPendingReview(h);
+  const result = h.context.processGiftReviewDecision_({ id: review.id, decision: 'approve', confirmed: true,
+    reward: '願い星×3', expiresAt: '2099-12-04T00:59', notifyDiscord: false });
+  assert.equal(result.mode, 'created');
+  assert.equal(h.rows.length, 2);
+  assert.deepEqual(h.events.notifications, []);
+  assert.equal(h.context.processGiftReviewDecision_({ id: review.id, decision: 'approve', confirmed: true }).mode, 'already_processed');
+  assert.deepEqual(h.events.notifications, []);
+});
+
+test('friend notifications omit private Discord sources and retain official X posts', () => {
+  const h = makeHarness();
+  const api = fs.readFileSync(new URL('../apps-script/weather-api.gs', import.meta.url), 'utf8');
+  h.context.HEARTOPIA_DAILY_URL = 'https://sg-log.github.io/heartopia-daily/';
+  h.context.inlineDiscordCode_ = code => code;
+  h.context.formatDiscordGiftExpiry_ = text => text;
+  h.properties.set('DISCORD_WEBHOOK_URL', 'https://discord.com/api/webhooks/test-only');
+  vm.runInContext(api.slice(api.indexOf('function notifyDiscordGiftCode_'), api.indexOf('function inlineDiscordCode_')), h.context);
+  const privateUrl = 'https://discord.com/channels/111/222/333';
+  h.context.notifyDiscordGiftCode_(candidate({ sourceUrl: privateUrl }));
+  let text = JSON.parse(h.events.reviewFetches.at(-1).payload).content;
+  assert.ok(!text.includes(privateUrl));
+  assert.ok(!text.includes('元ポスト'));
+  const official = 'https://x.com/Heartopia_JP/status/2106957555713085600';
+  h.context.notifyDiscordGiftCode_(candidate({ sourceUrl: official }));
+  text = JSON.parse(h.events.reviewFetches.at(-1).payload).content;
+  assert.ok(text.includes(official));
+});
+
 test('a queued approval cannot overwrite a code registered or hidden concurrently', () => {
   const h = makeHarness();
   const review = addPendingReview(h);
