@@ -97,7 +97,8 @@ async function discoverFromSyndication(fetchImpl, handle) {
 }
 
 async function discoverFromSearch(fetchImpl, handle, provider = 'bing') {
-  const query = `site:x.com/${handle}/status "Gift Code"`;
+  const keyword = String(handle).toLowerCase() === 'heartopia_jp' ? '"ギフトコード"' : '"Gift Code"';
+  const query = `site:x.com/${handle}/status ${keyword}`;
   const url = provider === 'yahoo-web'
     ? "https://search.yahoo.co.jp/search?p=" + encodeURIComponent(query)
     : "https://www.bing.com/search?q=" + encodeURIComponent(query) + "&count=20";
