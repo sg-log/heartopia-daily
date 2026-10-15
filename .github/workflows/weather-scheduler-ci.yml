@@ -8,6 +8,9 @@ on:
       - 'tools/test-weather-scheduler-policy.mjs'
       - 'tools/test-weather-admin-trigger.mjs'
       - 'tools/weather-public-discovery.mjs'
+      - 'tools/weather-x-embed-evidence.mjs'
+      - 'tools/test-weather-x-embed-evidence.mjs'
+      - 'tools/weather-direct-daily-panel-review.mjs'
       - 'tools/test-weather-public-discovery.mjs'
       - 'tools/weather-deterministic-review.mjs'
       - 'tools/test-weather-deterministic-review.mjs'
@@ -45,6 +48,8 @@ jobs:
         run: node --test tools/test-weather-scheduler-policy.mjs
       - name: Validate public weather discovery helpers
         run: node --test tools/test-weather-public-discovery.mjs
+      - name: Validate exact-post image ownership
+        run: node --test tools/test-weather-x-embed-evidence.mjs
       - name: Validate deterministic image review helpers
         run: node --test tools/test-weather-deterministic-review.mjs
       - name: Validate unified daily and weekly review helpers
