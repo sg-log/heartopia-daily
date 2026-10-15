@@ -140,7 +140,8 @@ function processOfficialXGiftBatch_(body) {
   return {
     receivedCandidates: posts.length,
     counts: counts,
-    reviews: body.reconcile ? reconcileGiftReviews_(reviewCandidates, body.ackReviewIds) : []
+    reviews: body.reconcile ? reconcileGiftReviews_(reviewCandidates, body.ackReviewIds) : [],
+    evidenceRequests: body.reconcile ? giftReviewEvidenceRequests_() : []
   };
 }
 
@@ -149,11 +150,14 @@ function getGiftReviewSheet_() {
   let sheet = spreadsheet.getSheetByName("gift_code_reviews");
   if (!sheet) {
     sheet = spreadsheet.insertSheet("gift_code_reviews");
-    sheet.appendRow(["id", "code", "reason", "sourceUrl", "listingUrls", "excerpt", "status", "createdAt", "notifiedAt", "deadlineHint"]);
+    sheet.appendRow(["id", "code", "reason", "sourceUrl", "listingUrls", "excerpt", "status", "createdAt", "notifiedAt", "deadlineHint", "evidenceImage"]);
   }
   const hintHeader = sheet.getRange(1, 10).getValue();
   if (hintHeader && String(hintHeader) !== "deadlineHint") throw new Error("gift_code_reviews の列構成を確認してください");
   if (!hintHeader) sheet.getRange(1, 10).setValue("deadlineHint");
+  const evidenceHeader = sheet.getRange(1, 11).getValue();
+  if (evidenceHeader && String(evidenceHeader) !== "evidenceImage") throw new Error("gift_code_reviews の列構成を確認してください");
+  if (!evidenceHeader) sheet.getRange(1, 11).setValue("evidenceImage");
   return sheet;
 }
 
@@ -182,22 +186,22 @@ function reconcileGiftReviews_(candidates, acknowledgements) {
       const validHint = listings.indexOf("https://heartopiaguide.com/codes/") >= 0 && parseDiscordGiftDeadline_(hint) ? hint : "";
       if (existingIndex >= 0) {
         const existing = rows[existingIndex];
-        while (existing.length < 10) existing.push("");
+        while (existing.length < 11) existing.push("");
         if (validHint && !existing[9]) {
           existing[9] = validHint;
-          sheet.getRange(existingIndex + 1, 1, 1, 10).setValues([existing]);
+          sheet.getRange(existingIndex + 1, 1, 1, 11).setValues([existing]);
         }
         return;
       }
       const row = [Utilities.getUuid(), code, safeSheetText_(String(item.reason || "公式情報の確認が必要です。").slice(0, 300)),
-        source, JSON.stringify(listings.slice(0, 2)), safeSheetText_(String(item.excerpt || "").slice(0, 1000)), "pending", now, "", validHint];
+        source, JSON.stringify(listings.slice(0, 2)), safeSheetText_(String(item.excerpt || "").slice(0, 1000)), "pending", now, "", validHint, ""];
       sheet.appendRow(row);
       rows.push(row);
     });
     const pending = [];
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
-      while (row.length < 10) row.push("");
+      while (row.length < 11) row.push("");
       const gift = byCode[String(row[1])];
       // A deliberate hide is final; do not expose it as a fresh missing-code alert.
       const legacy = !JSON.parse(String(row[4] || "[]")).length;
@@ -205,7 +209,7 @@ function reconcileGiftReviews_(candidates, acknowledgements) {
       let changed = false;
       if (resolved && row[6] !== "resolved") { row[6] = "resolved"; changed = true; }
       if (ack.indexOf(String(row[0])) >= 0 && !row[8]) { row[8] = now; changed = true; }
-      if (changed) sheet.getRange(i + 1, 1, 1, 10).setValues([row]);
+      if (changed) sheet.getRange(i + 1, 1, 1, 11).setValues([row]);
       if (row[6] === "pending" && !row[8] && pending.length < 10) {
         pending.push({ id: String(row[0]), code: String(row[1]), reason: plainSheetText_(row[2]), sourceUrl: String(row[3]),
           listingUrls: JSON.parse(String(row[4] || "[]")) });
@@ -231,13 +235,71 @@ function listGiftReviewsForAdmin_() {
     return { id: String(row[0]), code: String(row[1]), reason: plainSheetText_(row[2]), sourceUrl: plainSheetText_(row[3]),
       listingUrls: JSON.parse(String(row[4] || "[]")), excerpt: excerpt,
       reward: parsed.ok && parsed.code === String(row[1]) ? parsed.reward : "",
-      expiresAt: parseDiscordGiftDeadline_(hint), expiryNeedsConfirmation: true };
+      expiresAt: parseDiscordGiftDeadline_(hint), expiryNeedsConfirmation: true,
+      evidenceAvailable: Boolean(giftReviewEvidenceRef_(row).fileId), evidenceStatus: giftReviewEvidenceRef_(row).status || "pending" };
   });
 }
 
 function decideGiftReview_(body) {
   requireKey_(body.adminKey, adminKey_(), "管理キー");
   return json_(Object.assign({ ok: true }, processGiftReviewDecision_(body)));
+}
+
+function giftReviewEvidenceRef_(row) {
+  try { return JSON.parse(String(row[10] || "{}")) || {}; } catch (_) { return {}; }
+}
+
+function giftReviewEvidenceRequests_() {
+  return getGiftReviewSheet_().getDataRange().getValues().slice(1).filter(function(row) {
+    const ref = giftReviewEvidenceRef_(row);
+    return row[6] === "pending" && /^https:\/\/x\.com\/(?:myheartopia|Heartopia_JP)\/status\/\d{15,25}$/i.test(String(row[3]))
+      && !ref.fileId && (!ref.attemptedAt || Date.now() - Date.parse(ref.attemptedAt) > 86400000);
+  }).slice(0, 2).map(function(row) { return { id: String(row[0]), code: String(row[1]), sourceUrl: String(row[3]) }; });
+}
+
+function saveGiftReviewEvidence_(body) {
+  requireKey_(body.postKey, postKey_(), "投稿キー");
+  if (Object.keys(body).some(function(key) { return ["action", "postKey", "reviewId", "sourceUrl", "image", "failed"].indexOf(key) < 0; })) throw new Error("Invalid gift evidence request");
+  const result = withScriptLock_(function() {
+    const sheet = getGiftReviewSheet_(), rows = sheet.getDataRange().getValues();
+    const index = rows.findIndex(function(row, i) { return i > 0 && String(row[0]) === body.reviewId && row[6] === "pending"; });
+    if (index < 1 || String(rows[index][3]) !== body.sourceUrl) throw new Error("Gift review evidence source mismatch");
+    if (giftReviewEvidenceRef_(rows[index]).fileId) return { status: "already_saved" };
+    if (body.failed === true) {
+      sheet.getRange(index + 1, 11).setValue(JSON.stringify({ status: "failed", attemptedAt: new Date().toISOString() }));
+      return { status: "failed" };
+    }
+    const image = validateWeatherEvidence_([body.image]);
+    const folder = weatherEvidenceFolder_();
+    let file;
+    try {
+      file = folder.createFile(Utilities.newBlob(image.bytes, image.meta.mimeType, "gift-review-" + String(rows[index][0]) + ".jpg"));
+      requirePrivateEvidence_(file);
+      const ref = Object.assign({}, image.meta, { fileId: file.getId(), status: "saved", partial: true });
+      sheet.getRange(index + 1, 11).setValue(JSON.stringify(ref));
+      return { status: "saved" };
+    } catch (error) { if (file) file.setTrashed(true); throw error; }
+  });
+  return json_(Object.assign({ ok: true }, result));
+}
+
+function getGiftReviewEvidence_(body) {
+  requireKey_(body.adminKey, adminKey_(), "管理キー");
+  if (Object.keys(body).some(function(key) { return ["action", "adminKey", "reviewId"].indexOf(key) < 0; })) throw new Error("Invalid gift evidence request");
+  const row = getGiftReviewSheet_().getDataRange().getValues().slice(1).find(function(item) {
+    return String(item[0]) === body.reviewId && item[6] === "pending";
+  });
+  const ref = row && giftReviewEvidenceRef_(row);
+  if (!ref || !ref.fileId) throw new Error("Gift evidence unavailable");
+  const folder = weatherEvidenceFolder_(), file = DriveApp.getFileById(ref.fileId);
+  requirePrivateEvidence_(file);
+  const parents = file.getParents(); let belongs = false;
+  while (parents.hasNext()) if (parents.next().getId() === folder.getId()) belongs = true;
+  if (!belongs || file.isTrashed() || file.getSize() > 524288) throw new Error("Gift evidence unavailable");
+  const bodyBase64 = Utilities.base64Encode(file.getBlob().getBytes());
+  const image = { mimeType: ref.mimeType, byteSize: ref.byteSize, sha256: ref.sha256, kind: ref.kind, capturedAt: ref.capturedAt, bodyBase64: bodyBase64 };
+  validateWeatherEvidence_([image]);
+  return json_({ ok: true, mimeType: ref.mimeType, bodyBase64: bodyBase64, capturedAt: ref.capturedAt, partial: true });
 }
 
 function processGiftReviewDecision_(body) {
@@ -249,11 +311,11 @@ function processGiftReviewDecision_(body) {
     const index = rows.findIndex(function(row, i) { return i > 0 && String(row[0]) === String(body.id || ""); });
     if (index < 1) throw new Error("確認待ちが見つかりません");
     const row = rows[index];
-    while (row.length < 10) row.push("");
+    while (row.length < 11) row.push("");
     if (row[6] !== "pending") return { mode: "already_processed" };
     if (decision === "reject") {
       row[6] = "rejected";
-      sheet.getRange(index + 1, 1, 1, 10).setValues([row]);
+      sheet.getRange(index + 1, 1, 1, 11).setValues([row]);
       return { mode: "rejected" };
     }
     if (body.confirmed !== true) throw new Error("公式情報と内容を確認してください");
@@ -271,7 +333,7 @@ function processGiftReviewDecision_(body) {
     });
     if (registered) {
       row[6] = "resolved";
-      sheet.getRange(index + 1, 1, 1, 10).setValues([row]);
+      sheet.getRange(index + 1, 1, 1, 11).setValues([row]);
       return { mode: "already_registered" };
     }
     const now = new Date().toISOString();
@@ -280,7 +342,7 @@ function processGiftReviewDecision_(body) {
     gifts.appendRow(giftRow_(item));
     saveAutoGiftNotice_("created", true);
     row[6] = "approved";
-    sheet.getRange(index + 1, 1, 1, 10).setValues([row]);
+    sheet.getRange(index + 1, 1, 1, 11).setValues([row]);
     return { mode: "created", item: item };
   });
   if (result.mode === "created" && result.item.status === "active") {
