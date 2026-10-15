@@ -96,15 +96,17 @@ async function discoverFromSyndication(fetchImpl, handle) {
   }
 }
 
-async function discoverFromSearch(fetchImpl, handle) {
+async function discoverFromSearch(fetchImpl, handle, provider = 'bing') {
   const query = `site:x.com/${handle}/status "Gift Code"`;
-  const url = "https://www.bing.com/search?q=" + encodeURIComponent(query) + "&count=20";
+  const url = provider === 'yahoo-web'
+    ? "https://search.yahoo.co.jp/search?p=" + encodeURIComponent(query)
+    : "https://www.bing.com/search?q=" + encodeURIComponent(query) + "&count=20";
   try {
     const { response, text } = await fetchText(fetchImpl, url);
-    if (!response.ok) return { source: "bing", handle, ok: false, status: response.status, ids: [] };
-    return { source: "bing", handle, ok: true, status: response.status, ids: extractStatusIdsFromHtml(text, handle) };
+    if (!response.ok) return { source: provider, handle, ok: false, status: response.status, ids: [] };
+    return { source: provider, handle, ok: true, status: response.status, ids: extractStatusIdsFromHtml(text, handle) };
   } catch (error) {
-    return { source: "bing", handle, ok: false, status: 0, ids: [], error: String(error?.message || error).slice(0, 240) };
+    return { source: provider, handle, ok: false, status: 0, ids: [], error: String(error?.message || error).slice(0, 240) };
   }
 }
 
@@ -149,6 +151,11 @@ export async function discoverOfficialXGiftPosts(options = {}) {
     let ids = primary.ids || [];
     if (!ids.length) {
       const fallback = await discoverFromSearch(fetchImpl, handle);
+      diagnostics.push(fallback);
+      ids = fallback.ids || [];
+    }
+    if (!ids.length) {
+      const fallback = await discoverFromSearch(fetchImpl, handle, 'yahoo-web');
       diagnostics.push(fallback);
       ids = fallback.ids || [];
     }
