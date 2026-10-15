@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractTimedMeteorIntervals, applyTimedSpecialWeatherHints } from './weather-unified-review.mjs';
+import { extractTimedMeteorIntervals, applyTimedSpecialWeatherHints, forecastCoversSlot } from './weather-unified-review.mjs';
 import { resolveWeekly } from './weather-direct-panel-review.mjs';
 import { buildUnifiedBindings } from './weather-unified-bind.mjs';
 
@@ -22,6 +22,20 @@ function readyDraft(weeklyDays) {
   if (weeklyDays !== undefined) draft.interpretation.weeklyDays = weeklyDays;
   return draft;
 }
+
+test('a same-date midnight game forecast covers morning and evening without relabelling', () => {
+  const draft = readyDraft();
+  draft.interpretation.startSlot = '00';
+  assert.equal(forecastCoversSlot(draft, '2026-09-17', '06'), true);
+  assert.equal(forecastCoversSlot(draft, '2026-09-17', '18'), true);
+  assert.equal(draft.interpretation.startSlot, '00');
+  assert.equal(forecastCoversSlot(draft, '2026-09-18', '06'), false);
+  draft.interpretation.startSlot = '18';
+  assert.equal(forecastCoversSlot(draft, '2026-09-17', '06'), false);
+  assert.equal(forecastCoversSlot(draft, '2026-09-17', '18'), true);
+  draft.interpretation.slots[2].visible = false;
+  assert.equal(forecastCoversSlot(draft, '2026-09-17', '18'), false);
+});
 
 test('binds same-image daily plus weekly review as one reviewed image', () => {
   const weeklyDays = Array.from({length:5},(_,i)=>({
