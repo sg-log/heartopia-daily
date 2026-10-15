@@ -1317,6 +1317,14 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
           </div>
 
           <div class="card s12">
+            <h2>ギフトコードの承認待ち</h2>
+            <p class="small">内容と公式投稿を確認して承認すると、サイトへ登録し、フレンドDiscordへ通知します。</p>
+            <div class="buttons"><button type="button" class="secondary" id="refreshPendingGiftsBtn">一覧を更新</button></div>
+            <div id="pendingGiftStatus" class="status" role="status"></div>
+            <div id="pendingGiftReviews"></div>
+          </div>
+
+          <div class="card s12">
             <h2>天気自動更新</h2>
             <p class="small">ネット上の最新候補を探す自動更新を手動で起動します。同じ対象日・同じ便が成功済みなら重複実行しません。</p>
             <div class="row">
@@ -2875,6 +2883,7 @@ const ids = [
   "quickGiftCodeConfirm","quickGiftCodeCandidateSelect","quickGiftRewardConfirm","quickGiftExpiresConfirm","quickGiftSourceConfirm","quickGiftMemoConfirm","quickGiftStatusConfirm","saveQuickGiftBtn",
   "giftBackupStatus","giftBackupCopyBtn","giftBackupCodeInput","giftBackupRestoreBtn","giftBackupRestoreStatus",
   "giftCodeInput","giftRewardInput","giftExpiresAtInput","giftSourceUrlInput","giftMemoInput","giftStatusInput","giftAdminKey","saveGiftCodeBtn","clearGiftCodeBtn","refreshGiftCodesBtn","giftCodeStatus","giftCodeAdminList",
+  "refreshPendingGiftsBtn","pendingGiftStatus","pendingGiftReviews",
   "noticeDateInput","noticeTextInput","noticeAdminKey","saveNoticeBtn","clearNoticeBtn","noticeStatus",
   "accessStats","accessChart","accessExcludedToggle","refreshAccessStatsBtn","accessStatus",
   "correctionDate","correctionMemo","correctionExpected","actualFluorite","actualOak","saveCorrectionBtn","saveApplyCorrectionBtn","correctionStatus","correctionsTable",
@@ -3559,6 +3568,81 @@ function renderGiftAdminList(){
 function renderGiftAll(){
   renderGiftCodes();
   renderGiftAdminList();
+}
+
+function pendingGiftReviewId(){
+  const id = new URLSearchParams(window.location.search).get("giftReview") || "";
+  return /^[A-Za-z0-9-]{1,100}$/.test(id) ? id : "";
+}
+async function fetchPendingGiftReviews(){
+  if(!isAdminRoute() || !adminKeyValue()) return;
+  const requestKey = adminKeyValue();
+  E.pendingGiftStatus.textContent = "確認待ちを読み込み中です…";
+  try{
+    const result = await apiPost({action:"getGiftReviews", adminKey:requestKey});
+    if(result.ok === false) throw new Error(result.error || "読み込めませんでした");
+    if(adminKeyValue() !== requestKey) return;
+    const reviews = result.reviews || [];
+    E.pendingGiftReviews.innerHTML = reviews.length ? reviews.map(item => `
+      <div class="giftCard" id="gift-review-${esc(item.id)}" data-gift-review="${esc(item.id)}" style="margin-top:12px">
+        <h3>${esc(item.code)}</h3>
+        <p class="small">${esc(item.reason)}</p>
+        <label>報酬<textarea data-review-reward>${esc(item.reward || "")}</textarea></label>
+        <label>交換期限（日本時間）<input data-review-expiry type="datetime-local" value="${esc(item.expiresAt || "")}"></label>
+        <p class="small">${item.expiresAt ? "期限は公開一覧から補った未確認の候補です。公式投稿と一致するか確認してください。" : "交換期限を取得できていません。公式投稿を確認して入力してください。"}</p>
+        <label>確認する公式投稿<input data-review-source type="url" value="${esc(item.sourceUrl || "")}" placeholder="公式投稿のURL"></label>
+        <details><summary>取得した本文・根拠を見る</summary>
+          ${/^https:\/\/x\.com\/(myheartopia|Heartopia_JP)\/status\/\d+$/i.test(item.sourceUrl || "") ? `<p><a href="${esc(item.sourceUrl)}" target="_blank" rel="noopener noreferrer">公式投稿を開く</a></p>` : ""}
+          <p class="small" style="white-space:pre-wrap">${esc(item.excerpt || "本文は未取得です。")}</p>
+          <p class="small">公開一覧との照合で見つかった候補です。まだ公開していません。</p>
+        </details>
+        <label><input type="checkbox" data-review-confirm style="width:auto;display:inline-block"> 公式情報と報酬・期限を確認しました</label>
+        <div class="buttons"><button type="button" data-review-approve disabled>承認して公開</button><button type="button" class="secondary" data-review-reject>見送る</button></div>
+        <p class="status" data-review-status role="status"></p>
+      </div>`).join("") : '<p class="small">承認待ちのギフトコードはありません。</p>';
+    E.pendingGiftStatus.textContent = reviews.length ? `${reviews.length}件の承認待ちがあります。` : "";
+    E.pendingGiftReviews.querySelectorAll('[data-gift-review]').forEach(card => {
+      const approve = card.querySelector('[data-review-approve]');
+      const update = () => {
+        approve.disabled = !card.querySelector('[data-review-confirm]').checked
+          || !card.querySelector('[data-review-reward]').value.trim()
+          || !card.querySelector('[data-review-expiry]').value
+          || !card.querySelector('[data-review-source]').value.trim();
+      };
+      card.querySelectorAll('input,textarea').forEach(input => { input.addEventListener('input', update); input.addEventListener('change', update); });
+      approve.onclick = () => decidePendingGiftReview(card, "approve");
+      card.querySelector('[data-review-reject]').onclick = () => decidePendingGiftReview(card, "reject");
+    });
+    if(pendingGiftReviewId() || window.location.hash === "#pendingGiftReviews"){
+      setAdminSubtab("daily");
+      const target = document.getElementById(`gift-review-${pendingGiftReviewId()}`) || E.pendingGiftReviews;
+      const outer = target.closest('.adminCardFoldable');
+      if(outer) setAdminCardCollapsed(outer, false);
+      requestAnimationFrame(() => target.scrollIntoView({behavior:"smooth", block:"center"}));
+    }
+  }catch(error){ E.pendingGiftStatus.textContent = `確認待ちを読み込めませんでした：${error.message}`; }
+}
+async function decidePendingGiftReview(card, decision){
+  const status = card.querySelector('[data-review-status]');
+  const buttons = [...card.querySelectorAll('button')];
+  buttons.forEach(button => { button.disabled = true; });
+  status.textContent = decision === "approve" ? "登録しています…" : "見送りにしています…";
+  try{
+    const result = await apiPost({action:"decideGiftReview", adminKey:adminKeyValue(), id:card.dataset.giftReview, decision,
+      confirmed:card.querySelector('[data-review-confirm]').checked,
+      reward:card.querySelector('[data-review-reward]').value.trim(), expiresAt:card.querySelector('[data-review-expiry]').value,
+      sourceUrl:card.querySelector('[data-review-source]').value.trim()});
+    if(result.ok === false) throw new Error(result.error || "保存できませんでした");
+    card.remove();
+    E.pendingGiftStatus.textContent = result.mode === "already_processed" ? "この候補はすでに処理されています。"
+      : result.mode === "already_registered" ? "すでに登録されていたため、確認待ちを解消しました。"
+      : decision === "reject" ? "見送りにしました。" : (result.discordWarning ? "公開しましたが、フレンドDiscordへの通知に失敗しました。" : "承認して登録しました。");
+    await fetchGiftCodes(true);
+  }catch(error){
+    status.textContent = `保存できませんでした：${error.message}`;
+    buttons.forEach(button => { button.disabled = false; });
+    card.querySelector('[data-review-confirm]').dispatchEvent(new Event('change'));
+  }
 }
 function giftDateInputValue(value){
   const text = String(value || "").trim();
@@ -5540,6 +5624,7 @@ function adminKeyInputs(){
 }
 function setAdminKey(value, persist=true){
   if(adminSessionKey !== String(value || "").trim()){
+    if(E.pendingGiftReviews) E.pendingGiftReviews.replaceChildren();
     clearPendingEvidenceImages();
     E.pendingWeatherReports?.querySelectorAll('[data-weather-evidence]').forEach(el => {delete el.dataset.evidenceState;el.replaceChildren();});
   }
@@ -6569,6 +6654,7 @@ function setAdminUnlocked(unlocked){
     if(E.adminGateStatus) E.adminGateStatus.textContent = "";
     fetchGiftCodes(true);
     fetchAccessStats();
+    fetchPendingGiftReviews();
     if(pendingWeatherDeepLinkId() || window.location.hash === "#pendingWeatherReports"){
       setAdminSubtab("daily");
       fetchPendingWeatherReports();
@@ -6770,6 +6856,7 @@ function init(){
     E.giftCodeStatus.textContent = "新規入力に戻しました。";
   };
   E.refreshGiftCodesBtn.onclick = () => fetchGiftCodes(true);
+  E.refreshPendingGiftsBtn.onclick = fetchPendingGiftReviews;
   E.giftCodeAdminList.onclick = event => {
     const edit = event.target.closest("[data-gift-edit]");
     if(!edit) return;
