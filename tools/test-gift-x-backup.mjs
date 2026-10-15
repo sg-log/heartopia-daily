@@ -11,7 +11,7 @@ import {
   isOfficialXAuthorUrl,
   runGiftXBackup,
   shouldRunXBackup,
-  extractListingCandidates, reconcileGiftListings, notifyGiftReviews
+  extractListingCandidates, reconcileGiftListings, notifyGiftReviews, captureGiftReviewScreenshot
 } from "./gift-x-backup.mjs";
 
 test("extracts official status ids from syndication-style escaped HTML", () => {
@@ -267,4 +267,12 @@ test('several new candidates produce one private digest instead of a burst', asy
   assert.equal(result.messages, 1);
   assert.equal(result.notified, 3);
   assert.deepEqual(ack, ['1', '2', '3']);
+});
+
+test('screenshots reject a different author or code before launching a browser', async () => {
+  const request = { code: 'review123', sourceUrl: 'https://x.com/Heartopia_JP/status/2106957555713085600' };
+  await assert.rejects(captureGiftReviewScreenshot({ ...request, sourceUrl: 'https://example.com/' }), /Invalid/);
+  await assert.rejects(captureGiftReviewScreenshot(request, { fetchImpl: async () => new Response(JSON.stringify({
+    author_url: 'https://x.com/Heartopia_JP', html: '<p>ギフトコード：different123</p>'
+  })) }), /mismatch/);
 });
