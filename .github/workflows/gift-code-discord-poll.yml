@@ -1,6 +1,11 @@
 name: Gift code Discord poll
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/gift-x-backup.mjs"
+      - "apps-script/gift-code-storage.gs"
   workflow_dispatch:
     inputs:
       channel_id:
@@ -31,6 +36,7 @@ jobs:
         with:
           node-version: "24"
       - name: Poll Discord gift channel
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         env:
           DISCORD_GIFT_BOT_TOKEN: ${{ secrets.DISCORD_GIFT_BOT_TOKEN }}
           WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
@@ -44,5 +50,6 @@ jobs:
         env:
           WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
           WEATHER_DC_WEBHOOK_URL: ${{ secrets.WEATHER_DC_WEBHOOK_URL }}
+          GIFT_X_FORCE: ${{ github.event_name == 'push' && '1' || '0' }}
           GIFT_POLL_MODE: ${{ inputs.mode }}
         run: node tools/gift-x-backup.mjs

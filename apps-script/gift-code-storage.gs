@@ -149,8 +149,11 @@ function getGiftReviewSheet_() {
   let sheet = spreadsheet.getSheetByName("gift_code_reviews");
   if (!sheet) {
     sheet = spreadsheet.insertSheet("gift_code_reviews");
-    sheet.appendRow(["id", "code", "reason", "sourceUrl", "listingUrls", "excerpt", "status", "createdAt", "notifiedAt"]);
+    sheet.appendRow(["id", "code", "reason", "sourceUrl", "listingUrls", "excerpt", "status", "createdAt", "notifiedAt", "deadlineHint"]);
   }
+  const hintHeader = sheet.getRange(1, 10).getValue();
+  if (hintHeader && String(hintHeader) !== "deadlineHint") throw new Error("gift_code_reviews の列構成を確認してください");
+  if (!hintHeader) sheet.getRange(1, 10).setValue("deadlineHint");
   return sheet;
 }
 
@@ -174,15 +177,27 @@ function reconcileGiftReviews_(candidates, acknowledgements) {
       if ((!official && source) || (!official && !listings.length)) return;
       // Search can return years of old X posts; only current active-list misses alert.
       if (!listings.length || byCode[code]) return;
-      if (rows.slice(1).some(function(row) { return String(row[1]) === code; })) return;
+      const existingIndex = rows.findIndex(function(row, index) { return index > 0 && String(row[1]) === code; });
+      const hint = String(item.deadlineHint || "").slice(0, 100);
+      const validHint = listings.indexOf("https://heartopiaguide.com/codes/") >= 0 && parseDiscordGiftDeadline_(hint) ? hint : "";
+      if (existingIndex >= 0) {
+        const existing = rows[existingIndex];
+        while (existing.length < 10) existing.push("");
+        if (validHint && !existing[9]) {
+          existing[9] = validHint;
+          sheet.getRange(existingIndex + 1, 1, 1, 10).setValues([existing]);
+        }
+        return;
+      }
       const row = [Utilities.getUuid(), code, safeSheetText_(String(item.reason || "公式情報の確認が必要です。").slice(0, 300)),
-        source, JSON.stringify(listings.slice(0, 2)), safeSheetText_(String(item.excerpt || "").slice(0, 1000)), "pending", now, ""];
+        source, JSON.stringify(listings.slice(0, 2)), safeSheetText_(String(item.excerpt || "").slice(0, 1000)), "pending", now, "", validHint];
       sheet.appendRow(row);
       rows.push(row);
     });
     const pending = [];
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
+      while (row.length < 10) row.push("");
       const gift = byCode[String(row[1])];
       // A deliberate hide is final; do not expose it as a fresh missing-code alert.
       const legacy = !JSON.parse(String(row[4] || "[]")).length;
@@ -190,7 +205,7 @@ function reconcileGiftReviews_(candidates, acknowledgements) {
       let changed = false;
       if (resolved && row[6] !== "resolved") { row[6] = "resolved"; changed = true; }
       if (ack.indexOf(String(row[0])) >= 0 && !row[8]) { row[8] = now; changed = true; }
-      if (changed) sheet.getRange(i + 1, 1, 1, 9).setValues([row]);
+      if (changed) sheet.getRange(i + 1, 1, 1, 10).setValues([row]);
       if (row[6] === "pending" && !row[8] && pending.length < 10) {
         pending.push({ id: String(row[0]), code: String(row[1]), reason: plainSheetText_(row[2]), sourceUrl: String(row[3]),
           listingUrls: JSON.parse(String(row[4] || "[]")) });
@@ -198,6 +213,82 @@ function reconcileGiftReviews_(candidates, acknowledgements) {
     }
     return pending;
   });
+}
+
+function getGiftReviews_(body) {
+  requireKey_(body.adminKey, adminKey_(), "管理キー");
+  return json_({ ok: true, reviews: listGiftReviewsForAdmin_() });
+}
+
+function listGiftReviewsForAdmin_() {
+  reconcileGiftReviews_([], []);
+  return getGiftReviewSheet_().getDataRange().getValues().slice(1).filter(function(row) {
+    return row[6] === "pending";
+  }).map(function(row) {
+    const excerpt = plainSheetText_(row[5]);
+    const parsed = parseDiscordGiftAnnouncement_(excerpt, { rewardNameMap: giftRewardNameMap_() });
+    const hint = plainSheetText_(row[9] || "");
+    return { id: String(row[0]), code: String(row[1]), reason: plainSheetText_(row[2]), sourceUrl: plainSheetText_(row[3]),
+      listingUrls: JSON.parse(String(row[4] || "[]")), excerpt: excerpt,
+      reward: parsed.ok && parsed.code === String(row[1]) ? parsed.reward : "",
+      expiresAt: parseDiscordGiftDeadline_(hint), expiryNeedsConfirmation: true };
+  });
+}
+
+function decideGiftReview_(body) {
+  requireKey_(body.adminKey, adminKey_(), "管理キー");
+  return json_(Object.assign({ ok: true }, processGiftReviewDecision_(body)));
+}
+
+function processGiftReviewDecision_(body) {
+  const decision = String(body.decision || "");
+  if (["approve", "reject"].indexOf(decision) < 0) throw new Error("承認または見送りを選んでください");
+  const result = withScriptLock_(function() {
+    const sheet = getGiftReviewSheet_();
+    const rows = sheet.getDataRange().getValues();
+    const index = rows.findIndex(function(row, i) { return i > 0 && String(row[0]) === String(body.id || ""); });
+    if (index < 1) throw new Error("確認待ちが見つかりません");
+    const row = rows[index];
+    while (row.length < 10) row.push("");
+    if (row[6] !== "pending") return { mode: "already_processed" };
+    if (decision === "reject") {
+      row[6] = "rejected";
+      sheet.getRange(index + 1, 1, 1, 10).setValues([row]);
+      return { mode: "rejected" };
+    }
+    if (body.confirmed !== true) throw new Error("公式情報と内容を確認してください");
+    const reward = limitText_(body.reward, TEXT_LIMITS.reward, "報酬").trim();
+    const expiresAt = validateGiftExpiresForWrite_(body.expiresAt);
+    if (!reward || !expiresAt) throw new Error("報酬と交換期限を入力してください");
+    if (parseDiscordGiftDeadline_(expiresAt.replace("T", " ") + " (UTC+9)") !== expiresAt) throw new Error("交換期限が正しくありません");
+    const sourceUrl = String(body.sourceUrl || row[3] || "").trim();
+    if (!/^https:\/\/(?:x\.com\/(?:myheartopia|Heartopia_JP)\/status\/\d{15,25}|discord\.com\/channels\/\d+\/\d+\/\d+)(?:\?.*)?$/i.test(sourceUrl)) {
+      throw new Error("確認した公式投稿のURLを入力してください");
+    }
+    const gifts = getGiftSheet_();
+    const registered = gifts.getDataRange().getValues().slice(1).some(function(gift) {
+      return String(gift[GIFT_HEADERS.indexOf("code")]) === String(row[1]);
+    });
+    if (registered) {
+      row[6] = "resolved";
+      sheet.getRange(index + 1, 1, 1, 10).setValues([row]);
+      return { mode: "already_registered" };
+    }
+    const now = new Date().toISOString();
+    const item = { id: Utilities.getUuid(), code: validateGiftCodeForWrite_(row[1]), reward: safeSheetText_(reward), expiresAt: expiresAt,
+      sourceUrl: safeSheetText_(sourceUrl), memo: "", status: giftStatusFromExpiry_(expiresAt), createdAt: now, updatedAt: now };
+    gifts.appendRow(giftRow_(item));
+    saveAutoGiftNotice_("created", true);
+    row[6] = "approved";
+    sheet.getRange(index + 1, 1, 1, 10).setValues([row]);
+    return { mode: "created", item: item };
+  });
+  if (result.mode === "created" && result.item.status === "active") {
+    const notification = notifyDiscordGiftCode_(result.item);
+    result.discordNotified = Boolean(notification.notified);
+    if (notification.warning) result.discordWarning = notification.warning;
+  }
+  return result;
 }
 
 function processDiscordGiftBatch_(body) {
