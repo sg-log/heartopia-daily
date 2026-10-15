@@ -81,21 +81,21 @@ test('delayed evening backup resolves from its scheduled UTC time', () => {
   })
 })
 
-test('morning backup at 08:00 JST resolves to the current game date', () => {
+test('morning backup at 08:45 JST resolves to the current game date', () => {
   const result = resolveContext({
-    nowUtc: '2026-09-17T23:00:00Z',
+    nowUtc: '2026-09-17T23:45:00Z',
     eventName: 'schedule',
-    schedule: '30 22 * * *'
+    schedule: '30 23 * * *'
   })
   assert.equal(result.target_date, '2026-09-18')
   assert.equal(result.slot, 'morning')
 })
 
-test('delayed morning backup crossing a UTC date keeps the original 07:30 JST game date', () => {
+test('delayed morning backup crossing a UTC date keeps the original 08:30 JST game date', () => {
   const result = resolveContext({
     nowUtc: '2026-09-18T16:15:00Z',
     eventName: 'schedule',
-    schedule: '30 22 * * *'
+    schedule: '30 23 * * *'
   })
   assert.equal(result.target_date, '2026-09-18')
   assert.equal(result.slot, 'morning')
@@ -125,8 +125,8 @@ test('manual explicit target date remains authoritative', () => {
 
 test('legacy cron events use the same scheduled-time game-date resolution', () => {
   const cases = [
-    ['0 22 * * *', '2026-09-17T23:00:00Z', '2026-09-18', 'morning'],
-    ['10 22 * * *', '2026-09-17T23:00:00Z', '2026-09-18', 'morning'],
+    ['0 22 * * *', '2026-09-17T23:45:00Z', '2026-09-18', 'morning'],
+    ['10 22 * * *', '2026-09-17T23:45:00Z', '2026-09-18', 'morning'],
     ['0 10 * * *', '2026-09-17T15:12:00Z', '2026-09-17', 'evening'],
     ['10 10 * * *', '2026-09-17T15:12:00Z', '2026-09-17', 'evening']
   ]
