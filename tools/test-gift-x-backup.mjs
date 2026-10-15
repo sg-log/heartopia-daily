@@ -10,7 +10,8 @@ import {
   extractTweetTextFromOembedHtml,
   isOfficialXAuthorUrl,
   runGiftXBackup,
-  shouldRunXBackup
+  shouldRunXBackup,
+  extractListingCandidates, reconcileGiftListings, notifyGiftReviews
 } from "./gift-x-backup.mjs";
 
 test("extracts official status ids from syndication-style escaped HTML", () => {
@@ -164,4 +165,60 @@ test("poll mode forwards verified official X candidates to Apps Script", async (
   assert.equal(ingest.action, "ingestOfficialXGiftBatch");
   assert.equal(ingest.posts.length, 1);
   assert.equal(ingest.posts[0].statusId, statusId);
+});
+
+test('public list reconciliation excludes expired sections and deduplicates independent sources', async () => {
+  const guide = '<code>missing123</code><a href="https://x.com/Heartopia_JP/status/2106957555713085600">official</a><h2>Expired Codes (1)</h2><code>expired123</code>';
+  const dex = '<button data-code="missing123"></button><!-- Expired Codes Section --><button data-code="expired123"></button>';
+  assert.equal(extractListingCandidates(guide, 'https://heartopiaguide.com/codes/').length, 1);
+  const result = await reconcileGiftListings({ fetchImpl: async url => {
+    if (String(url).includes('heartopiaguide.com')) return new Response(guide);
+    if (String(url).includes('heartodex.com')) return new Response(dex);
+    return new Response(JSON.stringify({ author_url: 'https://x.com/Heartopia_JP',
+      html: '<p>願い星 ×3<br>ギフトコード：missing123<br>受け取ろう…</p>' }));
+  }});
+  assert.equal(result.activeCandidates, 1);
+  assert.equal(result.posts.length, 0);
+  assert.equal(result.reviews.length, 1);
+  assert.equal(result.reviews[0].listingUrls.length, 2);
+  assert.equal(result.reviews[0].expiresAt, undefined);
+});
+
+test('a listing link to a different official code cannot approve the listed candidate', async () => {
+  const result = await reconcileGiftListings({ fetchImpl: async url => {
+    if (String(url).includes('heartopiaguide.com')) return new Response('<code>missing123</code><a href="https://x.com/Heartopia_JP/status/2106957555713085600">official</a>Expired Codes (0)');
+    if (String(url).includes('heartodex.com')) return new Response('');
+    return new Response(JSON.stringify({ author_url: 'https://x.com/Heartopia_JP',
+      html: '<p>願い星 ×3<br>ギフトコード：another123<br>交換期限：2099/12/04 00:59</p>' }));
+  }});
+  assert.equal(result.posts.length, 0);
+  assert.equal(result.reviews[0].code, 'missing123');
+});
+
+test('full official text found through a public listing can use the existing import path', async () => {
+  const result = await reconcileGiftListings({ fetchImpl: async url => {
+    if (String(url).includes('heartopiaguide.com')) return new Response('<code>missing123</code><a href="https://x.com/Heartopia_JP/status/2106957555713085600">official</a>Expired Codes (0)');
+    if (String(url).includes('heartodex.com')) return new Response('');
+    return new Response(JSON.stringify({ author_url: 'https://x.com/Heartopia_JP',
+      html: '<p>願い星 ×3<br>ギフトコード：missing123<br>交換期限：2099/12/04 00:59</p>' }));
+  }});
+  assert.equal(result.posts.length, 1);
+  assert.equal(result.reviews.length, 0);
+});
+
+test('private review delivery acknowledges only a successful webhook response', async () => {
+  const reviews = [{ id: 'review-1', code: 'missing123', reason: '期限未確認', listingUrls: ['https://heartopiaguide.com/codes/'] }];
+  const acknowledged = [];
+  let payload;
+  const opts = { webhookUrl: 'https://discord.com/api/webhooks/123456789012345678/test-token', reviews,
+    acknowledge: async id => acknowledged.push(id) };
+  await assert.rejects(notifyGiftReviews({ ...opts, fetchImpl: async () => new Response('', { status: 500 }) }));
+  assert.deepEqual(acknowledged, []);
+  const result = await notifyGiftReviews({ ...opts, fetchImpl: async (_url, request) => {
+    payload = JSON.parse(request.body); return new Response(null, { status: 204 });
+  }});
+  assert.equal(result.notified, 1);
+  assert.deepEqual(acknowledged, ['review-1']);
+  assert.deepEqual(payload.allowed_mentions.parse, []);
+  assert.equal(payload.flags, 4);
 });
