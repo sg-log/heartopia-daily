@@ -53,6 +53,20 @@ export function chooseEmbedEvidence(images) {
   return selected ? { kind: "image-screenshot", selected } : { kind: "embed-screenshot", selected: null };
 }
 
+export function isExactStatusMediaLink(value, sourceId) {
+  try {
+    const url = new URL(value);
+    const match = url.pathname.match(/^\/(?:[A-Za-z0-9_]+\/status|i\/status)\/(\d+)\/(?:photo|video)\/[1-4]\/?$/);
+    return url.protocol === 'https:' && X_POST_HOSTS.has(url.hostname.toLowerCase()) &&
+      !url.username && !url.password && !url.port && match?.[1] === String(sourceId);
+  } catch { return false; }
+}
+
+export function collectExactStatusMedia(images, sourceId) {
+  return collectXPublicMedia(images.filter(image => isExactStatusMediaLink(image.ownerLink, sourceId)))
+    .map(image => ({ ...image, sourceScope: 'exact-status' }));
+}
+
 function setPathway(pathways, name, httpStatus) {
   if (!name) return;
   const prior = pathways.find((item) => item.name === name);
@@ -172,22 +186,29 @@ async function captureXEmbed({ post, outputDir }) {
         height: Math.round(rect.height),
         naturalWidth: node.naturalWidth || 0,
         naturalHeight: node.naturalHeight || 0,
+        ownerLink: node.closest('a[href*="/status/"]')?.href || '',
         visible: style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0,
         inViewport: rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth
       };
     }));
-    const networkMedia = observedMediaUrls.map((url, index) => ({
-      index: images.length + index,
-      url,
-      alt: "",
-      width: 1,
-      height: 1,
-      naturalWidth: 1,
-      naturalHeight: 1,
-      visible: true,
-      inViewport: true
-    }));
-    const rawMediaCandidates = collectXPublicMedia([...images, ...networkMedia]);
+    // X also paints photos as CSS backgrounds. Bind each URL to its owning
+    // photo link; responses alone can include quoted/related-post images.
+    const backgroundImages = await frame.locator('a[href*="/status/"]').evaluateAll(nodes => {
+      const result = [];
+      for (const anchor of nodes) {
+        for (const node of [anchor, ...anchor.querySelectorAll('*')]) {
+          const style = getComputedStyle(node), rect = node.getBoundingClientRect();
+          const match = style.backgroundImage.match(/url\(["']?(https:[^"')]+)["']?\)/);
+          if (!match) continue;
+          result.push({ index: result.length, url: match[1], ownerLink: anchor.href,
+            width: rect.width, height: rect.height, naturalWidth: rect.width, naturalHeight: rect.height,
+            visible: style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0,
+            inViewport: rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth });
+        }
+      }
+      return result;
+    });
+    const rawMediaCandidates = collectExactStatusMedia([...images, ...backgroundImages], post.sourceId);
     const rawMedia = [];
     for (const [index, candidate] of rawMediaCandidates.entries()) {
       const downloaded = await downloadXPublicMedia(candidate.url);
@@ -199,14 +220,16 @@ async function captureXEmbed({ post, outputDir }) {
         file,
         mimeType: downloaded.mimeType,
         byteSize: downloaded.byteSize,
-        sha256: downloaded.sha256
+        sha256: downloaded.sha256,
+        sourceScope: candidate.sourceScope,
+        ownerLink: candidate.ownerLink
       });
     }
 
     // Some official X embeds render the post image correctly but do not expose a
     // downloadable pbs.twimg.com URL. Keep that public rendered media as an exact
     // screenshot-backed raw candidate instead of falling back to the whole tweet.
-    const evidenceChoice = chooseEmbedEvidence(images);
+    const evidenceChoice = chooseEmbedEvidence(images.filter(image => isExactStatusMediaLink(image.ownerLink, post.sourceId)));
     if (!rawMedia.length && evidenceChoice.selected) {
       const fallbackTarget = imageLocator.nth(evidenceChoice.selected.index);
       await fallbackTarget.scrollIntoViewIfNeeded();
@@ -225,7 +248,9 @@ async function captureXEmbed({ post, outputDir }) {
         mimeType: "image/jpeg",
         byteSize,
         sha256: await sha256File(filePath),
-        renderedFallback: true
+        renderedFallback: true,
+        sourceScope: 'exact-status',
+        ownerLink: evidenceChoice.selected.ownerLink
       });
     }
 
@@ -263,6 +288,8 @@ async function captureXEmbed({ post, outputDir }) {
           byteSize,
           sha256: await sha256File(filePath),
           renderedFallback: true,
+          sourceScope: 'exact-status',
+          ownerLink: await fallbackTarget.getAttribute('href'),
           renderedFrom: "status-media-link"
         });
       }
