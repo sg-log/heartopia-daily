@@ -222,3 +222,41 @@ test('private review delivery acknowledges only a successful webhook response', 
   assert.deepEqual(payload.allowed_mentions.parse, []);
   assert.equal(payload.flags, 4);
 });
+
+test('production poll ignores old search results and registered codes with missing expiry', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gift-review-history-'));
+  const api = 'https://script.google.com/macros/s/ABC123/exec';
+  fs.writeFileSync(path.join(dir, 'index.html'), `const WEATHER_API_URL = "${api}";`);
+  let batch;
+  try {
+    await runGiftXBackup({ repoRoot: dir, mode: 'poll', force: true, reconcile: true, postKey: 'test', handles: ['Heartopia_JP'],
+      fetchImpl: async (url, options = {}) => {
+        const target = String(url);
+        if (target.includes('timeline-profile')) return new Response('<a href="https://x.com/Heartopia_JP/status/2010562382662341001">old</a>');
+        if (target.includes('publish.twitter.com')) return new Response(JSON.stringify({ author_url: 'https://x.com/Heartopia_JP',
+          html: '<p>願い星 ×3<br>ギフトコード：older123<br>続き…</p>' }));
+        if (target === api + '?action=getGiftCodes') return new Response(JSON.stringify({ ok: true, codes: [{ code: 'known123', expiresAt: '' }] }));
+        if (target.includes('heartopiaguide.com')) return new Response('<code>known123</code><code>missing123</code>Expired Codes (0)');
+        if (target.includes('heartodex.com')) return new Response('');
+        if (target === api && options.method === 'POST') { batch = JSON.parse(options.body); return new Response(JSON.stringify({ ok: true, reviews: [] })); }
+        throw Error('unexpected request');
+      } });
+    assert.deepEqual(batch.reviewCandidates.map(item => item.code), ['missing123']);
+    assert.equal(batch.posts.length, 0);
+  } finally {
+    assert.equal(path.dirname(path.resolve(dir)), path.resolve(os.tmpdir()));
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('several new candidates produce one private digest instead of a burst', async () => {
+  let requests = 0;
+  const ack = [];
+  const result = await notifyGiftReviews({ webhookUrl: 'https://discord.com/api/webhooks/123456789012345678/test-token',
+    reviews: [1, 2, 3, 4].map(n => ({ id: String(n), code: 'newcode' + n, reason: '確認待ち', listingUrls: ['https://heartopiaguide.com/codes/'] })),
+    fetchImpl: async () => { requests++; return new Response(null, { status: 204 }); }, acknowledge: async id => ack.push(id) });
+  assert.equal(requests, 1);
+  assert.equal(result.messages, 1);
+  assert.equal(result.notified, 3);
+  assert.deepEqual(ack, ['1', '2', '3']);
+});
