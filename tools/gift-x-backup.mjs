@@ -126,7 +126,9 @@ async function fetchOfficialPost(fetchImpl, handle, statusId) {
     const data = await response.json();
     if (!isOfficialXAuthorUrl(data?.author_url, handle)) return null;
     const text = extractTweetTextFromOembedHtml(data?.html || "");
-    if (!text || !looksLikeGiftText(text)) return null;
+    // oEmbed can shorten long announcements before their redemption deadline.
+    // Do not import a partial post as if the deadline were absent.
+    if (!text || !looksLikeGiftText(text) || /(?:…|\.{3})\s*$/.test(text)) return null;
     return { statusId, sourceUrl, text, handle };
   } catch {
     return null;
