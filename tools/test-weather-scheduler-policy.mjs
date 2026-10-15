@@ -76,13 +76,14 @@ test('scheduler reviews each Web or X candidate as same-image unified first, the
   assert.doesNotMatch(workflow, /OPENAI_API_KEY/)
 })
 
-test('current-slot and target-date gates reject stale 00 daily evidence', () => {
+test('current-slot gates require verified same-date forecast coverage', () => {
   assert.match(workflow, /RUN_SLOT -eq 'morning'\) \{ '06' \} elseif \(\$env:RUN_SLOT -eq 'evening'\) \{ '18' \}/)
   assert.match(workflow, /\[string\]\$review\.targetDate -ceq \$env:TARGET_DATE/)
   assert.match(workflow, /\[string\]\$review\.interpretation\.observedDate -ceq \$env:TARGET_DATE/)
-  assert.match(workflow, /\$actualStartSlot -ceq \$expectedStartSlot/)
+  assert.match(workflow, /\$review\.coversRequestedSlot -eq \$true/)
   assert.match(workflow, /\[string\]\$dailyReview\.targetDate -ceq \$env:TARGET_DATE/)
-  assert.match(workflow, /\$dailyStart -ceq \$expectedStartSlot/)
+  assert.match(workflow, /\$dailyReview\.coversRequestedSlot -eq \$true/)
+  assert.equal((workflow.match(/--required-slot \$expectedStartSlot/g) || []).length, 2)
   assert.match(workflow, /\$dailySlots\.Count -eq 5/)
 })
 
