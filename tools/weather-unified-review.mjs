@@ -84,6 +84,21 @@ export function applyTimedSpecialWeatherHints(result, postText) {
   return clone;
 }
 
+// Keep the source's actual start time. A same-date 00 forecast includes 06/18;
+// a future-start forecast and a different-date forecast do not cover that slot.
+export function forecastCoversSlot(review, targetDate, requiredSlot) {
+  const hours = ['00', '06', '12', '18'];
+  const actual = review?.interpretation?.startSlot;
+  const slots = review?.interpretation?.slots;
+  return review?.ready === true && review.interpretation?.ready === true &&
+    review.targetDate === targetDate && review.interpretation.observedDate === targetDate &&
+    hours.includes(actual) && hours.includes(requiredSlot) &&
+    Number(actual) <= Number(requiredSlot) &&
+    Array.isArray(slots) && slots.length === 5 &&
+    slots.every((slot, index) => slot.slot === `slot${index}` && slot.visible === true &&
+      slot.confidence === 'high' && Array.isArray(slot.weather) && slot.weather.length > 0);
+}
+
 export async function inspectUnifiedCapture({ captureDir, targetDate, repoRoot = path.resolve('.') }) {
   const direct = await inspectDirectPanelCapture({ captureDir, targetDate, repoRoot });
   let postText = '';
@@ -155,6 +170,7 @@ async function main() {
       targetDate: args['target-date'],
       repoRoot: path.resolve(args['repo-root'] || '.')
     });
+    if (args['required-slot']) result.coversRequestedSlot = forecastCoversSlot(result, args['target-date'], args['required-slot']);
     await writeFile(path.resolve(args.output), `${JSON.stringify(result, null, 2)}\n`, 'utf8');
     process.stdout.write(`${JSON.stringify({ ready: result.ready, selectedImage: result.selectedImage?.file || '', reviewedImageCount: result.reviewedImages?.length || (result.selectedImage ? 1 : 0), startSlot: result.interpretation?.startSlot || '', weeklyCount: result.interpretation?.weeklyDays?.length || 0 })}\n`);
     if (!result.ready) process.exitCode = 2;

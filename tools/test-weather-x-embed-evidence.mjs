@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { WeatherCloudError } from "./weather-cloud-url-evidence.mjs";
-import { chooseEmbedEvidence, getOfficialPathwayName, parseXPostUrl } from "./weather-x-embed-evidence.mjs";
+import { chooseEmbedEvidence, getOfficialPathwayName, parseXPostUrl, collectExactStatusMedia } from "./weather-x-embed-evidence.mjs";
 import { collectXPublicMedia, downloadXPublicMedia, parseXPublicMediaUrl } from "./weather-x-raw-media.mjs";
 
 test("normalizes public X post URLs without depending on account name", () => {
@@ -53,6 +53,20 @@ test("collects visible DOM or observed network X post media URLs and excludes av
   assert.equal(media.length, 2);
   assert.equal(media[0].index, 1);
   assert.equal(media[1].index, 3);
+});
+
+test('binds only photos owned by the requested status, excluding quotes and unscoped responses', () => {
+  const media = { index:0, url:'https://pbs.twimg.com/media/weather?format=jpg&name=small',
+    naturalWidth:680, naturalHeight:680, visible:true, width:400, height:400 };
+  const result = collectExactStatusMedia([
+    { ...media, ownerLink:'https://x.com/person/status/123/photo/1' },
+    { ...media, index:1, url:'https://pbs.twimg.com/media/quote?format=jpg&name=small', ownerLink:'https://x.com/person/status/456/photo/1' },
+    { ...media, index:2, url:'https://pbs.twimg.com/media/unscoped?format=jpg&name=small' },
+    { ...media, ownerLink:'https://example.org/person/status/123/photo/1' }
+  ], '123');
+  assert.equal(result.length, 1);
+  assert.equal(result[0].sourceScope, 'exact-status');
+  assert.equal(result[0].ownerLink, 'https://x.com/person/status/123/photo/1');
 });
 
 test("strictly validates original public X media URLs", () => {

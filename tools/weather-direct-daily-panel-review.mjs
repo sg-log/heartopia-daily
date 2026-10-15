@@ -4,7 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { extractPostDates, normalizeTargetDate } from './weather-deterministic-review.mjs';
-import { applyTimedSpecialWeatherHints } from './weather-unified-review.mjs';
+import { applyTimedSpecialWeatherHints, forecastCoversSlot } from './weather-unified-review.mjs';
 
 const START_SLOTS = ['00','06','12','18'];
 const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
@@ -111,7 +111,9 @@ export async function inspectDirectDailyPanelCapture({captureDir,targetDate,repo
   const templates=await loadTemplates(repoRoot),browser=await chromium.launch({headless:true}),attempts=[];
   try{
     const page=await browser.newPage();
-    for(const media of capture.rawMedia.slice(0,4)){
+    const mediaCandidates = capture.adapter === 'x-official-embed'
+      ? capture.rawMedia.filter(media => media.sourceScope === 'exact-status') : capture.rawMedia;
+    for(const media of mediaCandidates.slice(0,4)){
       let bytes;try{bytes=await readFile(path.join(captureDir,String(media.file||'')));}catch{continue;}
       let mimeType;try{mimeType=mimeFromBytes(bytes);}catch{continue;}
       if(mimeType!==media.mimeType||sha256(bytes)!==media.sha256)continue;
@@ -131,5 +133,5 @@ export async function inspectDirectDailyPanelCapture({captureDir,targetDate,repo
 }
 
 function parseArgs(argv){const out={};for(let i=0;i<argv.length;i+=2){if(!argv[i]?.startsWith('--')||argv[i+1]===undefined)throw new Error('invalidArguments');out[argv[i].slice(2)]=argv[i+1];}return out;}
-async function main(){const args=parseArgs(process.argv.slice(2));if(!args['capture-dir']||!args['target-date']||!args.output)throw new Error('invalidArguments');const result=await inspectDirectDailyPanelCapture({captureDir:path.resolve(args['capture-dir']),targetDate:args['target-date'],repoRoot:path.resolve(args['repo-root']||'.')});await writeFile(path.resolve(args.output),`${JSON.stringify(result,null,2)}\n`,'utf8');process.stdout.write(`${JSON.stringify({ready:result.ready,selectedImage:result.selectedImage?.file||'',startSlot:result.interpretation?.startSlot||'',daily:result.interpretation?.slots?.map(s=>s.weather)||[]})}\n`);if(!result.ready)process.exitCode=2;}
+async function main(){const args=parseArgs(process.argv.slice(2));if(!args['capture-dir']||!args['target-date']||!args.output)throw new Error('invalidArguments');const result=await inspectDirectDailyPanelCapture({captureDir:path.resolve(args['capture-dir']),targetDate:args['target-date'],repoRoot:path.resolve(args['repo-root']||'.')});if(args['required-slot'])result.coversRequestedSlot=forecastCoversSlot(result,args['target-date'],args['required-slot']);await writeFile(path.resolve(args.output),`${JSON.stringify(result,null,2)}\n`,'utf8');process.stdout.write(`${JSON.stringify({ready:result.ready,selectedImage:result.selectedImage?.file||'',startSlot:result.interpretation?.startSlot||'',daily:result.interpretation?.slots?.map(s=>s.weather)||[]})}\n`);if(!result.ready)process.exitCode=2;}
 if(import.meta.url===pathToFileURL(process.argv[1]||'').href){main().catch(error=>{process.stderr.write(`Direct daily panel review failed: ${error.message}\n`);process.exitCode=1;});}

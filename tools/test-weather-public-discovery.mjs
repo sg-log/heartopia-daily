@@ -63,6 +63,15 @@ test('preserves generic public HTTPS result URLs', () => {
   });
 });
 
+test('search footer and login links cannot displace weather evidence', () => {
+  for (const url of ['https://login.yahoo.co.jp/config/login', 'https://support.yahoo-net.jp/PccSearch/s/',
+    'https://privacy.lycorp.co.jp/ja/', 'https://www.lycorp.co.jp/ja/company/terms/',
+    'https://www.yahoo.co.jp/', 'https://chiebukuro.yahoo.co.jp/']) {
+    assert.equal(normalizeCandidateUrl(url), null, url);
+  }
+  assert.ok(normalizeCandidateUrl('https://chiebukuro.yahoo.co.jp/qa/question_detail/q123'));
+});
+
 test('builds date-specific and broad query variants for every discovery route', () => {
   const base = buildQueries('2026-09-15');
   assert.deepEqual(base, [

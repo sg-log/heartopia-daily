@@ -1,5 +1,11 @@
 # Heartopia weather scheduler
 
+## Forecast coverage
+
+Morning/evening runs require image-verified weather covering 06:00/18:00 on the target date. The image does not have to start at that exact hour: a same-date 00:00 forecast also covers those times. Keep its actual `startSlot` when preparing pending; never relabel it as 06:00/18:00. Different-date, future-start, incomplete, and unverified forecasts remain rejected.
+
+X raw images must be bound to a photo/video link for the exact discovered status. Unscoped network images and quoted-post images are not accepted as that status's evidence. No paid model API is used in this scheduled path.
+
 ## Schedule (JST)
 
 - 07:00 primary morning run

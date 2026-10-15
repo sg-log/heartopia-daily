@@ -253,7 +253,7 @@ jobs:
             } catch { continue }
 
             $unifiedPath = Join-Path $dir 'review.json'
-            & node tools/weather-unified-review.mjs --mode inspect --capture-dir $dir --target-date $env:TARGET_DATE --output $unifiedPath
+            & node tools/weather-unified-review.mjs --mode inspect --capture-dir $dir --target-date $env:TARGET_DATE --required-slot $expectedStartSlot --output $unifiedPath
             $unifiedExit = $LASTEXITCODE
             if ($unifiedExit -eq 0) {
               try {
@@ -270,7 +270,7 @@ jobs:
                 $review.ready -eq $true -and
                 [string]$review.targetDate -ceq $env:TARGET_DATE -and
                 [string]$review.interpretation.observedDate -ceq $env:TARGET_DATE -and
-                $actualStartSlot -ceq $expectedStartSlot -and
+                $review.coversRequestedSlot -eq $true -and
                 $weeklyDays.Count -ge 5 -and $weeklyDays.Count -le 7
 
               if ($isCompleteUnified) {
@@ -283,12 +283,12 @@ jobs:
                 break
               }
               if ($actualStartSlot) {
-                Write-Host "Reject complete candidate due to stale start slot: expected=$expectedStartSlot actual=$actualStartSlot source=$([string]$candidate.sourceUrl)"
+                Write-Host "Reject incomplete or uncovered candidate: required=$expectedStartSlot actual=$actualStartSlot source=$([string]$candidate.sourceUrl)"
               }
             }
 
             $dailyOnlyPath = Join-Path $dir 'daily-only-review.json'
-            & node tools/weather-direct-daily-panel-review.mjs --capture-dir $dir --target-date $env:TARGET_DATE --output $dailyOnlyPath
+            & node tools/weather-direct-daily-panel-review.mjs --capture-dir $dir --target-date $env:TARGET_DATE --required-slot $expectedStartSlot --output $dailyOnlyPath
             if ($LASTEXITCODE -eq 0) {
               try {
                 $dailyReview = Get-Content -LiteralPath $dailyOnlyPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -297,7 +297,7 @@ jobs:
                 $isCurrentDaily = $dailyReview.ready -eq $true -and
                   [string]$dailyReview.targetDate -ceq $env:TARGET_DATE -and
                   [string]$dailyReview.interpretation.observedDate -ceq $env:TARGET_DATE -and
-                  $dailyStart -ceq $expectedStartSlot -and
+                  $dailyReview.coversRequestedSlot -eq $true -and
                   $dailySlots.Count -eq 5 -and
                   @($dailySlots | Where-Object { $_.visible -ne $true -or $_.confidence -cne 'high' -or @($_.weather | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -lt 1 }).Count -eq 0
               } catch {
