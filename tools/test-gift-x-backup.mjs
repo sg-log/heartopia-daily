@@ -24,6 +24,29 @@ test("extracts official status ids from syndication-style escaped HTML", () => {
   );
 });
 
+test('uses public Yahoo search when syndication is rate-limited and Bing has no status links', async () => {
+  const id='2099234567890123456';
+  const result=await discoverOfficialXGiftPosts({handles:['myheartopia'],fetchImpl:async url=>{
+    const value=String(url);
+    if(value.includes('syndication.twitter.com'))return new Response('',{status:429});
+    if(value.includes('bing.com'))return new Response('<html></html>');
+    if(value.includes('search.yahoo.co.jp'))return new Response(`<a href="https://x.com/myheartopia/status/${id}">official</a>`);
+    if(value.includes('publish.twitter.com/oembed'))return new Response(JSON.stringify({author_url:'https://x.com/myheartopia',html:'<p>Wishing star ×3<br>Gift Code: backup123</p>'}),{headers:{'content-type':'application/json'}});
+    throw Error('unexpected request');
+  }});
+  assert.equal(result.posts.length,1);
+  assert.equal(result.posts[0].statusId,id);
+  assert.ok(result.diagnostics.some(item=>item.source==='yahoo-web'&&item.ids.includes(id)));
+});
+
+test('does not ingest an oEmbed announcement truncated before its deadline', async () => {
+  const result=await discoverOfficialXGiftPosts({handles:['myheartopia'],fetchImpl:async url=>{
+    if(String(url).includes('timeline-profile'))return new Response('<a href="https://x.com/myheartopia/status/2099234567890123456">post</a>');
+    return new Response(JSON.stringify({author_url:'https://x.com/myheartopia',html:'<p>Wishing star ×3<br>Gift Code: partial123<br>Redemption Deadline:…</p>'}),{headers:{'content-type':'application/json'}});
+  }});
+  assert.equal(result.posts.length,0);
+});
+
 test("extracts tweet text from official oEmbed HTML", () => {
   const html = '<blockquote><p lang="en">Freebies are ready!<br>Gift Code: abc12345<br>Wishing star ×3 <a href="https://t.co/a">pic</a></p></blockquote>';
   assert.equal(

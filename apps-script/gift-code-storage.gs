@@ -154,6 +154,10 @@ function processDiscordGiftBatch_(body) {
   props.setProperty(DISCORD_GIFT_GUILD_ID_PROPERTY, guildId);
   const cursorBefore = String(props.getProperty(DISCORD_GIFT_LAST_MESSAGE_ID_PROPERTY) || "").trim();
   const bootstrap = !cursorBefore;
+  const historyRevision = /^[A-Za-z0-9._-]{1,64}$/.test(String(body.historyRevision || ""))
+    ? String(body.historyRevision) : "";
+  const replayHistory = Boolean(historyRevision && props.getProperty("DISCORD_GIFT_HISTORY_REVISION") !== historyRevision);
+  let historyRecovered = 0;
   let cursor = cursorBefore;
   const counts = {
     created: 0,
@@ -179,23 +183,28 @@ function processDiscordGiftBatch_(body) {
     const messageChannelId = String(message.channel_id || "").trim();
     if (!/^\d{15,25}$/.test(messageId)) continue;
     if (messageChannelId && messageChannelId !== channelId) continue;
-    if (cursor && compareDiscordSnowflakes_(messageId, cursor) <= 0) continue;
+    const previouslyScanned = Boolean(cursor && compareDiscordSnowflakes_(messageId, cursor) <= 0);
+    if (previouslyScanned && !replayHistory) continue;
 
     message.channel_id = channelId;
     message.guild_id = guildId;
-    const handled = processDiscordGiftMessage_(message, config, { silent: bootstrap });
+    const handled = processDiscordGiftMessage_(message, config, { silent: bootstrap || previouslyScanned });
     const mode = String(handled && handled.mode || "ignored");
     if (Object.prototype.hasOwnProperty.call(counts, mode)) counts[mode]++;
     else counts.ignored++;
 
-    if (handled && handled.advanceCursor) cursor = messageId;
+    if (previouslyScanned && mode === "created") historyRecovered++;
+    if (handled && handled.advanceCursor && (!cursor || compareDiscordSnowflakes_(messageId, cursor) > 0)) cursor = messageId;
   }
 
   if (!cursor || compareDiscordSnowflakes_(latestMessageId, cursor) > 0) cursor = latestMessageId;
   props.setProperty(DISCORD_GIFT_LAST_MESSAGE_ID_PROPERTY, cursor);
+  if (historyRevision) props.setProperty("DISCORD_GIFT_HISTORY_REVISION", historyRevision);
 
   return {
     bootstrap: bootstrap,
+    historyReplayed: replayHistory,
+    historyRecovered: historyRecovered,
     receivedCandidates: messages.length,
     lastMessageId: cursor,
     counts: counts

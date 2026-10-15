@@ -1,9 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
+import vm from "node:vm";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const DISCORD_API_BASE = "https://discord.com/api/v10";
 const USER_AGENT = "heartopia-daily-gift-code-bot/1.0 (+https://github.com/sg-log/heartopia-daily)";
+// Run the trusted repository parser, never message text, as code. This keeps
+// the collector's candidate gate identical to the deployed parser's formats.
+const giftParser = vm.createContext({});
+vm.runInContext(fs.readFileSync(new URL('../apps-script/gift-code-parser.gs', import.meta.url), 'utf8'), giftParser);
+const GIFT_HISTORY_REVISION = 'gift-formats-20261015';
 
 export function compareSnowflakes(a, b) {
   const left = String(a || "").replace(/^0+/, "");
@@ -31,9 +37,7 @@ export function discordMessageText(message) {
 }
 
 export function looksLikeGiftAnnouncement(text) {
-  const source = String(text || "");
-  return /(?:^|\n)\s*[^\n]*Rewards?\s*:/i.test(source)
-    && /(?:^|\n)\s*[^\n]*Gift\s*Code\s*:/i.test(source);
+  return Boolean(giftParser.looksLikeDiscordGiftAnnouncement_(String(text || "")));
 }
 
 export function compactDiscordMessage(message, guildId, channelId) {
@@ -151,6 +155,7 @@ export async function runGiftDiscordPoll(options = {}) {
       channelId,
       guildId,
       latestMessageId,
+      historyRevision: GIFT_HISTORY_REVISION,
       messages: candidates
     })
   });

@@ -29,6 +29,13 @@ test("gift detector also sees announcements stored in embeds", () => {
   assert.equal(looksLikeGiftAnnouncement("hello"), false);
 });
 
+test('collector accepts the Japanese and item-list formats supported by the server', () => {
+  assert.equal(looksLikeGiftAnnouncement('報酬：願い星×3\nギフトコード：jpcode123'), true);
+  assert.equal(looksLikeGiftAnnouncement('Freebies are ready:\nWishing star ×3\nDye ×2\nGift Code: listcode123'), true);
+  assert.equal(looksLikeGiftAnnouncement('💫 願い星 ×3\n🌱 肥料×10\n🎁 ギフトコード：jpcode123'), true);
+  assert.equal(looksLikeGiftAnnouncement('Gift Code: noRewards'), false);
+});
+
 test("compact message keeps only fields required by Apps Script", () => {
   const compact = compactDiscordMessage({
     id: "323456789012345678",
@@ -124,6 +131,7 @@ test("poll mode forwards only gift candidates and the latest message cursor", as
   assert.equal(result.messageCount, 2);
   assert.equal(result.candidateCount, 1);
   assert.equal(ingestBody.action, "ingestDiscordGiftBatch");
+  assert.equal(ingestBody.historyRevision, 'gift-formats-20261015');
   assert.equal(ingestBody.latestMessageId, "823456789012345678");
   assert.equal(ingestBody.messages.length, 1);
   assert.equal(ingestBody.messages[0].id, "723456789012345678");
