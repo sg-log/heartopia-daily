@@ -76,6 +76,7 @@ function looksLikeGiftText(text) {
 async function fetchText(fetchImpl, url) {
   const response = await fetchImpl(url, {
     redirect: "follow",
+    signal: AbortSignal.timeout(15000),
     headers: {
       "User-Agent": USER_AGENT,
       Accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8"
@@ -111,7 +112,7 @@ async function discoverFromSearch(fetchImpl, handle, provider = 'bing') {
   }
 }
 
-async function fetchOfficialPost(fetchImpl, handle, statusId) {
+async function fetchOfficialPost(fetchImpl, handle, statusId, includeIncomplete = false) {
   const sourceUrl = `https://x.com/${handle}/status/${statusId}`;
   const endpoint = new URL("https://publish.twitter.com/oembed");
   endpoint.searchParams.set("url", sourceUrl);
@@ -121,6 +122,7 @@ async function fetchOfficialPost(fetchImpl, handle, statusId) {
   try {
     const response = await fetchImpl(endpoint, {
       redirect: "follow",
+      signal: AbortSignal.timeout(15000),
       headers: { "User-Agent": USER_AGENT, Accept: "application/json" }
     });
     if (!response.ok) return null;
@@ -129,8 +131,9 @@ async function fetchOfficialPost(fetchImpl, handle, statusId) {
     const text = extractTweetTextFromOembedHtml(data?.html || "");
     // oEmbed can shorten long announcements before their redemption deadline.
     // Do not import a partial post as if the deadline were absent.
-    if (!text || !looksLikeGiftText(text) || /(?:…|\.{3})\s*$/.test(text)) return null;
-    return { statusId, sourceUrl, text, handle };
+    const incomplete = /(?:…|\.{3})\s*$/.test(text);
+    if (!text || !looksLikeGiftText(text) || (incomplete && !includeIncomplete)) return null;
+    return { statusId, sourceUrl, text, handle, incomplete };
   } catch {
     return null;
   }
@@ -141,12 +144,88 @@ export function shouldRunXBackup(mode, now = new Date()) {
   return now.getUTCMinutes() % 15 < 5;
 }
 
+const LISTING_URLS = ['https://heartopiaguide.com/codes/', 'https://www.heartodex.com/en/codes/'];
+
+export function extractListingCandidates(html, listingUrl) {
+  const guide = listingUrl === LISTING_URLS[0];
+  if (!LISTING_URLS.includes(listingUrl)) return [];
+  const active = String(html).split(guide ? /Expired Codes\s*\(/i : /<!--\s*Expired Codes Section\s*-->/i)[0];
+  const pattern = guide ? /<code\b[^>]*>\s*([A-Za-z0-9_-]{6,100})\s*<\/code>/g : /data-code="([A-Za-z0-9_-]{6,100})"/g;
+  const matches = [...active.matchAll(pattern)].slice(0, 20);
+  return matches.map((match, index) => {
+    const block = active.slice(match.index, matches[index + 1]?.index ?? active.length);
+    const urls = [...block.matchAll(/https:\/\/x\.com\/(?:myheartopia|Heartopia_JP)\/status\/\d{15,25}/gi)].map(item => item[0]);
+    return { code: match[1], listingUrls: [listingUrl], officialUrls: unique(urls).slice(0, 2) };
+  });
+}
+
+export async function reconcileGiftListings({ fetchImpl = globalThis.fetch, knownCodes = [] } = {}) {
+  const deadline = Date.now() + 45000;
+  const diagnostics = [];
+  const candidates = new Map();
+  for (const url of LISTING_URLS) {
+    try {
+      const { response, text } = await fetchText(fetchImpl, url);
+      const found = response.ok ? extractListingCandidates(text, url) : [];
+      diagnostics.push({ source: 'code-list', url, status: response.status, candidates: found.length, ok: response.ok && found.length > 0 });
+      for (const item of found) {
+        const current = candidates.get(item.code) || { code: item.code, listingUrls: [], officialUrls: [] };
+        current.listingUrls = unique([...current.listingUrls, ...item.listingUrls]);
+        current.officialUrls = unique([...current.officialUrls, ...item.officialUrls]);
+        candidates.set(item.code, current);
+      }
+    } catch { diagnostics.push({ source: 'code-list', url, ok: false }); }
+  }
+  const reviews = [], posts = [];
+  for (const item of [...candidates.values()].slice(0, 20)) {
+    if (knownCodes.some(row => row.code === item.code && row.expiresAt)) continue;
+    let confirmed = false, excerpt = '';
+    for (const url of item.officialUrls.slice(0, 2)) {
+      if (Date.now() >= deadline) break;
+      const match = new URL(url).pathname.match(/^\/([^/]+)\/status\/(\d+)$/);
+      const post = await fetchOfficialPost(fetchImpl, match[1], match[2], true);
+      // A listing's link can point to a different announcement: bind the exact code.
+      const code = post?.text.normalize('NFKC').match(/(?:Gift\s*Code|ギフト\s*コード)\s*:\s*`?([A-Za-z0-9_-]{6,100})/i)?.[1];
+      if (!post || code !== item.code) continue;
+      excerpt = post.text.slice(0, 1000);
+      if (!post.incomplete && /(?:Redemption\s*Deadline|交換期限|受取期限|有効期限)\s*[:：]/i.test(post.text)) {
+        posts.push(post); confirmed = true; break;
+      }
+    }
+    if (!confirmed) reviews.push({ code: item.code, sourceUrl: item.officialUrls[0] || '', listingUrls: item.listingUrls,
+      excerpt, reason: excerpt ? '公式本文が省略され、交換期限まで確認できません。' : '公開一覧で未登録候補を検出しましたが、公式本文を確認できません。' });
+  }
+  return { posts, reviews, diagnostics, activeCandidates: candidates.size };
+}
+
+export async function notifyGiftReviews({ fetchImpl, webhookUrl, reviews, acknowledge }) {
+  const pending = (reviews || []).slice(0, 10);
+  if (!pending.length) return { notified: 0 };
+  if (!webhookUrl) return { notified: 0, pending: pending.length, warning: 'Personal review webhook is missing' };
+  const url = new URL(webhookUrl);
+  if (url.protocol !== 'https:' || url.hostname !== 'discord.com' || !/^\/api\/webhooks\/\d+\//.test(url.pathname)) throw Error('Invalid personal review webhook');
+  let notified = 0;
+  for (const item of pending) {
+    const links = unique([item.sourceUrl, ...(item.listingUrls || [])].filter(Boolean));
+    const content = ['🎁 ギフトコードの確認待ち', `コード：${item.code}`, item.reason,
+      '自動公開していません。公式投稿を確認し、サイト管理画面から登録してください。',
+      ...links.map(link => `<${link}>`)].join('\n');
+    const response = await fetchImpl(webhookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, allowed_mentions: { parse: [] }, flags: 4 }) });
+    if (!response.ok) throw Error('Personal gift review notification failed (HTTP ' + response.status + ')');
+    await acknowledge(item.id);
+    notified++;
+  }
+  return { notified };
+}
+
 export async function discoverOfficialXGiftPosts(options = {}) {
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   const handles = options.handles || OFFICIAL_X_HANDLES;
   const maxPostsPerHandle = Math.max(1, Math.min(12, Number(options.maxPostsPerHandle) || 8));
   const diagnostics = [];
   const posts = [];
+  const incompletePosts = [];
 
   for (const handle of handles) {
     const primary = await discoverFromSyndication(fetchImpl, handle);
@@ -163,15 +242,16 @@ export async function discoverOfficialXGiftPosts(options = {}) {
       ids = fallback.ids || [];
     }
 
-    for (const statusId of ids.slice(0, maxPostsPerHandle)) {
-      const post = await fetchOfficialPost(fetchImpl, handle, statusId);
-      if (post) posts.push(post);
+    const fetched = await Promise.all(ids.slice(0, maxPostsPerHandle).map(statusId => fetchOfficialPost(fetchImpl, handle, statusId, true)));
+    for (const post of fetched) {
+      if (post?.incomplete) incompletePosts.push(post);
+      else if (post) posts.push(post);
     }
   }
 
   const byId = new Map();
   for (const post of posts) if (!byId.has(post.statusId)) byId.set(post.statusId, post);
-  return { posts: [...byId.values()], diagnostics };
+  return { posts: [...byId.values()], incompletePosts, diagnostics };
 }
 
 export async function runGiftXBackup(options = {}) {
@@ -187,23 +267,39 @@ export async function runGiftXBackup(options = {}) {
   }
 
   const discovery = await discoverOfficialXGiftPosts({ fetchImpl, handles: options.handles });
+  const incompleteReviews = discovery.incompletePosts.flatMap(post => {
+    const code = post.text.normalize('NFKC').match(/(?:Gift\s*Code|ギフト\s*コード)\s*:\s*`?([A-Za-z0-9_-]{6,100})/i)?.[1];
+    return code ? [{ code, sourceUrl: post.sourceUrl, listingUrls: [], excerpt: post.text.slice(0, 1000),
+      reason: '公式本文が省略され、交換期限まで確認できません。' }] : [];
+  });
+  let reconciliation;
+  let apiUrl;
+  if (options.reconcile) {
+    apiUrl = extractAppsScriptUrl(fs.readFileSync(path.join(repoRoot, 'index.html'), 'utf8'));
+    const response = await fetchImpl(apiUrl + '?action=getGiftCodes');
+    const known = await response.json();
+    if (!response.ok || !known.ok || !Array.isArray(known.codes)) throw Error('Gift inventory could not be read');
+    reconciliation = await reconcileGiftListings({ fetchImpl, knownCodes: known.codes });
+    discovery.posts = [...new Map([...discovery.posts, ...reconciliation.posts].map(post => [post.statusId, post])).values()];
+    discovery.diagnostics.push(...reconciliation.diagnostics);
+  }
   if (mode === "test") {
     return {
       ok: true,
       mode,
       posts: discovery.posts.length,
       candidates: discovery.posts.map(post => ({ sourceUrl: post.sourceUrl, statusId: post.statusId })),
+      reconciliation,
       diagnostics: discovery.diagnostics
     };
   }
 
   if (!postKey) throw new Error("WEATHER_POST_KEY is missing.");
-  if (!discovery.posts.length) {
+  if (!discovery.posts.length && !options.reconcile) {
     return { ok: true, mode, posts: 0, diagnostics: discovery.diagnostics };
   }
 
-  const indexHtml = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
-  const apiUrl = extractAppsScriptUrl(indexHtml);
+  apiUrl ||= extractAppsScriptUrl(fs.readFileSync(path.join(repoRoot, "index.html"), "utf8"));
   const response = await fetchImpl(apiUrl, {
     method: "POST",
     redirect: "follow",
@@ -211,6 +307,8 @@ export async function runGiftXBackup(options = {}) {
     body: JSON.stringify({
       action: "ingestOfficialXGiftBatch",
       postKey,
+      reconcile: Boolean(options.reconcile),
+      reviewCandidates: [...incompleteReviews, ...(reconciliation?.reviews || [])].slice(0, 20),
       posts: discovery.posts.map(post => ({
         statusId: post.statusId,
         sourceUrl: post.sourceUrl,
@@ -226,11 +324,22 @@ export async function runGiftXBackup(options = {}) {
     throw new Error("Heartopia Daily X gift ingest rejected the batch: " + String(data?.error || response.status));
   }
 
+  const notification = await notifyGiftReviews({ fetchImpl, webhookUrl: options.reviewWebhookUrl, reviews: data.reviews,
+    acknowledge: async id => {
+      const ack = await fetchImpl(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'ingestOfficialXGiftBatch', postKey, reconcile: true, ackReviewIds: [id] }) });
+      const result = await ack.json();
+      if (!ack.ok || !result.ok) throw Error('Gift review delivery acknowledgement failed');
+    } });
+
   return {
     ok: true,
     mode,
     posts: discovery.posts.length,
     ingest: data,
+    notification,
+    reconciliation: reconciliation && { activeCandidates: reconciliation.activeCandidates, reviewCandidates: reconciliation.reviews.length,
+      availableSources: reconciliation.diagnostics.filter(item => item.ok).length },
     diagnostics: discovery.diagnostics
   };
 }
@@ -239,7 +348,9 @@ async function main() {
   const result = await runGiftXBackup({
     postKey: process.env.WEATHER_POST_KEY,
     mode: process.env.GIFT_POLL_MODE || "poll",
-    force: process.env.GIFT_X_FORCE === "1"
+    force: process.env.GIFT_X_FORCE === "1",
+    reconcile: true,
+    reviewWebhookUrl: process.env.WEATHER_DC_WEBHOOK_URL
   });
   process.stdout.write(JSON.stringify(result) + "\n");
 }

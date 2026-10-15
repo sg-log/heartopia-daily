@@ -109,7 +109,15 @@ function makeHarness(initialRows = []) {
 
   vm.createContext(context);
   vm.runInContext(source, context);
-  return { context, properties, rows, events };
+  const reviewRows = [["id", "code", "reason", "sourceUrl", "listingUrls", "excerpt", "status", "createdAt", "notifiedAt"]];
+  context.getGiftReviewSheet_ = () => ({
+    getDataRange: () => ({ getValues: () => reviewRows.map(row => row.slice()) }),
+    appendRow: row => reviewRows.push(row.slice()),
+    getRange: index => ({ setValues: values => { reviewRows[index - 1] = values[0].slice(); } })
+  });
+  let nextId = 0;
+  context.Utilities.getUuid = () => 'test-uuid-' + (++nextId);
+  return { context, properties, rows, events, reviewRows };
 }
 
 function candidate(overrides = {}) {
@@ -441,4 +449,75 @@ test("automated source URL remains auto-managed even when memo is blank", () => 
   assert.notEqual(result.mode, "conflict");
   assert.equal(h.rows[1][2], "願い星×3\n染色剤×2\n無垢な蛍石×1");
   assert.equal(h.rows[1][5], "");
+});
+
+test('missing codes stay private, retry delivery until acknowledged, and resolve after registration', () => {
+  const h = makeHarness();
+  const batch = { reconcile: true, reviewCandidates: [{ code: 'missing123', reason: '期限未確認',
+    sourceUrl: 'https://x.com/Heartopia_JP/status/2106957555713085600',
+    listingUrls: ['https://heartopiaguide.com/codes/'], excerpt: 'ギフトコード：missing123…' }] };
+  const first = h.context.processOfficialXGiftBatch_(batch);
+  assert.equal(first.reviews.length, 1);
+  assert.equal(h.rows.length, 1);
+  assert.deepEqual(h.events.notifications, []);
+  assert.equal(h.context.processOfficialXGiftBatch_(batch).reviews[0].id, first.reviews[0].id);
+  const ack = h.context.processOfficialXGiftBatch_({ reconcile: true, ackReviewIds: [first.reviews[0].id] });
+  assert.equal(ack.reviews.length, 0);
+  assert.equal(h.context.processOfficialXGiftBatch_(batch).reviews.length, 0);
+  assert.equal(h.reviewRows.length, 2);
+  h.context.saveAutomatedGiftCode_(candidate({ code: 'missing123' }), { silent: true });
+  h.context.processOfficialXGiftBatch_({ reconcile: true });
+  assert.equal(h.reviewRows[1][6], 'resolved');
+});
+
+test('reconciliation respects hidden codes and rejects untrusted review links', () => {
+  const h = makeHarness([['h', 'hidden123', '願い星×3', '', '', '', 'hidden', '', '']]);
+  const result = h.context.processOfficialXGiftBatch_({ reconcile: true, reviewCandidates: [
+    { code: 'hidden123', listingUrls: ['https://www.heartodex.com/en/codes/'] },
+    { code: 'unsafe123', sourceUrl: 'https://example.com/post', listingUrls: ['https://example.com/'] }
+  ] });
+  assert.equal(result.reviews.length, 0);
+  assert.equal(h.rows[1][6], 'hidden');
+  assert.deepEqual(h.events.notifications, []);
+});
+
+test('official X announcements without a readable deadline never become active codes', () => {
+  const h = makeHarness();
+  const result = h.context.processOfficialXGiftBatch_({ reconcile: true, posts: [{
+    statusId: '2106957555713085600', sourceUrl: 'https://x.com/Heartopia_JP/status/2106957555713085600',
+    text: '願い星 ×3\nギフトコード：partial123\nさらに受け取ろう…'
+  }] });
+  assert.equal(result.counts.created, 0);
+  assert.equal(result.reviews.length, 1);
+  assert.equal(h.rows.length, 1);
+});
+
+test('official expiry times convert UTC offsets to JST and reject invalid dates', () => {
+  const h = makeHarness();
+  assert.equal(h.context.parseDiscordGiftDeadline_('2026/12/03 10:59 (UTC-5)'), '2026-12-04T00:59');
+  assert.equal(h.context.parseDiscordGiftDeadline_('2026/12/04 00:59 (UTC+9)'), '2026-12-04T00:59');
+  assert.equal(h.context.parseDiscordGiftDeadline_('2026/12/03 15:59 (UTC)'), '2026-12-04T00:59');
+  assert.equal(h.context.parseDiscordGiftDeadline_('2026/02/30 00:59 (UTC+9)'), '');
+});
+
+test('the same code arriving through X and Discord sends only one friend notification', () => {
+  const h = makeHarness();
+  const text = 'Rewards: Dye ×2\nGift Code: shared123\nRedemption Deadline: 2099/10/01 00:59';
+  h.context.processOfficialXGiftBatch_({ posts: [{ statusId: '2106957555713085600',
+    sourceUrl: 'https://x.com/Heartopia_JP/status/2106957555713085600', text }] });
+  h.context.processDiscordGiftMessage_({ id: '923456789012345678', webhook_id: '323456789012345678', content: text },
+    { channelId: '123456789012345678', guildId: '223456789012345678' }, { silent: false });
+  assert.deepEqual(h.events.notifications, ['shared123']);
+  assert.equal(h.rows.length, 2);
+});
+
+test('a conflict with complete manual data still reaches the private review queue', () => {
+  const h = makeHarness([['manual', 'conflict123', '手動の報酬', '2099-10-01T00:59', '', '手動', 'active', '', '']]);
+  const result = h.context.processOfficialXGiftBatch_({ reconcile: true, posts: [{ statusId: '2106957555713085600',
+    sourceUrl: 'https://x.com/Heartopia_JP/status/2106957555713085600',
+    text: 'Rewards: Dye ×2\nGift Code: conflict123\nRedemption Deadline: 2099/10/01 00:59' }] });
+  assert.equal(result.counts.conflict, 1);
+  assert.equal(result.reviews.length, 1);
+  assert.equal(h.rows[1][2], '手動の報酬');
+  assert.deepEqual(h.events.notifications, []);
 });
