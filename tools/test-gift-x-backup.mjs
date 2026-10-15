@@ -47,6 +47,27 @@ test('does not ingest an oEmbed announcement truncated before its deadline', asy
   assert.equal(result.posts.length,0);
 });
 
+test('discovers Japanese official gift announcements when only Japanese search finds them', async () => {
+  const id = '2106957555713085600';
+  const result = await discoverOfficialXGiftPosts({ handles: ['Heartopia_JP'], fetchImpl: async url => {
+    const target = new URL(url);
+    if (target.hostname === 'syndication.twitter.com') return new Response('', { status: 429 });
+    if (target.hostname === 'www.bing.com') return new Response('<html></html>');
+    if (target.hostname === 'search.yahoo.co.jp') {
+      return new Response(target.searchParams.get('p').includes('ギフトコード')
+        ? `<a href="https://x.com/Heartopia_JP/status/${id}">公式</a>` : '<html></html>');
+    }
+    if (target.hostname === 'publish.twitter.com') return new Response(JSON.stringify({
+      author_url: 'https://x.com/Heartopia_JP',
+      html: '<p>願い星 ×3<br>ギフトコード：r2q7a4m9k3n6<br>交換期限：2099年12月4日 0:59</p>'
+    }), { headers: { 'content-type': 'application/json' } });
+    throw Error('unexpected request');
+  }});
+  assert.equal(result.posts.length, 1);
+  assert.equal(result.posts[0].statusId, id);
+  assert.match(result.posts[0].text, /ギフトコード：r2q7a4m9k3n6/);
+});
+
 test("extracts tweet text from official oEmbed HTML", () => {
   const html = '<blockquote><p lang="en">Freebies are ready!<br>Gift Code: abc12345<br>Wishing star ×3 <a href="https://t.co/a">pic</a></p></blockquote>';
   assert.equal(
