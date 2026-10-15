@@ -221,6 +221,14 @@ test('private review delivery acknowledges only a successful webhook response', 
   assert.deepEqual(acknowledged, ['review-1']);
   assert.deepEqual(payload.allowed_mentions.parse, []);
   assert.equal(payload.flags, 4);
+  assert.match(payload.content, /https:\/\/sg-log\.github\.io\/heartopia-daily\/\?admin=1&giftReview=review-1#pendingGiftReviews/);
+  assert.ok(!payload.content.includes('heartopiaguide.com'));
+});
+
+test('listing expiry is kept only as a draft hint, never as an auto-approved date', () => {
+  const result = extractListingCandidates('<code>review123</code><span>Expires: <!-- -->2026-12-03 10:59 (UTC-5)</span>Expired Codes (0)', 'https://heartopiaguide.com/codes/');
+  assert.equal(result[0].deadlineHint, '2026-12-03 10:59 (UTC-5)');
+  assert.equal(result[0].expiresAt, undefined);
 });
 
 test('production poll ignores old search results and registered codes with missing expiry', async () => {
