@@ -77,6 +77,7 @@ function ingestOfficialXGiftBatch_(body) {
 
 function processOfficialXGiftBatch_(body) {
   const posts = Array.isArray(body.posts) ? body.posts.slice(0, 20) : [];
+  const reviewCandidates = Array.isArray(body.reviewCandidates) ? body.reviewCandidates.slice(0, 20) : [];
   const counts = {
     created: 0,
     updated: 0,
@@ -107,9 +108,11 @@ function processOfficialXGiftBatch_(body) {
     const parsed = parseDiscordGiftAnnouncement_(text, {
       rewardNameMap: giftRewardNameMap_()
     });
-    if (!parsed.ok) {
+    if (!parsed.ok || !parsed.expiresAt || /(?:…|\.{3})\s*$/.test(text)) {
       counts.review++;
-      Logger.log("Official X gift review required: " + parsed.error + " " + sourceUrl);
+      if (parsed.code) reviewCandidates.push({ code: parsed.code, sourceUrl: sourceUrl, listingUrls: [],
+        excerpt: text.slice(0, 1000), reason: "公式投稿の報酬・交換期限を完全に確認できません。" });
+      Logger.log("Official X gift review required: " + (parsed.error || "交換期限未確認") + " " + sourceUrl);
       continue;
     }
 
@@ -128,14 +131,71 @@ function processOfficialXGiftBatch_(body) {
     if (Object.prototype.hasOwnProperty.call(counts, mode)) counts[mode]++;
     else counts.ignored++;
     if (mode === "conflict") {
+      reviewCandidates.push({ code: parsed.code, sourceUrl: sourceUrl, listingUrls: [], excerpt: text.slice(0, 1000),
+        reason: result.reason || "既存データと一致しません。" });
       Logger.log("Official X gift conflict: " + sourceUrl + " " + String(result.reason || ""));
     }
   }
 
   return {
     receivedCandidates: posts.length,
-    counts: counts
+    counts: counts,
+    reviews: body.reconcile ? reconcileGiftReviews_(reviewCandidates, body.ackReviewIds) : []
   };
+}
+
+function getGiftReviewSheet_() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = spreadsheet.getSheetByName("gift_code_reviews");
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet("gift_code_reviews");
+    sheet.appendRow(["id", "code", "reason", "sourceUrl", "listingUrls", "excerpt", "status", "createdAt", "notifiedAt"]);
+  }
+  return sheet;
+}
+
+function reconcileGiftReviews_(candidates, acknowledgements) {
+  return withScriptLock_(function() {
+    const sheet = getGiftReviewSheet_();
+    const rows = sheet.getDataRange().getValues();
+    const gifts = getGiftSheet_().getDataRange().getValues();
+    const byCode = {};
+    gifts.slice(1).forEach(function(row) { byCode[String(row[GIFT_HEADERS.indexOf("code")])] = row; });
+    const now = new Date().toISOString();
+    const ack = Array.isArray(acknowledgements) ? acknowledgements.slice(0, 10).map(String) : [];
+    (candidates || []).slice(0, 40).forEach(function(item) {
+      const code = String(item.code || "");
+      if (!/^[A-Za-z0-9][A-Za-z0-9_-]{5,99}$/.test(code)) return;
+      const source = String(item.sourceUrl || "");
+      const official = /^https:\/\/x\.com\/(?:myheartopia|Heartopia_JP)\/status\/\d{15,25}$/i.test(source);
+      const listings = (Array.isArray(item.listingUrls) ? item.listingUrls : []).filter(function(url) {
+        return ["https://heartopiaguide.com/codes/", "https://www.heartodex.com/en/codes/"].indexOf(url) >= 0;
+      });
+      if ((!official && source) || (!official && !listings.length)) return;
+      if (rows.slice(1).some(function(row) { return String(row[1]) === code; })) return;
+      const row = [Utilities.getUuid(), code, safeSheetText_(String(item.reason || "公式情報の確認が必要です。").slice(0, 300)),
+        source, JSON.stringify(listings.slice(0, 2)), safeSheetText_(String(item.excerpt || "").slice(0, 1000)), "pending", now, ""];
+      sheet.appendRow(row);
+      rows.push(row);
+    });
+    const pending = [];
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const gift = byCode[String(row[1])];
+      // A deliberate hide is final; do not expose it as a fresh missing-code alert.
+      const resolved = gift && (String(gift[GIFT_HEADERS.indexOf("status")]) === "hidden"
+        || (Boolean(formatDateTimeValue_(gift[GIFT_HEADERS.indexOf("expiresAt")])) && !/既存.*一致/.test(String(row[2]))));
+      let changed = false;
+      if (resolved && row[6] !== "resolved") { row[6] = "resolved"; changed = true; }
+      if (ack.indexOf(String(row[0])) >= 0 && !row[8]) { row[8] = now; changed = true; }
+      if (changed) sheet.getRange(i + 1, 1, 1, 9).setValues([row]);
+      if (row[6] === "pending" && !row[8] && pending.length < 10) {
+        pending.push({ id: String(row[0]), code: String(row[1]), reason: plainSheetText_(row[2]), sourceUrl: String(row[3]),
+          listingUrls: JSON.parse(String(row[4] || "[]")) });
+      }
+    }
+    return pending;
+  });
 }
 
 function processDiscordGiftBatch_(body) {
