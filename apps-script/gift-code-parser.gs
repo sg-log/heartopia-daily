@@ -160,12 +160,24 @@ function parseDiscordGiftDeadline_(value) {
   }
 
   let match = text.match(/(20\d{2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日(?:\s*[^\d\n]*)?\s*(\d{1,2})\s*[:：]\s*(\d{2})/);
-  if (match) return match[1] + "-" + pad2_(match[2]) + "-" + pad2_(match[3]) + "T" + pad2_(match[4]) + ":" + pad2_(match[5]);
+  if (match) return giftDeadlineInJst_(match, text);
 
   match = text.match(/(20\d{2})\s*[\/.\-]\s*(\d{1,2})\s*[\/.\-]\s*(\d{1,2})(?:\s+[^\d\n]*)?\s+(\d{1,2})\s*[:：]\s*(\d{2})/);
-  if (match) return match[1] + "-" + pad2_(match[2]) + "-" + pad2_(match[3]) + "T" + pad2_(match[4]) + ":" + pad2_(match[5]);
+  if (match) return giftDeadlineInJst_(match, text);
 
   return "";
+}
+
+function giftDeadlineInJst_(parts, text) {
+  const values = parts.slice(1, 6).map(Number);
+  const local = new Date(Date.UTC(values[0], values[1] - 1, values[2], values[3], values[4]));
+  if (local.getUTCFullYear() !== values[0] || local.getUTCMonth() !== values[1] - 1 || local.getUTCDate() !== values[2]
+      || local.getUTCHours() !== values[3] || local.getUTCMinutes() !== values[4]) return "";
+  const zone = text.match(/UTC\s*([+-])\s*(\d{1,2})(?::(\d{2}))?/i);
+  if (zone && (Number(zone[2]) > 14 || Number(zone[3] || 0) > 59)) return "";
+  const offset = zone ? (zone[1] === "-" ? -1 : 1) * (Number(zone[2]) * 60 + Number(zone[3] || 0))
+    : (/\bUTC\b/i.test(text) ? 0 : 9 * 60);
+  return Utilities.formatDate(new Date(local.getTime() - offset * 60000), DISCORD_GIFT_TIME_ZONE, "yyyy-MM-dd'T'HH:mm");
 }
 
 function giftRewardNameMap_() {
