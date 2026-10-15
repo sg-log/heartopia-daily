@@ -2,8 +2,8 @@ name: Weather scheduled run
 
 on:
   schedule:
-    # GitHub cron is only a delayed backup clock now. Apps Script owns the 07:00/07:10 and 19:00/19:10 primary timing.
-    - cron: '30 22 * * *'
+    # GitHub cron is a delayed backup. Apps Script owns 08:00/08:10 and 19:00/19:10 JST.
+    - cron: '30 23 * * *'
     - cron: '30 10 * * *'
   workflow_dispatch:
     inputs:
@@ -82,9 +82,10 @@ jobs:
             $attemptKind = 'backup'
             $isSnooze = 'true'
             switch ($env:EVENT_SCHEDULE) {
-              '30 22 * * *' { $slot = 'morning' }
+              '30 23 * * *' { $slot = 'morning' }
               '30 10 * * *' { $slot = 'evening' }
               # Gracefully absorb schedule events queued before the Apps Script handoff.
+              '30 22 * * *' { $slot = 'morning'; $origin = 'github-legacy' }
               '0 22 * * *'  { $slot = 'morning'; $origin = 'github-legacy' }
               '10 22 * * *' { $slot = 'morning'; $origin = 'github-legacy' }
               '0 10 * * *'  { $slot = 'evening'; $origin = 'github-legacy' }

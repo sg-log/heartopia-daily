@@ -10,7 +10,7 @@ const WEATHER_SCHEDULER_ATTEMPT_PROPERTIES = {
 
 /**
  * One-time setup. Creates a five-minute heartbeat that wakes the real GitHub
- * weather workflow around 07:00/07:10 and 19:00/19:10 JST.
+ * weather workflow around 08:00/08:10 and 19:00/19:10 JST.
  */
 function installWeatherScheduler() {
   uninstallWeatherScheduler();
@@ -84,14 +84,14 @@ function nextWeatherSchedulerAttempt_(date, minuteOfDay) {
           name: "morning-primary",
           kind: "primary",
           slot: "morning",
-          dueMinute: 7 * 60,
+          dueMinute: 8 * 60,
           propertyName: WEATHER_SCHEDULER_ATTEMPT_PROPERTIES.morningPrimary
         },
         {
           name: "morning-retry",
           kind: "retry",
           slot: "morning",
-          dueMinute: 7 * 60 + 10,
+          dueMinute: 8 * 60 + 10,
           propertyName: WEATHER_SCHEDULER_ATTEMPT_PROPERTIES.morningRetry
         }
       ]

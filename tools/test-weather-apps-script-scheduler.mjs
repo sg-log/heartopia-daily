@@ -7,7 +7,7 @@ const properties = new Map([['GITHUB_ACTIONS_TOKEN', 'test-token']]);
 const requests = [];
 const triggers = [];
 let responseCode = 204;
-let clock = { date: '2026-09-17', hour: 6, minute: 59 };
+let clock = { date: '2026-09-17', hour: 7, minute: 59 };
 let locked = false;
 
 function trigger(handler) {
@@ -100,9 +100,9 @@ function dispatchedOrigin(index) { return dispatchedInputs(index).trigger_origin
 function dispatchedKind(index) { return dispatchedInputs(index).attempt_kind; }
 
 context.runWeatherScheduler();
-assert.equal(requests.length, 0, 'before 07:00 should do nothing');
+assert.equal(requests.length, 0, 'before 08:00 should do nothing');
 
-setClock('2026-09-17', 7, 2);
+setClock('2026-09-17', 8, 2);
 context.runWeatherScheduler();
 assert.equal(requests.length, 1);
 assert.equal(dispatchedSlot(0), 'morning');
@@ -111,11 +111,11 @@ assert.equal(dispatchedOrigin(0), 'apps-script');
 assert.equal(dispatchedKind(0), 'primary');
 assert.equal(properties.get('WEATHER_SCHEDULER_MORNING_PRIMARY_DATE'), '2026-09-17');
 
-setClock('2026-09-17', 7, 7);
+setClock('2026-09-17', 8, 7);
 context.runWeatherScheduler();
-assert.equal(requests.length, 1, 'retry must wait until 07:10');
+assert.equal(requests.length, 1, 'retry must wait until 08:10');
 
-setClock('2026-09-17', 7, 12);
+setClock('2026-09-17', 8, 12);
 context.runWeatherScheduler();
 assert.equal(requests.length, 2);
 assert.equal(dispatchedSlot(1), 'morning');
@@ -123,7 +123,7 @@ assert.equal(dispatchedOrigin(1), 'apps-script');
 assert.equal(dispatchedKind(1), 'retry');
 assert.equal(properties.get('WEATHER_SCHEDULER_MORNING_RETRY_DATE'), '2026-09-17');
 
-setClock('2026-09-17', 7, 20);
+setClock('2026-09-17', 8, 20);
 context.runWeatherScheduler();
 assert.equal(requests.length, 2, 'completed morning attempts must not repeat');
 
@@ -142,24 +142,24 @@ assert.equal(dispatchedKind(3), 'retry');
 assert.equal(properties.get('WEATHER_SCHEDULER_EVENING_RETRY_DATE'), '2026-09-17');
 
 responseCode = 500;
-setClock('2026-09-18', 7, 2);
+setClock('2026-09-18', 8, 2);
 context.runWeatherScheduler();
 assert.equal(requests.length, 5);
 assert.notEqual(properties.get('WEATHER_SCHEDULER_MORNING_PRIMARY_DATE'), '2026-09-18', 'failed dispatch must remain retryable');
 
 responseCode = 204;
-setClock('2026-09-18', 7, 7);
+setClock('2026-09-18', 8, 7);
 context.runWeatherScheduler();
 assert.equal(requests.length, 6);
 assert.equal(dispatchedKind(5), 'primary');
 assert.equal(properties.get('WEATHER_SCHEDULER_MORNING_PRIMARY_DATE'), '2026-09-18');
 
-setClock('2026-09-19', 7, 22);
+setClock('2026-09-19', 8, 22);
 context.runWeatherScheduler();
 assert.equal(requests.length, 7, 'late heartbeat must catch the primary attempt');
 assert.equal(dispatchedSlot(6), 'morning');
 assert.equal(dispatchedKind(6), 'primary');
-setClock('2026-09-19', 7, 27);
+setClock('2026-09-19', 8, 27);
 context.runWeatherScheduler();
 assert.equal(requests.length, 8, 'next heartbeat must catch the retry attempt');
 assert.equal(dispatchedSlot(7), 'morning');

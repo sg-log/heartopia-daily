@@ -7,7 +7,7 @@ const unifiedSubmit = fs.readFileSync('tools/weather-cloud-submit-unified.ps1', 
 const discovery = fs.readFileSync('tools/weather-public-discovery.mjs', 'utf8')
 
 test('Apps Script is primary clock and GitHub cron is delayed backup', () => {
-  for (const cron of ["30 22 * * *", "30 10 * * *"]) {
+  for (const cron of ["30 23 * * *", "30 10 * * *"]) {
     assert.ok(workflow.includes(`cron: '${cron}'`), `missing backup cron ${cron}`)
   }
   for (const oldCron of ["    - cron: '0 22 * * *'", "    - cron: '10 22 * * *'", "    - cron: '0 10 * * *'", "    - cron: '10 10 * * *'"]) {

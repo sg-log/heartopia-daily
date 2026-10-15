@@ -8,10 +8,11 @@ X raw images must be bound to a photo/video link for the exact discovered status
 
 ## Schedule (JST)
 
-- 07:00 primary morning run
-- 07:10 independent snooze run
+- 08:00 primary morning run
+- 08:10 independent snooze run
 - 19:00 primary evening run
 - 19:10 independent snooze run
+- Apps Script's five-minute heartbeat starts primary/retry runs. GitHub cron provides delayed backups at 08:30 and 19:30 JST.
 - `workflow_dispatch` for a manual retry from GitHub Actions
 
 The +10 minute snooze is a separate cron entry. It does not wait inside the primary job, so it can still start when the primary scheduled run itself failed to start. All scheduler runs share one concurrency group so a delayed primary run and its snooze cannot race each other.
