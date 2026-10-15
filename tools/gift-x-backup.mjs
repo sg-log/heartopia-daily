@@ -5,7 +5,10 @@ import { createHash } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { extractAppsScriptUrl } from "./gift-discord-poll.mjs";
 
-const OFFICIAL_X_HANDLES = ["myheartopia", "Heartopia_JP"];
+const OFFICIAL_X_HANDLES = ["Heartopia_JP", "myheartopia"];
+// User-provided official links supplement search when a post is not indexed.
+// They still pass the same author and exact-code verification as discovered posts.
+const JAPANESE_POST_SEEDS = ["2106957555713085600"];
 const USER_AGENT = "heartopia-daily-gift-x-backup/1.0 (+https://github.com/sg-log/heartopia-daily)";
 
 function unique(values) {
@@ -163,7 +166,7 @@ export function extractListingCandidates(html, listingUrl) {
   });
 }
 
-export async function reconcileGiftListings({ fetchImpl = globalThis.fetch, knownCodes = [] } = {}) {
+export async function reconcileGiftListings({ fetchImpl = globalThis.fetch, knownCodes = [], officialPosts = [] } = {}) {
   const deadline = Date.now() + 45000;
   const diagnostics = [];
   const candidates = new Map();
@@ -184,23 +187,31 @@ export async function reconcileGiftListings({ fetchImpl = globalThis.fetch, know
   const reviews = [], posts = [];
   for (const item of [...candidates.values()].slice(0, 20)) {
     if (knownCodes.some(row => row.code === item.code)) continue;
-    let confirmed = false, excerpt = '';
-    for (const url of item.officialUrls.slice(0, 2)) {
+    let confirmed = false, excerpt = '', verifiedSource = '';
+    const japanese = officialPosts.filter(post => /^https:\/\/x\.com\/Heartopia_JP\/status\/\d+$/i.test(post.sourceUrl || '')
+      && giftCodeInPost(post.text) === item.code);
+    const urls = unique([...japanese.map(post => post.sourceUrl), ...item.officialUrls])
+      .sort((a, b) => Number(/\/Heartopia_JP\//i.test(b)) - Number(/\/Heartopia_JP\//i.test(a)));
+    for (const url of urls.slice(0, 3)) {
       if (Date.now() >= deadline) break;
       const match = new URL(url).pathname.match(/^\/([^/]+)\/status\/(\d+)$/);
-      const post = await fetchOfficialPost(fetchImpl, match[1], match[2], true);
+      const post = japanese.find(post => post.sourceUrl === url) || await fetchOfficialPost(fetchImpl, match[1], match[2], true);
       // A listing's link can point to a different announcement: bind the exact code.
-      const code = post?.text.normalize('NFKC').match(/(?:Gift\s*Code|ギフト\s*コード)\s*:\s*`?([A-Za-z0-9_-]{6,100})/i)?.[1];
+      const code = giftCodeInPost(post?.text);
       if (!post || code !== item.code) continue;
-      excerpt = post.text.slice(0, 1000);
+      if (!verifiedSource) { verifiedSource = post.sourceUrl; excerpt = post.text.slice(0, 1000); }
       if (!post.incomplete && /(?:Redemption\s*Deadline|交換期限|受取期限|有効期限)\s*[:：]/i.test(post.text)) {
         posts.push(post); confirmed = true; break;
       }
     }
-    if (!confirmed) reviews.push({ code: item.code, sourceUrl: item.officialUrls[0] || '', listingUrls: item.listingUrls,
+    if (!confirmed) reviews.push({ code: item.code, sourceUrl: verifiedSource || '', listingUrls: item.listingUrls,
       excerpt, deadlineHint: item.deadlineHint || '', reason: excerpt ? '公式本文が省略され、交換期限まで確認できません。' : '公開一覧で未登録候補を検出しましたが、公式本文を確認できません。' });
   }
   return { posts, reviews, diagnostics, activeCandidates: candidates.size };
+}
+
+function giftCodeInPost(text) {
+  return String(text || '').normalize('NFKC').match(/(?:Gift\s*Code|ギフト\s*コード)\s*:\s*`?([A-Za-z0-9_-]{6,100})/i)?.[1] || '';
 }
 
 export async function notifyGiftReviews({ fetchImpl, webhookUrl, reviews, acknowledge }) {
@@ -245,6 +256,7 @@ export async function discoverOfficialXGiftPosts(options = {}) {
       ids = fallback.ids || [];
     }
 
+    if (/^Heartopia_JP$/i.test(handle)) ids = unique([...JAPANESE_POST_SEEDS, ...ids]);
     const fetched = await Promise.all(ids.slice(0, maxPostsPerHandle).map(statusId => fetchOfficialPost(fetchImpl, handle, statusId, true)));
     for (const post of fetched) {
       if (post?.incomplete) incompletePosts.push(post);
@@ -277,7 +289,8 @@ export async function runGiftXBackup(options = {}) {
     const response = await fetchImpl(apiUrl + '?action=getGiftCodes');
     const known = await response.json();
     if (!response.ok || !known.ok || !Array.isArray(known.codes)) throw Error('Gift inventory could not be read');
-    reconciliation = await reconcileGiftListings({ fetchImpl, knownCodes: known.codes });
+    reconciliation = await reconcileGiftListings({ fetchImpl, knownCodes: known.codes,
+      officialPosts: [...discovery.posts, ...discovery.incompletePosts] });
     discovery.posts = [...new Map([...discovery.posts, ...reconciliation.posts].map(post => [post.statusId, post])).values()];
     discovery.diagnostics.push(...reconciliation.diagnostics);
   }
@@ -307,7 +320,7 @@ export async function runGiftXBackup(options = {}) {
       postKey,
       reconcile: Boolean(options.reconcile),
       reviewCandidates: (reconciliation?.reviews || []).slice(0, 20),
-      posts: discovery.posts.map(post => ({
+      posts: [...discovery.posts, ...discovery.incompletePosts.filter(post => /^Heartopia_JP$/i.test(post.handle))].map(post => ({
         statusId: post.statusId,
         sourceUrl: post.sourceUrl,
         text: post.text
