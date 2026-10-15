@@ -172,10 +172,15 @@ function publicGiftItem_(item) {
     code: item.code,
     reward: item.reward,
     expiresAt: item.expiresAt,
-    sourceUrl: item.sourceUrl,
+    sourceUrl: publicGiftSourceUrl_(item.sourceUrl),
     memo: item.memo,
     status: item.status
   };
+}
+
+function publicGiftSourceUrl_(value) {
+  const url = String(value || "").trim();
+  return /^https:\/\/(?:x\.com|twitter\.com)\/(?:myheartopia|Heartopia_JP)\/status\/\d{15,25}(?:\?[^\s]*)?$/i.test(url) ? url : "";
 }
 
 function publicNoticeItem_(item) {
