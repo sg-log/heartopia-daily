@@ -178,7 +178,7 @@ export async function reconcileGiftListings({ fetchImpl = globalThis.fetch, know
   }
   const reviews = [], posts = [];
   for (const item of [...candidates.values()].slice(0, 20)) {
-    if (knownCodes.some(row => row.code === item.code && row.expiresAt)) continue;
+    if (knownCodes.some(row => row.code === item.code)) continue;
     let confirmed = false, excerpt = '';
     for (const url of item.officialUrls.slice(0, 2)) {
       if (Date.now() >= deadline) break;
@@ -199,24 +199,22 @@ export async function reconcileGiftListings({ fetchImpl = globalThis.fetch, know
 }
 
 export async function notifyGiftReviews({ fetchImpl, webhookUrl, reviews, acknowledge }) {
-  const pending = (reviews || []).slice(0, 10);
+  const pending = (reviews || []).slice(0, 3);
   if (!pending.length) return { notified: 0 };
   if (!webhookUrl) return { notified: 0, pending: pending.length, warning: 'Personal review webhook is missing' };
   const url = new URL(webhookUrl);
   if (url.protocol !== 'https:' || url.hostname !== 'discord.com' || !/^\/api\/webhooks\/\d+\//.test(url.pathname)) throw Error('Invalid personal review webhook');
-  let notified = 0;
-  for (const item of pending) {
-    const links = unique([item.sourceUrl, ...(item.listingUrls || [])].filter(Boolean));
-    const content = ['🎁 ギフトコードの確認待ち', `コード：${item.code}`, item.reason,
-      '自動公開していません。公式投稿を確認し、サイト管理画面から登録してください。',
-      ...links.map(link => `<${link}>`)].join('\n');
-    const response = await fetchImpl(webhookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, allowed_mentions: { parse: [] }, flags: 4 }) });
-    if (!response.ok) throw Error('Personal gift review notification failed (HTTP ' + response.status + ')');
-    await acknowledge(item.id);
-    notified++;
-  }
-  return { notified };
+  const content = ['🎁 未登録ギフトコードの確認待ち',
+    '公式投稿を確認し、サイト管理画面から登録してください。',
+    ...pending.map(item => [
+      `コード：${item.code}`, String(item.reason).slice(0, 150),
+      `<${item.sourceUrl || item.listingUrls?.[0]}>`
+    ].join('\n'))].join('\n\n');
+  const response = await fetchImpl(webhookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, allowed_mentions: { parse: [] }, flags: 4 }) });
+  if (!response.ok) throw Error('Personal gift review notification failed (HTTP ' + response.status + ')');
+  for (const item of pending) await acknowledge(item.id);
+  return { notified: pending.length, messages: 1 };
 }
 
 export async function discoverOfficialXGiftPosts(options = {}) {
@@ -267,11 +265,6 @@ export async function runGiftXBackup(options = {}) {
   }
 
   const discovery = await discoverOfficialXGiftPosts({ fetchImpl, handles: options.handles });
-  const incompleteReviews = discovery.incompletePosts.flatMap(post => {
-    const code = post.text.normalize('NFKC').match(/(?:Gift\s*Code|ギフト\s*コード)\s*:\s*`?([A-Za-z0-9_-]{6,100})/i)?.[1];
-    return code ? [{ code, sourceUrl: post.sourceUrl, listingUrls: [], excerpt: post.text.slice(0, 1000),
-      reason: '公式本文が省略され、交換期限まで確認できません。' }] : [];
-  });
   let reconciliation;
   let apiUrl;
   if (options.reconcile) {
@@ -308,7 +301,7 @@ export async function runGiftXBackup(options = {}) {
       action: "ingestOfficialXGiftBatch",
       postKey,
       reconcile: Boolean(options.reconcile),
-      reviewCandidates: [...incompleteReviews, ...(reconciliation?.reviews || [])].slice(0, 20),
+      reviewCandidates: (reconciliation?.reviews || []).slice(0, 20),
       posts: discovery.posts.map(post => ({
         statusId: post.statusId,
         sourceUrl: post.sourceUrl,
