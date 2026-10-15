@@ -488,7 +488,7 @@ test('official X announcements without a readable deadline never become active c
     text: '願い星 ×3\nギフトコード：partial123\nさらに受け取ろう…'
   }] });
   assert.equal(result.counts.created, 0);
-  assert.equal(result.reviews.length, 1);
+  assert.equal(result.reviews.length, 0);
   assert.equal(h.rows.length, 1);
 });
 
@@ -511,13 +511,25 @@ test('the same code arriving through X and Discord sends only one friend notific
   assert.equal(h.rows.length, 2);
 });
 
-test('a conflict with complete manual data still reaches the private review queue', () => {
+test('a conflict with complete manual data stays unchanged without a missing-code alert', () => {
   const h = makeHarness([['manual', 'conflict123', '手動の報酬', '2099-10-01T00:59', '', '手動', 'active', '', '']]);
   const result = h.context.processOfficialXGiftBatch_({ reconcile: true, posts: [{ statusId: '2106957555713085600',
     sourceUrl: 'https://x.com/Heartopia_JP/status/2106957555713085600',
     text: 'Rewards: Dye ×2\nGift Code: conflict123\nRedemption Deadline: 2099/10/01 00:59' }] });
   assert.equal(result.counts.conflict, 1);
-  assert.equal(result.reviews.length, 1);
+  assert.equal(result.reviews.length, 0);
   assert.equal(h.rows[1][2], '手動の報酬');
   assert.deepEqual(h.events.notifications, []);
+});
+
+test('old unlisted X posts and already registered codes never create review notifications', () => {
+  const h = makeHarness([['old', 'known123', '願い星×3', '', '', '', 'active', '', '']]);
+  const result = h.context.processOfficialXGiftBatch_({ reconcile: true, reviewCandidates: [
+    { code: 'older123', sourceUrl: 'https://x.com/Heartopia_JP/status/2106957555713085600', listingUrls: [] },
+    { code: 'known123', listingUrls: ['https://heartopiaguide.com/codes/'] },
+    { code: 'missing123', listingUrls: ['https://heartopiaguide.com/codes/'] }
+  ] });
+  assert.equal(result.reviews.length, 1);
+  assert.equal(result.reviews[0].code, 'missing123');
+  assert.equal(h.reviewRows.length, 2);
 });
