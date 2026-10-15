@@ -1318,7 +1318,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
 
           <div class="card s12">
             <h2>ギフトコードの承認待ち</h2>
-            <p class="small">通常は自動反映されます。ここには情報が揃わず止まった候補だけが届きます。確認して承認すると、サイトへ登録し、フレンドDiscordへ通知します。</p>
+            <p class="small">通常は自動反映されます。ここには情報が揃わず止まった候補だけが届きます。承認するとサイトへ登録します。フレンドDiscordへの通知は下のチェックで選べます。</p>
             <div class="buttons"><button type="button" class="secondary" id="refreshPendingGiftsBtn">一覧を更新</button></div>
             <div id="pendingGiftStatus" class="status" role="status"></div>
             <div id="pendingGiftReviews"></div>
@@ -3602,6 +3602,7 @@ async function fetchPendingGiftReviews(){
           <p class="small">公開一覧との照合で見つかった候補です。まだ公開していません。</p>
         </details>
         <label><input type="checkbox" data-review-confirm style="width:auto;display:inline-block"> 公式情報と報酬・期限を確認しました</label>
+        <label><input type="checkbox" data-review-notify ${item.code === "r2q7a4m9k3n6" ? "" : "checked"} style="width:auto;display:inline-block"> フレンドDiscordにも通知する</label>
         <div class="buttons"><button type="button" data-review-approve disabled>承認して公開</button><button type="button" class="secondary" data-review-reject>見送る</button></div>
         <p class="status" data-review-status role="status"></p>
       </div>`).join("") : '<p class="small">承認待ちのギフトコードはありません。</p>';
@@ -3631,15 +3632,26 @@ async function fetchPendingGiftReviews(){
 }
 async function loadGiftReviewEvidence(card, requestKey){
   const status = card.querySelector('[data-review-evidence-status]');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
   try{
-    const result = await apiPost({action:"getGiftReviewEvidence", adminKey:requestKey, reviewId:card.dataset.giftReview});
+    const result = await apiPost({action:"getGiftReviewEvidence", adminKey:requestKey, reviewId:card.dataset.giftReview}, {signal:controller.signal});
     if(!card.isConnected || adminKeyValue() !== requestKey) return;
+    if(result.ok === false) throw new Error(result.error || "取得に失敗しました");
     if(!result.ok || !["image/jpeg","image/png"].includes(result.mimeType) || typeof result.bodyBase64 !== "string" || result.bodyBase64.length > 699052) throw new Error("画像を読み込めませんでした");
     const image = card.querySelector('[data-review-evidence-image]');
     image.src = `data:${result.mimeType};base64,${result.bodyBase64}`;
     image.hidden = false;
     status.textContent = "公式投稿の取得時スクリーンショット";
-  }catch(error){ if(card.isConnected && adminKeyValue() === requestKey) status.textContent = "画像を読み込めませんでした。取得本文と公式投稿を確認してください。"; }
+  }catch(error){
+    if(card.isConnected && adminKeyValue() === requestKey){
+      status.textContent = `画像を読み込めませんでした：${error.name === "AbortError" ? "読み込みが時間切れになりました" : error.message}。`;
+      const retry = document.createElement("button");
+      retry.type = "button"; retry.className = "secondary"; retry.textContent = "画像を再読み込み";
+      retry.onclick = () => { status.textContent = "根拠画像を読み込み中です…"; loadGiftReviewEvidence(card, requestKey); };
+      status.append(" ", retry);
+    }
+  }finally{ clearTimeout(timeout); }
 }
 async function decidePendingGiftReview(card, decision){
   const status = card.querySelector('[data-review-status]');
@@ -3649,13 +3661,14 @@ async function decidePendingGiftReview(card, decision){
   try{
     const result = await apiPost({action:"decideGiftReview", adminKey:adminKeyValue(), id:card.dataset.giftReview, decision,
       confirmed:card.querySelector('[data-review-confirm]').checked,
+      notifyDiscord:card.querySelector('[data-review-notify]').checked,
       reward:card.querySelector('[data-review-reward]').value.trim(), expiresAt:card.querySelector('[data-review-expiry]').value,
       sourceUrl:card.querySelector('[data-review-source]').value.trim()});
     if(result.ok === false) throw new Error(result.error || "保存できませんでした");
     card.remove();
     E.pendingGiftStatus.textContent = result.mode === "already_processed" ? "この候補はすでに処理されています。"
       : result.mode === "already_registered" ? "すでに登録されていたため、確認待ちを解消しました。"
-      : decision === "reject" ? "見送りにしました。" : (result.discordWarning ? "公開しましたが、フレンドDiscordへの通知に失敗しました。" : "承認して登録しました。");
+      : decision === "reject" ? "見送りにしました。" : (result.discordWarning ? "公開しましたが、フレンドDiscordへの通知に失敗しました。" : result.discordNotified ? "承認して登録し、フレンドDiscordへ通知しました。" : "承認して登録しました。フレンドDiscordへの通知は送っていません。");
     await fetchGiftCodes(true);
   }catch(error){
     status.textContent = `保存できませんでした：${error.message}`;
@@ -5470,11 +5483,12 @@ function renderCorrectionsTable(){
   E.correctionsTable.innerHTML = `<table><thead><tr><th>日付</th><th>予想 蛍石</th><th>実際 蛍石</th><th>予想 オーク</th><th>実際 オーク</th><th>反映</th><th>メモ</th></tr></thead><tbody>${state.corrections.slice().sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(c => `<tr><td>${esc(c.date)}</td><td>${esc(c.expectedFluorite)}</td><td>${esc(c.actualFluorite)}</td><td>${esc(c.expectedOak)}</td><td>${esc(c.actualOak)}</td><td>${c.applied ? "済" : "ログのみ"}</td><td>${esc(c.memo)}</td></tr>`).join("")}</tbody></table>`;
 }
 
-async function apiPost(payload){
+async function apiPost(payload, options={}){
   const response = await fetch(WEATHER_API_URL,{
     method:"POST",
     headers:{"Content-Type":"text/plain;charset=utf-8"},
-    body:JSON.stringify(payload)
+    body:JSON.stringify(payload),
+    signal:options.signal
   });
   if(!response.ok) throw new Error(`HTTP ${response.status}`);
   return await response.json();
