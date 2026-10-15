@@ -42,6 +42,9 @@ function makeHarness(initialRows = []) {
 
   const context = {
     console,
+    adminKey_: () => 'test-admin-key',
+    requireKey_: (actual, expected) => { if(actual !== expected) throw Error('管理キーが違います'); },
+    json_: value => value,
     GIFT_HEADERS: headers,
     TEXT_LIMITS: {
       code: 100,
@@ -532,4 +535,75 @@ test('old unlisted X posts and already registered codes never create review noti
   assert.equal(result.reviews.length, 1);
   assert.equal(result.reviews[0].code, 'missing123');
   assert.equal(h.reviewRows.length, 2);
+});
+
+function addPendingReview(h, code = 'review123') {
+  return h.context.processOfficialXGiftBatch_({ reconcile: true, reviewCandidates: [{ code,
+    sourceUrl: 'https://x.com/Heartopia_JP/status/2106957555713085600', listingUrls: ['https://heartopiaguide.com/codes/'],
+    excerpt: `願い星 ×3\nギフトコード：${code}\n受け取ろう…`, deadlineHint: '2099-12-03 10:59 (UTC-5)' }] }).reviews[0];
+}
+
+test('admin review keeps delivered candidates visible and pre-fills unverified expiry hints', () => {
+  const h = makeHarness();
+  const review = addPendingReview(h);
+  h.context.processOfficialXGiftBatch_({ reconcile: true, ackReviewIds: [review.id] });
+  const result = h.context.getGiftReviews_({ adminKey: 'test-admin-key' });
+  assert.equal(result.reviews.length, 1);
+  assert.equal(result.reviews[0].reward, '願い星×3');
+  assert.equal(result.reviews[0].expiresAt, '2099-12-04T00:59');
+  assert.equal(result.reviews[0].expiryNeedsConfirmation, true);
+  assert.equal(h.rows.length, 1);
+});
+
+test('admin approval registers the queued code once and sends one friend notification', () => {
+  const h = makeHarness();
+  const review = addPendingReview(h);
+  const body = { adminKey: 'test-admin-key', id: review.id, decision: 'approve', confirmed: true,
+    code: 'untrusted-override', reward: '願い星×3', expiresAt: '2099-12-04T00:59' };
+  assert.equal(h.context.decideGiftReview_(body).mode, 'created');
+  assert.equal(h.context.decideGiftReview_(body).mode, 'already_processed');
+  assert.equal(h.rows.length, 2);
+  assert.equal(h.rows[1][1], 'review123');
+  assert.equal(h.reviewRows[1][6], 'approved');
+  assert.deepEqual(h.events.notifications, ['review123']);
+});
+
+test('approval requires explicit confirmation and complete valid fields; rejection stays private', () => {
+  const h = makeHarness();
+  const review = addPendingReview(h);
+  const body = { id: review.id, decision: 'approve', reward: '願い星×3', expiresAt: '2099-12-04T00:59' };
+  assert.throws(() => h.context.processGiftReviewDecision_(body), /確認/);
+  assert.throws(() => h.context.processGiftReviewDecision_({ ...body, confirmed: true, expiresAt: '' }), /交換期限/);
+  assert.throws(() => h.context.processGiftReviewDecision_({ ...body, confirmed: true, expiresAt: '2099-02-30T00:59' }), /交換期限/);
+  assert.equal(h.context.processGiftReviewDecision_({ id: review.id, decision: 'reject' }).mode, 'rejected');
+  assert.equal(h.rows.length, 1);
+  assert.deepEqual(h.events.notifications, []);
+});
+
+test('a queued approval cannot overwrite a code registered or hidden concurrently', () => {
+  const h = makeHarness();
+  const review = addPendingReview(h);
+  h.rows.push(['hidden', 'review123', '手動', '', '', '', 'hidden', '', '']);
+  const result = h.context.processGiftReviewDecision_({ id: review.id, decision: 'approve', confirmed: true,
+    reward: '願い星×3', expiresAt: '2099-12-04T00:59' });
+  assert.equal(result.mode, 'already_registered');
+  assert.equal(h.rows[1][6], 'hidden');
+  assert.deepEqual(h.events.notifications, []);
+});
+
+test('actual API dispatcher rejects unauthenticated review reads and decisions', () => {
+  const h = makeHarness();
+  const api = fs.readFileSync(new URL('../apps-script/weather-api.gs', import.meta.url), 'utf8');
+  h.context.parseBody_ = event => event.body;
+  h.context.safeErrorMessage_ = error => error.message;
+  h.context.weatherSubmitFailureCode_ = () => null;
+  h.context.weatherSubmitStage_ = () => null;
+  vm.runInContext(api.slice(api.indexOf('function doPost(e)'), api.indexOf('function requestWeatherAutomation_')), h.context);
+  for (const action of ['getGiftReviews', 'decideGiftReview']) {
+    const result = h.context.doPost({ body: { action, adminKey: 'wrong' } });
+    assert.equal(result.ok, false);
+    assert.match(result.error, /管理キー/);
+  }
+  assert.equal(h.rows.length, 1);
+  assert.equal(h.reviewRows.length, 1);
 });
