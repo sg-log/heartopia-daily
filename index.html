@@ -3365,7 +3365,7 @@ function giftExpiryText(value){
 }
 function giftSourceUrl(url){
   const text = String(url || "").trim();
-  return /^https?:\/\//i.test(text) ? text : "";
+  return /^https:\/\/(?:x\.com|twitter\.com)\/(?:myheartopia|Heartopia_JP)\/status\/\d{15,25}(?:\?[^\s]*)?$/i.test(text) ? text : "";
 }
 function giftClaimKey(code){ return `giftCodeClaimed:${code}`; }
 function giftClaimed(code){ return localStorage.getItem(giftClaimKey(code)) === "1"; }

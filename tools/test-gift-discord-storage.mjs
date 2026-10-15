@@ -688,3 +688,18 @@ test('private screenshot reads bind the queued row, validate image bytes, and re
   parentId = 'private-folder'; file.private = false;
   assert.throws(() => h.context.getGiftReviewEvidence_(read), /private/);
 });
+
+test('public API and gift cards never expose private Discord source links', () => {
+  const api = fs.readFileSync(new URL('../apps-script/weather-api.gs', import.meta.url), 'utf8');
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const context = vm.createContext({});
+  vm.runInContext(api.slice(api.indexOf('function publicGiftItem_'), api.indexOf('function publicNoticeItem_')), context);
+  vm.runInContext(html.slice(html.indexOf('function giftSourceUrl('), html.indexOf('function giftClaimKey(')), context);
+  for (const url of ['https://discord.com/channels/111/222/333', 'https://discordapp.com/channels/111/222/333', 'https://discord.gg/private', 'https://example.com']) {
+    assert.equal(context.publicGiftItem_({ sourceUrl: url }).sourceUrl, '');
+    assert.equal(context.giftSourceUrl(url), '');
+  }
+  const official = 'https://x.com/Heartopia_JP/status/2106957555713085600';
+  assert.equal(context.publicGiftItem_({ sourceUrl: official }).sourceUrl, official);
+  assert.equal(context.giftSourceUrl(official), official);
+});
