@@ -1,0 +1,28 @@
+name: Weather scheduler setup
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps-script/weather-scheduler.gs'
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        options: [status, repair]
+        default: status
+permissions:
+  contents: read
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check and restore primary schedule without dispatching weather
+        env:
+          WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
+          WEATHER_SCHEDULER_MODE: ${{ github.event_name == 'push' && 'repair' || inputs.mode }}
+        run: node tools/weather-scheduler-repair.mjs
