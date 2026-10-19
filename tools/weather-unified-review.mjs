@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { bindReviewEnvelope } from './weather-deterministic-review.mjs';
+import { bindReviewEnvelope, postConfirmsTargetDate } from './weather-deterministic-review.mjs';
 import { inspectDirectPanelCapture } from './weather-direct-panel-review.mjs';
 import { createVerifiedPanelCapture } from './weather-verified-panel-crop.mjs';
 
@@ -99,7 +99,30 @@ export function forecastCoversSlot(review, targetDate, requiredSlot) {
       slot.confidence === 'high' && Array.isArray(slot.weather) && slot.weather.length > 0);
 }
 
+export function compareVerifiedSources(records) {
+  const valid = records.filter(item => item.review?.ready && item.review?.interpretation?.ready);
+  if (!valid.length) return {ready:false,reason:'noVerifiedSources'};
+  const conflicts = [];
+  const values = item => {
+    const out = new Map(), review = item.review.interpretation;
+    review.slots.forEach((slot,index) => out.set(`hour:${Number(review.startSlot)+index*6}`, [...slot.weather].sort().join(',')));
+    (review.weeklyDays || []).forEach(day => out.set(`day:${day.date}`, [...day.weather].sort().join(',')));
+    return out;
+  };
+  for (let i=0;i<valid.length;i++) for(let j=i+1;j<valid.length;j++) {
+    const a=values(valid[i]),b=values(valid[j]);
+    for(const [key,value] of a) if(b.has(key) && b.get(key)!==value) conflicts.push({key,sources:[valid[i].candidate.sourceUrl,valid[j].candidate.sourceUrl]});
+  }
+  const comparison={verifiedSources:valid.length,independentAuthors:new Set(valid.map(item=>item.author)).size,
+    sources:valid.map(item=>({sourceUrl:item.candidate.sourceUrl,author:item.author})),conflicts};
+  if(conflicts.length) return {ready:false,reason:'verifiedSourcesConflict',comparison};
+  const selected=[...valid].sort((a,b)=>(b.review.interpretation.weeklyDays?.length||0)-(a.review.interpretation.weeklyDays?.length||0))[0];
+  return {ready:true,selected,comparison};
+}
+
 export async function inspectUnifiedCapture({ captureDir, targetDate, repoRoot = path.resolve('.') }) {
+  const content = await readFile(path.join(captureDir, 'post-content.txt'), 'utf8');
+  if (!postConfirmsTargetDate(content, targetDate)) return {ready:false,targetDate,diagnostics:{reason:'forecastDateNotConfirmed'}};
   const direct = await inspectDirectPanelCapture({ captureDir, targetDate, repoRoot });
   let postText = '';
   try { postText = await readFile(path.join(captureDir, 'post-content.txt'), 'utf8'); } catch {}
@@ -163,6 +186,14 @@ function parseArgs(argv) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if(args.mode === 'compare') {
+    const records=JSON.parse(await readFile(args.input,'utf8'));
+    const result=compareVerifiedSources(records);
+    await writeFile(args.output,JSON.stringify(result));
+    process.stdout.write(JSON.stringify({ready:result.ready,reason:result.reason,comparison:result.comparison})+'\n');
+    if(!result.ready)process.exitCode=2;
+    return;
+  }
   if (args.mode === 'inspect') {
     if (!args['capture-dir'] || !args['target-date'] || !args.output) throw new Error('invalidArguments');
     const result = await inspectUnifiedCapture({
