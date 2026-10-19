@@ -99,6 +99,8 @@ export function buildQueries(targetDate, slot = '') {
     `ハートピア 天気 ${month}月${day}日`,
     `ハートピア スローライフ 天気 ${month}月${day}日`,
     `ハートピア 週間天気 ${month}月${day}日`,
+    `ハートピア お天気 ${month}/${day}`,
+    `ハートピア 天気予報 ${month}/${day}`,
     `Heartopia weather ${targetDate}`,
     `Heartopia weekly forecast ${targetDate}`,
     'ハートピア 天気',
@@ -362,6 +364,18 @@ export function selectDiversifiedCandidates(candidates, limit = 24) {
     return true;
   };
 
+  // Put one result per author ahead of additional posts by the same author.
+  // This applies inside the bounded review budget, not merely to the tail of the pool.
+  const firstAuthors = new Set();
+  for (const candidate of ranked) {
+    if (selected.length >= Math.min(limit, 8)) break;
+    const handle = String(candidate.sourceHandle || '').toLowerCase();
+    const author = handle ? `x:${handle}` : candidate.sourceType === 'x' ? candidate.sourceUrl : new URL(candidate.sourceUrl).hostname;
+    if (firstAuthors.has(author)) continue;
+    firstAuthors.add(author);
+    add(candidate);
+  }
+
   // Search route and destination platform diversify the pool only. They do not
   // determine truth: date/game/weather relevance ranks candidates, and later
   // stages must verify the actual in-game weather UI image.
@@ -435,11 +449,11 @@ export async function discover(targetDate, slot = '') {
   const dynamicHandles = [];
   try {
     // First pass: broad multi-provider discovery with no author fixed in advance.
-    for (const provider of providers) {
-      for (const query of queries) {
-        attempts.push(await collectFromPage(page, provider, query, targetDate, slot));
-      }
-    }
+    await Promise.all(providers.map(async provider => {
+      const searchPage=await context.newPage();
+      try { for(const query of queries) attempts.push(await collectFromPage(searchPage,provider,query,targetDate,slot)); }
+      finally { await searchPage.close(); }
+    }));
 
     // Discover authors from this run itself, including visible X results that the
     // text gate dropped. Prefer handles with target-date/current-slot clues.
@@ -470,13 +484,12 @@ export async function discover(targetDate, slot = '') {
 
     // Second pass: expand only authors discovered in this run whose public profile
     // contains Heartopia context. This is dynamic and never relies on a saved person.
-    for (const provider of providers) {
-      for (const handle of dynamicHandles) {
-        for (const query of buildDynamicAuthorQueries(provider, handle, targetDate, slot)) {
-          attempts.push(await collectFromPage(page, provider, query, targetDate, slot, 20, handle));
-        }
-      }
-    }
+    await Promise.all(providers.map(async provider => {
+      const searchPage=await context.newPage();
+      try { for(const handle of dynamicHandles) for(const query of buildDynamicAuthorQueries(provider,handle,targetDate,slot)) {
+        attempts.push(await collectFromPage(searchPage,provider,query,targetDate,slot,20,handle));
+      }} finally { await searchPage.close(); }
+    }));
 
     const profileByHandle = new Map(
       profileChecks.map((check) => [String(check.handle || '').toLowerCase(), check])
