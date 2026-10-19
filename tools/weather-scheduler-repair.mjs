@@ -11,6 +11,8 @@ async function call(action){
 }
 const before=await call('getWeatherSchedulerStatus');
 const repair=process.env.WEATHER_SCHEDULER_MODE==='repair';
-const after=repair&&!before.installed?await call('repairWeatherScheduler'):before;
-console.log(JSON.stringify({wasInstalled:before.installed,installed:after.installed,githubConfigured:after.githubConfigured,primaryTimes:after.primaryTimes,repairRequested:repair,weatherDispatched:false,discordNotified:false}));
-if(repair&&(!after.installed||!after.githubConfigured))throw Error('Primary weather scheduler is not ready');
+const after=repair?await call('repairWeatherScheduler'):before;
+console.log(JSON.stringify({wasInstalled:before.installed,installed:after.installed,githubConfigured:after.githubConfigured,primaryTimes:after.primaryTimes,
+  previousMorning:before.morningPrimary,previousEvening:before.eveningPrimary,dispatchProbeStatus:after.dispatchProbeStatus,
+  repairRequested:repair,weatherDispatched:false,discordNotified:false}));
+if(repair&&(!after.installed||!after.githubConfigured||after.dispatchProbeStatus!==204))throw Error('Primary weather scheduler dispatch is not ready');

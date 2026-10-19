@@ -65,6 +65,7 @@ function runWeatherScheduler() {
     if (!attempt) return;
 
     const result = dispatchWeatherAutomationFromScheduler_(date, attempt.slot, attempt.kind);
+    PropertiesService.getScriptProperties().setProperty('WEATHER_SCHEDULER_LAST_DISPATCH',JSON.stringify({at:now.toISOString(),ok:result.ok,status:result.httpStatus||204,slot:attempt.slot}));
     if (!result.ok) {
       Logger.log("Weather scheduler dispatch failed: " + JSON.stringify(result));
       return;
@@ -128,6 +129,14 @@ function nextWeatherSchedulerAttempt_(date, minuteOfDay) {
 function weatherSchedulerAdmin_(body) {
   requireKey_(body.adminKey, adminKey_(), "管理キー");
   const status = body.action === "repairWeatherScheduler" ? installWeatherScheduler() : getWeatherSchedulerStatus();
+  if(body.action === "repairWeatherScheduler") {
+    const token=PropertiesService.getScriptProperties().getProperty(GITHUB_ACTIONS_TOKEN_PROPERTY);
+    const response=UrlFetchApp.fetch('https://api.github.com/repos/'+GITHUB_REPOSITORY+'/actions/workflows/weather-scheduler-repair.yml/dispatches',{
+      method:'post',muteHttpExceptions:true,contentType:'application/json',headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json'},
+      payload:JSON.stringify({ref:'main',inputs:{mode:'status'}})
+    });
+    status.dispatchProbeStatus=response.getResponseCode();
+  }
   return json_({ok:true,scheduler:status});
 }
 
