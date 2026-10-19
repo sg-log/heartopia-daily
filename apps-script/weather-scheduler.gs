@@ -36,6 +36,8 @@ function getWeatherSchedulerStatus() {
     installed: ScriptApp.getProjectTriggers().some(function(trigger) {
       return trigger.getHandlerFunction() === WEATHER_SCHEDULER_TRIGGER_FUNCTION;
     }),
+    primaryTimes: ["08:00", "19:00"],
+    githubConfigured: Boolean(props.getProperty(GITHUB_ACTIONS_TOKEN_PROPERTY)),
     nowJst: Utilities.formatDate(now, WEATHER_SCHEDULER_TIME_ZONE, "yyyy-MM-dd HH:mm:ss"),
     morningPrimary: String(props.getProperty(WEATHER_SCHEDULER_ATTEMPT_PROPERTIES.morningPrimary) || ""),
     morningRetry: String(props.getProperty(WEATHER_SCHEDULER_ATTEMPT_PROPERTIES.morningRetry) || ""),
@@ -76,6 +78,8 @@ function runWeatherScheduler() {
 }
 
 function nextWeatherSchedulerAttempt_(date, minuteOfDay) {
+  // Do not backfill an 08:00/19:00 attempt hours later after a stopped trigger is repaired.
+  if (!((minuteOfDay >= 8*60 && minuteOfDay <= 9*60) || (minuteOfDay >= 19*60 && minuteOfDay <= 20*60))) return null;
   const props = PropertiesService.getScriptProperties();
 
   const attempts = minuteOfDay < 19 * 60
@@ -119,6 +123,12 @@ function nextWeatherSchedulerAttempt_(date, minuteOfDay) {
     return attempt;
   }
   return null;
+}
+
+function weatherSchedulerAdmin_(body) {
+  requireKey_(body.adminKey, adminKey_(), "管理キー");
+  const status = body.action === "repairWeatherScheduler" ? installWeatherScheduler() : getWeatherSchedulerStatus();
+  return json_({ok:true,scheduler:status});
 }
 
 function dispatchWeatherAutomationFromScheduler_(targetDate, slot, attemptKind) {
