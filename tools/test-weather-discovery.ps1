@@ -8,13 +8,13 @@ function Assert-Throws([scriptblock] $Action, $Message) {
     Assert $failed $Message
 }
 $base = @{ SearchQuery = 'Heartopia weather 2026-09-10'; DiscoveredAt = '2026-09-10T10:00:00+09:00' }
-$a = New-WeatherDiscoveryCandidate @base -DiscoverySource 'yahoo-web' -SourceUrl 'https://x.com/example/status/2097794370993017316/photo/1?utm_source=web#image' -Memo 'first'
-$b = New-WeatherDiscoveryCandidate @base -DiscoverySource 'yahoo-realtime' -SourceUrl 'https://twitter.com/another/status/2097794370993017316?s=20' -Memo 'second'
-$c = New-WeatherDiscoveryCandidate @base -DiscoverySource 'bing' -SourceUrl 'https://x.com/example/status/2097793876748837232'
+$a = New-WeatherDiscoveryCandidate @base -DiscoverySource 'yahoo-web' -SourceUrl 'https://x.com/example/status/10003/photo/1?utm_source=web#image' -Memo 'first'
+$b = New-WeatherDiscoveryCandidate @base -DiscoverySource 'yahoo-realtime' -SourceUrl 'https://twitter.com/another/status/10003?s=20' -Memo 'second'
+$c = New-WeatherDiscoveryCandidate @base -DiscoverySource 'bing' -SourceUrl 'https://x.com/example/status/10004'
 $merged = @(Merge-WeatherDiscoveryCandidates @($a, $b, $c))
 Assert ($merged.Count -eq 2) 'Same ID merges; different IDs remain separate'
-Assert ($merged[0].normalizedUrl -eq 'https://x.com/i/status/2097794370993017316') 'Canonical X URL'
-Assert ($merged[0].postId -ceq '2097794370993017316') 'ID preserved as exact string'
+Assert ($merged[0].normalizedUrl -eq 'https://x.com/i/status/10003') 'Canonical X URL'
+Assert ($merged[0].postId -ceq '10003') 'ID preserved as exact string'
 Assert ($merged[0].discoveryHistory.Count -eq 2) 'All discovery histories retained'
 Assert (($merged[0].discoveryHistory.discoverySource -join ',') -eq 'yahoo-web,yahoo-realtime') 'Both sources retained'
 Assert ($merged[0].discoveryHistory[1].memo -eq 'second' -and $a.discoveryHistory.Count -eq 1) 'Memo retained and input unchanged'
@@ -35,7 +35,7 @@ Assert-Throws { ConvertTo-WeatherDiscoveryTime '2026-09-10T10:00:00' } 'Require 
 'PASS: general Web, conservative normalization, host boundaries, URL/time validation'
 
 Assert-Throws { ConvertTo-WeatherCandidateFromDiscovery $merged[0] } 'Discovered-only handoff blocked'
-$confirmed = Add-WeatherDiscoveryRetrieval -Candidate $merged[0] -Status confirmed -RetrievedAt '2026-09-10T10:01:00+09:00' -RetrievedUrl 'https://x.com/example/status/2097794370993017316' -Evidence 'Synthetic test: direct snapshot and screenshot references' -PostedAt '2026-09-10 06:08 (timezone unconfirmed)'
+$confirmed = Add-WeatherDiscoveryRetrieval -Candidate $merged[0] -Status confirmed -RetrievedAt '2026-09-10T10:01:00+09:00' -RetrievedUrl 'https://x.com/example/status/10003' -Evidence 'Synthetic test: direct snapshot and screenshot references' -PostedAt '2026-09-10 06:08 (timezone unconfirmed)'
 $failed = Add-WeatherDiscoveryRetrieval -Candidate $confirmed -Status failed -RetrievedAt '2026-09-10T10:02:00+09:00' -RetrievedUrl 'https://x.com/i/flow/login' -Evidence 'Login redirect; no post content'
 Assert ($failed.retrievalStatus -eq 'failed' -and $failed.retrievalHistory.Count -eq 2) 'Failure retained separately from discovery'
 Assert-Throws { ConvertTo-WeatherCandidateFromDiscovery $failed } 'Latest failure blocks handoff'

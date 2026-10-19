@@ -8,9 +8,9 @@ import { chooseEmbedEvidence, getOfficialPathwayName, parseXPostUrl, collectExac
 import { collectXPublicMedia, downloadXPublicMedia, parseXPublicMediaUrl } from "./weather-x-raw-media.mjs";
 
 test("normalizes public X post URLs without depending on account name", () => {
-  const first = parseXPostUrl("https://x.com/first_account/status/2098156260520861877/photo/1?s=20#media");
-  const second = parseXPostUrl("https://twitter.com/another_account/status/2098156260520861877");
-  assert.equal(first.sourceId, "2098156260520861877");
+  const first = parseXPostUrl("https://x.com/first_account/status/10009/photo/1?s=20#media");
+  const second = parseXPostUrl("https://twitter.com/another_account/status/10009");
+  assert.equal(first.sourceId, "10009");
   assert.equal(first.normalizedUrl, second.normalizedUrl);
 });
 

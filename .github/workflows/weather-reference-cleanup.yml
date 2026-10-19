@@ -1,0 +1,42 @@
+name: Weather reference privacy cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/weather-reference-cleanup.yml'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Remove existing weather logs/artifacts and redact current weather Issue bodies'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: write
+  issues: write
+
+concurrency:
+  group: weather-reference-privacy-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Remove authorized public weather reference traces
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CLEANUP_APPLY: ${{ github.event_name == 'push' && 'true' || inputs.apply && 'true' || 'false' }}
+        run: node tools/weather-reference-cleanup.mjs
+      - name: Check private source setup without collecting posts or notifying Discord
+        if: ${{ always() }}
+        env:
+          WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
+        run: node tools/weather-private-source-config.mjs "${{ runner.temp }}/private-source-check.json"

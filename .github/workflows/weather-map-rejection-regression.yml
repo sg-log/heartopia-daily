@@ -15,6 +15,7 @@ permissions:
 
 jobs:
   reject-known-map:
+    if: ${{ vars.WEATHER_PRIVATE_REGRESSION_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -27,7 +28,9 @@ jobs:
       - run: npx playwright install --with-deps chromium
 
       - name: Capture the exact post from the 19:04 incident
-        run: node tools/weather-x-embed-evidence.mjs --url 'https://x.com/i/status/2100325752185159960' --output-dir '${{ runner.temp }}/source'
+        env:
+          WEATHER_REGRESSION_SOURCE_URL: ${{ secrets.WEATHER_REGRESSION_SOURCE_URL }}
+        run: node tools/weather-x-embed-evidence.mjs --url "$WEATHER_REGRESSION_SOURCE_URL" --output-dir '${{ runner.temp }}/source'
 
       - name: Isolate the exact map image by incident SHA
         shell: bash

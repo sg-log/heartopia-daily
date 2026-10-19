@@ -1,5 +1,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 function parseArgs(argv) {
   const args = {};
@@ -8,7 +10,7 @@ function parseArgs(argv) {
   if (!args['--out']) throw new Error('Missing --out');
   const slot = String(args['--slot'] || '').trim();
   if (slot && !['morning','evening'].includes(slot)) throw new Error('Invalid --slot');
-  return { targetDate: args['--target-date'], out: args['--out'], slot };
+  return { targetDate: args['--target-date'], out: args['--out'], slot, comparisonSourcesFile:args['--comparison-sources-file'] || '' };
 }
 
 function sourcePlatformForHost(host) {
@@ -435,12 +437,23 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = 
   return selectDiversifiedCandidates(relevant, limit);
 }
 
-export async function discover(targetDate, slot = '') {
-  const queries = buildQueries(targetDate, slot);
+export function comparisonSourceQueries(targetDate, handles) {
+  if(!Array.isArray(handles) || handles.length>10 || handles.some(h=>typeof h!=='string' || !/^[A-Za-z0-9_]{1,15}$/.test(h))) throw Error('Invalid private source configuration');
+  const [,month,day]=targetDate.split('-').map(Number);
+  return [...new Set(handles)].flatMap(handle=>[
+    `ハートピア 天気 from:${handle} ${month}/${day}`,
+    `ハートピア 天気 @${handle} ${month}月${day}日`
+  ]);
+}
+
+export async function discover(targetDate, slot = '', comparisonHandles = []) {
+  // Explicit comparison mode only; the normal scheduled collector passes no handles.
+  const fixedQueries=comparisonSourceQueries(targetDate,comparisonHandles);
+  const queries = fixedQueries.length ? fixedQueries : buildQueries(targetDate, slot);
   // Invariant: no person and no single search provider is fixed as the truth source.
   // Every configured public search route gets the same generic Heartopia-weather
   // queries. Authors are discovered from the current run, then optionally expanded.
-  const providers = DISCOVERY_PROVIDERS;
+  const providers = fixedQueries.length ? ['yahoo-realtime','bing'] : DISCOVERY_PROVIDERS;
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ locale: 'ja-JP', timezoneId: 'Asia/Tokyo' });
   const page = await context.newPage();
@@ -471,7 +484,7 @@ export async function discover(targetDate, slot = '') {
         if (!current || score > current.score) handleScores.set(key, { handle, score });
       }
     }
-    const handlesToCheck = [...handleScores.values()]
+    const handlesToCheck = (fixedQueries.length ? [] : [...handleScores.values()])
       .sort((a, b) => b.score - a.score || a.handle.localeCompare(b.handle))
       .slice(0, 12)
       .map((item) => item.handle);
@@ -531,33 +544,12 @@ export async function discover(targetDate, slot = '') {
   };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const { targetDate, out, slot } = parseArgs(process.argv.slice(2));
-  const result = await discover(targetDate, slot);
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  const { targetDate, out, slot, comparisonSourcesFile } = parseArgs(process.argv.slice(2));
+  const privateConfig=comparisonSourcesFile ? JSON.parse(await fs.readFile(comparisonSourcesFile,'utf8')) : {handles:[]};
+  const timer=setTimeout(()=>{console.error('Weather discovery reached its time limit.');process.exit(1);},180000);
+  const result = await discover(targetDate, slot, privateConfig.handles);
+  clearTimeout(timer);
   await fs.writeFile(out, `${JSON.stringify(result)}\n`, 'utf8');
-  console.log(JSON.stringify({
-    candidateCount: result.candidates.length,
-    candidates: result.candidates.map((candidate) => ({
-      sourceUrl: candidate.sourceUrl,
-      sourceType: candidate.sourceType,
-      sourcePlatform: candidate.sourcePlatform,
-      relevanceScore: candidate.relevanceScore,
-      dateMatched: candidate.dateMatched,
-      startSlotMatched: candidate.startSlotMatched,
-      strictTextRelevant: candidate.strictTextRelevant,
-      searchContextFallback: candidate.searchContextFallback,
-      dynamicAuthorFallback: candidate.dynamicAuthorFallback,
-      dynamicHandle: candidate.dynamicHandle || '',
-      profileCheckStatus: candidate.profileCheckStatus || '',
-      profileHeartopiaMatched: Boolean(candidate.profileHeartopiaMatched),
-      profileHeartopiaTerms: candidate.profileHeartopiaTerms || [],
-      discoverySource: candidate.discoverySource,
-      discoveryCount: candidate.discoveries?.length || 0
-    })),
-    providers: result.providers,
-    dynamicHandles: result.dynamicHandles,
-    attempts: result.attempts,
-    profileChecks: result.profileChecks,
-    xTrace: result.xTrace
-  }));
+  console.log(JSON.stringify({candidateCount:result.candidates.length, configuredAccounts:privateConfig.handles.length}));
 }

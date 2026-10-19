@@ -14,11 +14,12 @@ permissions:
 
 env:
   TARGET_DATE: '2026-09-17'
-  EXPECTED_SOURCE_URL: 'https://x.com/i/status/2100325752185159960'
+  EXPECTED_SOURCE_URL: ${{ secrets.WEATHER_REGRESSION_SOURCE_URL }}
   INCIDENT_MAP_SHA: 'a19a1cfce88943327872d70a1cb774a7a77ba9a9ccbf13f7c098ee4e0e99ab74'
 
 jobs:
   dry-run:
+    if: ${{ vars.WEATHER_PRIVATE_REGRESSION_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:

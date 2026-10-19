@@ -25,9 +25,9 @@ test('the same X post cannot be submitted for a different day under another URL 
   const api=fs.readFileSync(new URL('../apps-script/weather-api.gs',import.meta.url),'utf8');
   const c=vm.createContext({formatDateValue:v=>v,weatherSubmitFailure_:code=>new Error(code)});
   vm.runInContext(api.slice(api.indexOf('function rejectReusedWeatherPost_'),api.indexOf('function evidenceHash_')),c);
-  const rows=[['date','sourceUrl'],['2026-10-17','https://x.com/author/status/2111557865853100069?s=20']];
-  assert.throws(()=>c.rejectReusedWeatherPost_(rows,rows[0],'2026-10-18','https://x.com/i/status/2111557865853100069'),/invalidEvidencePayload/);
-  assert.doesNotThrow(()=>c.rejectReusedWeatherPost_(rows,rows[0],'2026-10-17','https://x.com/i/status/2111557865853100069'));
+  const rows=[['date','sourceUrl'],['2026-10-17','https://x.com/author/status/10002?s=20']];
+  assert.throws(()=>c.rejectReusedWeatherPost_(rows,rows[0],'2026-10-18','https://x.com/i/status/10002'),/invalidEvidencePayload/);
+  assert.doesNotThrow(()=>c.rejectReusedWeatherPost_(rows,rows[0],'2026-10-17','https://x.com/i/status/10002'));
   assert.doesNotThrow(()=>c.rejectReusedWeatherPost_(rows,rows[0],'2026-10-18','https://example.com/forecast'));
 });
 

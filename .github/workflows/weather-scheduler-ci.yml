@@ -26,6 +26,12 @@ on:
       - 'tools/test-weather-weekly.mjs'
       - 'index.html'
       - 'apps-script/weather-api.gs'
+      - 'apps-script/weather-private-sources.gs'
+      - 'tools/weather-private-submit.mjs'
+      - 'tools/weather-private-source-config.mjs'
+      - 'tools/weather-reference-cleanup.mjs'
+      - 'tools/test-weather-private-submit.mjs'
+      - 'tools/test-weather-reference-cleanup.mjs'
   workflow_dispatch:
 
 permissions:
@@ -46,6 +52,8 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Validate scheduler policy
         run: node --test tools/test-weather-scheduler-policy.mjs
+      - name: Validate private evidence and reference cleanup
+        run: node --test tools/test-weather-private-submit.mjs tools/test-weather-reference-cleanup.mjs
       - name: Validate public weather discovery helpers
         run: node --test tools/test-weather-public-discovery.mjs
       - name: Validate exact-post image ownership
