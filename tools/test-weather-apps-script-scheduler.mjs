@@ -185,3 +185,8 @@ assert.equal(triggers.filter((item) => item.getHandlerFunction() === 'runWeather
 assert.equal(triggers.filter((item) => item.getHandlerFunction() === 'otherFunction').length, 1, 'install must leave unrelated triggers alone');
 
 console.log('weather Apps Script scheduler tests passed');
+setClock('2026-09-21',10,0);
+context.runWeatherScheduler();
+setClock('2026-09-21',23,0);
+context.runWeatherScheduler();
+assert.equal(requests.length,9,'repair must not backfill hours-old attempts');
