@@ -10,7 +10,7 @@ function parseArgs(argv) {
   if (!args['--out']) throw new Error('Missing --out');
   const slot = String(args['--slot'] || '').trim();
   if (slot && !['morning','evening'].includes(slot)) throw new Error('Invalid --slot');
-  return { targetDate: args['--target-date'], out: args['--out'], slot, sourcesFile:args['--sources-file'] || '' };
+  return { targetDate: args['--target-date'], out: args['--out'], slot, comparisonSourcesFile:args['--comparison-sources-file'] || '' };
 }
 
 function sourcePlatformForHost(host) {
@@ -437,7 +437,7 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = 
   return selectDiversifiedCandidates(relevant, limit);
 }
 
-export function privateSourceQueries(targetDate, handles) {
+export function comparisonSourceQueries(targetDate, handles) {
   if(!Array.isArray(handles) || handles.length>10 || handles.some(h=>typeof h!=='string' || !/^[A-Za-z0-9_]{1,15}$/.test(h))) throw Error('Invalid private source configuration');
   const [,month,day]=targetDate.split('-').map(Number);
   return [...new Set(handles)].flatMap(handle=>[
@@ -446,8 +446,9 @@ export function privateSourceQueries(targetDate, handles) {
   ]);
 }
 
-export async function discover(targetDate, slot = '', privateHandles = []) {
-  const fixedQueries=privateSourceQueries(targetDate,privateHandles);
+export async function discover(targetDate, slot = '', comparisonHandles = []) {
+  // Explicit comparison mode only; the normal scheduled collector passes no handles.
+  const fixedQueries=comparisonSourceQueries(targetDate,comparisonHandles);
   const queries = fixedQueries.length ? fixedQueries : buildQueries(targetDate, slot);
   // Invariant: no person and no single search provider is fixed as the truth source.
   // Every configured public search route gets the same generic Heartopia-weather
@@ -544,8 +545,8 @@ export async function discover(targetDate, slot = '', privateHandles = []) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
-  const { targetDate, out, slot, sourcesFile } = parseArgs(process.argv.slice(2));
-  const privateConfig=sourcesFile ? JSON.parse(await fs.readFile(sourcesFile,'utf8')) : {handles:[]};
+  const { targetDate, out, slot, comparisonSourcesFile } = parseArgs(process.argv.slice(2));
+  const privateConfig=comparisonSourcesFile ? JSON.parse(await fs.readFile(comparisonSourcesFile,'utf8')) : {handles:[]};
   const timer=setTimeout(()=>{console.error('Weather discovery reached its time limit.');process.exit(1);},180000);
   const result = await discover(targetDate, slot, privateConfig.handles);
   clearTimeout(timer);

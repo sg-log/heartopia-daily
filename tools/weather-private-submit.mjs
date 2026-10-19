@@ -52,15 +52,23 @@ export async function submitPrivateWeather({payload,apiUrl,postKey,adminKey,fetc
   const approvedResponse=await fetcher(publicUrl,{signal:AbortSignal.timeout(45000)});
   if(!approvedResponse.ok) throw Error('approvedReadFailed');const approved=await approvedResponse.json();
   if(approved.ok!==true) throw Error('approvedReadFailed');
-  const duplicate=[...(pending.reports||[]),...(approved.reports||[])].find(r=>matchingWeather(r,payload));
-  if(duplicate) return {pending_registered:false,duplicate:true,report_id:duplicate.id||'',weekly_count:Object.values(payload.weeks).filter(v=>v.length).length};
+  const published=(approved.reports||[]).find(r=>matchingWeather(r,payload));
+  if(published) return {pending_registered:false,duplicate:true,report_id:published.id||'',weekly_count:Object.values(payload.weeks).filter(v=>v.length).length};
+  async function verifyPrivateEvidence(row) {
+    if(!row || row.evidenceStatus!=='saved' || row.evidenceImages?.length!==1 || row.evidenceImages[0].sha256!==payload.evidenceImages[0].sha256) throw Error('privateEvidenceNotConfirmed');
+    const evidence=await post({action:'weatherEvidence',adminKey,reportId:row.id,imageIndex:0});
+    const bytes=Buffer.from(evidence.bodyBase64||'','base64');
+    if(evidence.mimeType!==payload.evidenceImages[0].mimeType || bytes.length!==payload.evidenceImages[0].byteSize || createHash('sha256').update(bytes).digest('hex')!==payload.evidenceImages[0].sha256) throw Error('privateEvidenceNotConfirmed');
+  }
+  const duplicate=(pending.reports||[]).find(r=>matchingWeather(r,payload));
+  if(duplicate) {
+    await verifyPrivateEvidence(duplicate);
+    return {pending_registered:false,duplicate:true,report_id:duplicate.id||'',weekly_count:Object.values(payload.weeks).filter(v=>v.length).length};
+  }
   const receipt=await post({...payload,postKey});if(typeof receipt.id!=='string' || !/^[A-Za-z0-9-]{1,100}$/.test(receipt.id)) throw Error('invalidPrivateReceipt');
   const saved=await post({action:'pending',adminKey});
   const row=(saved.reports||[]).find(r=>r.id===receipt.id && r.sourceUrl===payload.sourceUrl && matchingWeather(r,payload));
-  if(!row || row.evidenceStatus!=='saved' || row.evidenceImages?.length!==1 || row.evidenceImages[0].sha256!==payload.evidenceImages[0].sha256) throw Error('privateEvidenceNotConfirmed');
-  const evidence=await post({action:'weatherEvidence',adminKey,reportId:receipt.id,imageIndex:0});
-  const bytes=Buffer.from(evidence.bodyBase64||'','base64');
-  if(evidence.mimeType!==payload.evidenceImages[0].mimeType || bytes.length!==payload.evidenceImages[0].byteSize || createHash('sha256').update(bytes).digest('hex')!==payload.evidenceImages[0].sha256) throw Error('privateEvidenceNotConfirmed');
+  await verifyPrivateEvidence(row);
   return {pending_registered:true,duplicate:Boolean(receipt.duplicate),report_id:receipt.id,weekly_count:Object.values(payload.weeks).filter(v=>v.length).length};
 }
 async function main() {

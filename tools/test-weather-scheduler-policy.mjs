@@ -101,7 +101,7 @@ test('weather references and evidence never enter public Actions artifacts or re
   assert.doesNotMatch(workflow, /sourceUrl: process\.env/)
   assert.match(workflow, /sourceUrl: ''/)
   assert.doesNotMatch(workflow, /Write-Host[^\n]*\$\(\[string\]\$(?:candidate|fallback)\.sourceUrl\)/)
-  assert.match(workflow, /weather-private-source-config\.mjs/)
+  assert.match(workflow, /weather-private-submit\.mjs/)
 })
 
 test('failed primary stays quiet while Apps Script retry is the terminal notification point', () => {

@@ -8,7 +8,9 @@ X raw images must be bound to a photo/video link for the exact discovered status
 
 ## Reference privacy
 
-Configured account handles are read from an authenticated Apps Script action into an ephemeral runner file. Account values are not committed. Discovery prints counts only; captures and reviews do not print their raw metadata. The scheduled collector uploads no public Actions artifacts and writes no source URL to public result Issues. The selected image is hash-checked, sent directly to the existing private evidence storage, and read back with admin authorization before collection is reported successful. This preserves the existing pending/approval behavior for image-based reports.
+The privately configured accounts are reserved for comparing SNS image forecasts against a future primary calendar feed. They are not used as primary sources by this scheduled collector. The optional `--comparison-sources-file` mode is for that separate comparison path only; it is not enabled here and cannot publish calendar data. Account values are not committed. An authenticated Apps Script action can provide them to an ephemeral runner file.
+
+Reference privacy is independent of source selection. Discovery prints counts only; captures and reviews do not print their raw metadata. The scheduled collector uploads no public Actions artifacts and writes no source URL to public result Issues. The selected image is hash-checked, sent directly to the existing private evidence storage, and read back with admin authorization before collection is reported successful. This preserves the existing pending/approval behavior for image-based reports.
 
 The reference-cleanup workflow deletes old completed weather-job logs and unexpired weather artifacts and redacts external URLs in current weather Issue/PR bodies. It preserves status markers and other automation. Editing a body does not erase its GitHub edit history. Historical commits, old diffs, issue-edit revisions, external caches and downloaded copies are not erased by this operation. No history rewrite is performed.
 

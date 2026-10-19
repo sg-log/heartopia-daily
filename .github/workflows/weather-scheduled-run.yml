@@ -172,19 +172,13 @@ jobs:
         if: ${{ steps.guard.outputs.already_succeeded != 'true' }}
         run: npx playwright install --with-deps chromium
 
-      - name: Load private weather source settings
-        if: ${{ steps.guard.outputs.already_succeeded != 'true' }}
-        env:
-          WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
-        run: node tools/weather-private-source-config.mjs "${{ runner.temp }}/weather-private-sources.json"
-
       - name: Discover public weather candidates
         if: ${{ steps.guard.outputs.already_succeeded != 'true' }}
         env:
           TARGET_DATE: ${{ steps.slot.outputs.target_date }}
           RESULT_PATH: ${{ runner.temp }}/weather-public-discovery.json
           RUN_SLOT: ${{ steps.slot.outputs.slot }}
-        run: node tools/weather-public-discovery.mjs --target-date "$TARGET_DATE" --slot "$RUN_SLOT" --out "$RESULT_PATH" --sources-file "${{ runner.temp }}/weather-private-sources.json"
+        run: node tools/weather-public-discovery.mjs --target-date "$TARGET_DATE" --slot "$RUN_SLOT" --out "$RESULT_PATH"
 
       - name: Prepare public evidence candidates
         id: publish

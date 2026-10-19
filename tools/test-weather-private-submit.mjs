@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 import vm from 'node:vm';
 import {buildPrivateWeatherPayload,submitPrivateWeather} from './weather-private-submit.mjs';
 import {readPrivateSources} from './weather-private-source-config.mjs';
-import {privateSourceQueries} from './weather-public-discovery.mjs';
+import {comparisonSourceQueries} from './weather-public-discovery.mjs';
 const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8yIAAAAASUVORK5CYII=','base64');
 const sha=createHash('sha256').update(image).digest('hex');
 const review=()=>({ready:true,targetDate:'2026-10-19',selectedImage:{file:'panel.png',mimeType:'image/png',captureSha256:sha},interpretation:{ready:true,confidence:'high',observedDate:'2026-10-19',startSlot:'00',slots:Array.from({length:5},(_,i)=>({slot:`slot${i}`,weather:['晴'],visible:true,confidence:'high'})),weeklyDays:[]}});
@@ -39,10 +39,30 @@ test('registers once and verifies the private stored image bytes before reportin
 });
 test('does not repost identical existing content or expose private config in summaries',async()=>{
   const payload=await buildPrivateWeatherPayload(review(),capture,dir);let calls=0;
-  const fetcher=async()=>({ok:true,json:async()=>{calls++;return {ok:true,reports:[{...payload,id:'old'}]};}});
+  const fetcher=async(_url,options)=>({ok:true,json:async()=>{calls++;return {ok:true,reports:options?.body?[]:[{...payload,id:'old'}]};}});
   const r=await submitPrivateWeather({payload,apiUrl:'https://api.invalid/',postKey:'post',adminKey:'admin',fetcher});assert.equal(r.duplicate,true);assert.equal(calls,2);
   const config=await readPrivateSources({apiUrl:'https://api.invalid/',adminKey:'admin',fetcher:async()=>({ok:true,json:async()=>({ok:true,handles:['example_a','example_b','example_a']})})});
-  assert.deepEqual(config.handles,['example_a','example_b']);assert.equal(privateSourceQueries('2026-10-19',config.handles).length,4);
+  assert.deepEqual(config.handles,['example_a','example_b']);assert.equal(comparisonSourceQueries('2026-10-19',config.handles).length,4);
+});
+test('an existing pending without private evidence is not reported as successful',async()=>{
+  const payload=await buildPrivateWeatherPayload(review(),capture,dir);
+  const fetcher=async(_url,options)=>({ok:true,json:async()=>({ok:true,reports:options?.body?[{...payload,id:'old',evidenceStatus:'missing',evidenceImages:[]}]:[]})});
+  await assert.rejects(submitPrivateWeather({payload,apiUrl:'https://api.invalid/',postKey:'post',adminKey:'admin',fetcher}),/privateEvidenceNotConfirmed/);
+});
+test('an existing pending is reused only after its private image bytes are verified',async()=>{
+  const payload=await buildPrivateWeatherPayload(review(),capture,dir);const actions=[];
+  const fetcher=async(_url,options)=>{
+    const action=options?.body?JSON.parse(options.body).action:'public';actions.push(action);
+    return {ok:true,json:async()=>action==='weatherEvidence'?{ok:true,mimeType:'image/png',bodyBase64:image.toString('base64')}:{ok:true,reports:action==='pending'?[{...payload,id:'old',evidenceStatus:'saved'}]:[]}};
+  };
+  assert.equal((await submitPrivateWeather({payload,apiUrl:'https://api.invalid/',postKey:'post',adminKey:'admin',fetcher})).duplicate,true);
+  assert.deepEqual(actions,['pending','public','weatherEvidence']);
+});
+test('comparison accounts are not wired into the normal weather collector',async()=>{
+  const workflow=await fs.readFile(new URL('../.github/workflows/weather-scheduled-run.yml',import.meta.url),'utf8');
+  assert.ok(!workflow.includes('weather-private-source-config.mjs'));
+  assert.ok(!workflow.includes('--comparison-sources-file'));
+  assert.ok(!workflow.includes('--sources-file'));
 });
 test('source configuration is admin-only and real handles need not appear in source code',async()=>{
   const properties=new Map();const c=vm.createContext({PropertiesService:{getScriptProperties:()=>({getProperty:k=>properties.get(k),setProperty:(k,v)=>properties.set(k,v)})},
