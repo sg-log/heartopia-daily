@@ -26,7 +26,7 @@ try {
     Assert ($outputs -contains 'target_date=2026-09-15') 'Reopened fixed discovery issue is accepted'
 
     Clear-Content -LiteralPath $outputPath
-    $capture = [ordered]@{schemaVersion=1;requestType='weather-evidence-capture';adapter='x-official-embed';sourceUrl='https://x.com/i/status/2099613608590381418'}
+    $capture = [ordered]@{schemaVersion=1;requestType='weather-evidence-capture';adapter='x-official-embed';sourceUrl='https://x.com/i/status/10008'}
     Write-TestJson $eventPath (New-ReopenedEvent '[weather-capture-request]' ($capture | ConvertTo-Json -Compress))
     & "$PSScriptRoot/weather-issue-request.ps1" -Mode Capture -EventPath $eventPath -NormalizedPath $normalizedPath | Out-Null
     $outputs = @(Get-Content -LiteralPath $outputPath -Encoding UTF8)

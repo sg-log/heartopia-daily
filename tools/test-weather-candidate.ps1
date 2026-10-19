@@ -9,8 +9,8 @@ function New-Sample {
     0..4 | ForEach-Object { $slots["slot$_"] = @{ weather = @('晴'); evidence = @('text', 'image') } }
     [pscustomobject]@{
         sourceType = 'x'
-        sourceUrl = 'https://x.com/karino_yocchi/status/2097431567232844024'
-        sourceId = '2097431567232844024'
+        sourceUrl = 'https://x.com/example/status/10001'
+        sourceId = '10001'
         postedAt = '2026-09-09 06:07 (timezone unconfirmed)'
         observedDate = '2026-09-09'
         startSlot = '06'

@@ -172,13 +172,19 @@ jobs:
         if: ${{ steps.guard.outputs.already_succeeded != 'true' }}
         run: npx playwright install --with-deps chromium
 
+      - name: Load private weather source settings
+        if: ${{ steps.guard.outputs.already_succeeded != 'true' }}
+        env:
+          WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
+        run: node tools/weather-private-source-config.mjs "${{ runner.temp }}/weather-private-sources.json"
+
       - name: Discover public weather candidates
         if: ${{ steps.guard.outputs.already_succeeded != 'true' }}
         env:
           TARGET_DATE: ${{ steps.slot.outputs.target_date }}
           RESULT_PATH: ${{ runner.temp }}/weather-public-discovery.json
           RUN_SLOT: ${{ steps.slot.outputs.slot }}
-        run: node tools/weather-public-discovery.mjs --target-date "$TARGET_DATE" --slot "$RUN_SLOT" --out "$RESULT_PATH"
+        run: node tools/weather-public-discovery.mjs --target-date "$TARGET_DATE" --slot "$RUN_SLOT" --out "$RESULT_PATH" --sources-file "${{ runner.temp }}/weather-private-sources.json"
 
       - name: Prepare public evidence candidates
         id: publish
@@ -240,9 +246,9 @@ jobs:
             New-Item -ItemType Directory -Path $dir -Force | Out-Null
 
             if ([string]$candidate.sourceType -eq 'x') {
-              & node tools/weather-x-embed-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
+              & node tools/weather-x-embed-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir | Out-Null
             } elseif ([string]$candidate.sourceType -eq 'web') {
-              & node tools/weather-cloud-url-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir
+              & node tools/weather-cloud-url-evidence.mjs --url ([string]$candidate.sourceUrl) --output-dir $dir | Out-Null
             } else { continue }
             if ($LASTEXITCODE -ne 0) { continue }
             $captured = Get-Content -LiteralPath (Join-Path $dir 'capture.json') -Raw | ConvertFrom-Json
@@ -258,7 +264,7 @@ jobs:
             } catch { continue }
 
             $unifiedPath = Join-Path $dir 'review.json'
-            & node tools/weather-unified-review.mjs --mode inspect --capture-dir $dir --target-date $env:TARGET_DATE --required-slot $expectedStartSlot --output $unifiedPath
+            & node tools/weather-unified-review.mjs --mode inspect --capture-dir $dir --target-date $env:TARGET_DATE --required-slot $expectedStartSlot --output $unifiedPath | Out-Null
             $unifiedExit = $LASTEXITCODE
             if ($unifiedExit -eq 0) {
               try {
@@ -280,17 +286,17 @@ jobs:
 
               if ($isCompleteUnified) {
                 $verified += [pscustomobject]@{candidate=$candidate;dir=$dir;reviewPath=$unifiedPath;review=$review;author=$author}
-                Write-Host "Select complete current-slot daily+weekly evidence from $([string]$candidate.sourceUrl) start=$actualStartSlot weekly=$($weeklyDays.Count)."
+                Write-Host "Select complete current-slot daily+weekly evidence from a private source start=$actualStartSlot weekly=$($weeklyDays.Count)."
                 if (@($verified.author | Select-Object -Unique).Count -ge 2) { break }
                 continue
               }
               if ($actualStartSlot) {
-                Write-Host "Reject incomplete or uncovered candidate: required=$expectedStartSlot actual=$actualStartSlot source=$([string]$candidate.sourceUrl)"
+                Write-Host "Reject incomplete or uncovered candidate: required=$expectedStartSlot actual=$actualStartSlot"
               }
             }
 
             $dailyOnlyPath = Join-Path $dir 'daily-only-review.json'
-            & node tools/weather-direct-daily-panel-review.mjs --capture-dir $dir --target-date $env:TARGET_DATE --required-slot $expectedStartSlot --output $dailyOnlyPath
+            & node tools/weather-direct-daily-panel-review.mjs --capture-dir $dir --target-date $env:TARGET_DATE --required-slot $expectedStartSlot --output $dailyOnlyPath | Out-Null
             if ($LASTEXITCODE -eq 0) {
               try {
                 $dailyReview = Get-Content -LiteralPath $dailyOnlyPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -316,7 +322,7 @@ jobs:
                 $fallback = $candidate
                 $fallbackDir = $dir
                 $fallbackReviewPath = $dailyOnlyPath
-                Write-Host "Hold current-slot daily-only fallback from $([string]$candidate.sourceUrl) start=$dailyStart while checking later candidates for weekly data."
+                Write-Host "Hold current-slot daily-only fallback from a private source start=$dailyStart while checking later candidates for weekly data."
               }
             }
             if (@($verified.author | Select-Object -Unique).Count -ge 2 -and @($verified | Where-Object { @($_.review.interpretation.weeklyDays).Count -ge 5 }).Count -gt 0) { break }
@@ -326,7 +332,7 @@ jobs:
             $compareInput = Join-Path $env:RUNNER_TEMP 'weather-verified-sources.json'
             $compareOutput = Join-Path $env:RUNNER_TEMP 'weather-source-comparison.json'
             ConvertTo-Json -InputObject @($verified) -Depth 50 | Set-Content -LiteralPath $compareInput -Encoding utf8
-            & node tools/weather-unified-review.mjs --mode compare --input $compareInput --output $compareOutput
+            & node tools/weather-unified-review.mjs --mode compare --input $compareInput --output $compareOutput | Out-Null
             if ($LASTEXITCODE -ne 0) { throw 'Verified weather sources disagree; no pending proposal was submitted.' }
             $comparison = Get-Content -LiteralPath $compareOutput -Raw | ConvertFrom-Json
             $choice = $comparison.selected
@@ -345,7 +351,7 @@ jobs:
             Move-Item -LiteralPath $fallbackDir -Destination $env:SELECTED_DIR
             $selected = $fallback
             $selectionMode = 'daily-only'
-            Write-Host "No complete daily+weekly candidate found in the bounded search; select verified daily-only fallback from $([string]$fallback.sourceUrl)."
+            Write-Host "No complete daily+weekly candidate found in the bounded search; select verified daily-only fallback from a private source."
           }
 
           if ($null -eq $selected) { throw 'No captured public candidate produced current-slot daily weather.' }
@@ -354,84 +360,18 @@ jobs:
           # select a verified fallback, producing a false terminal failure.
           $global:LASTEXITCODE = 0
           "selected_dir=$env:SELECTED_DIR" >> $env:GITHUB_OUTPUT
-          "selected_source_url=$([string]$selected.sourceUrl)" >> $env:GITHUB_OUTPUT
           "selection_mode=$selectionMode" >> $env:GITHUB_OUTPUT
 
-      - name: Upload failed candidate diagnostics
-        if: ${{ always() && steps.guard.outputs.already_succeeded != 'true' && steps.capture.outcome == 'failure' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: weather-scheduled-failure-${{ github.run_id }}
-          path: ${{ runner.temp }}/weather-candidate-*
-          if-no-files-found: warn
-          retention-days: 3
-
-      - name: Upload exact captured evidence artifact
-        id: upload
-        if: ${{ success() && steps.capture.outcome == 'success' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: weather-scheduled-evidence-${{ github.run_id }}
-          path: ${{ steps.capture.outputs.selected_dir }}
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Bind unified review to immutable artifact
-        id: bind
-        if: ${{ success() && steps.upload.outcome == 'success' }}
-        shell: pwsh
-        env:
-          REVIEW_DRAFT: ${{ runner.temp }}/weather-unified-review.json
-          REVIEW_ENVELOPE: ${{ runner.temp }}/weather-review-envelope.json
-          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
-          ARTIFACT_NAME: weather-scheduled-evidence-${{ github.run_id }}
-        run: >-
-          node tools/weather-unified-bind.mjs
-          --draft "$env:REVIEW_DRAFT"
-          --artifact-run-id "${{ github.run_id }}"
-          --artifact-id "$env:ARTIFACT_ID"
-          --artifact-name "$env:ARTIFACT_NAME"
-          --output "$env:REVIEW_ENVELOPE"
-
-      - name: Verify artifact hashes and build daily candidate
-        id: bridge
-        if: ${{ success() && steps.bind.outcome == 'success' }}
-        shell: pwsh
-        env:
-          REVIEW_PAYLOAD_BASE64: ${{ steps.bind.outputs.review_payload_base64 }}
-          REVIEW_PATH: ${{ runner.temp }}/weather-artifact-review.json
-          RESULT_DIR: ${{ runner.temp }}/weather-reviewed-result
-          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
-          ARTIFACT_NAME: weather-scheduled-evidence-${{ github.run_id }}
-        run: |
-          ./tools/weather-artifact-review-request.ps1 -ReviewPayloadBase64 "$env:REVIEW_PAYLOAD_BASE64" -ReviewPath "$env:REVIEW_PATH"
-          ./tools/weather-artifact-review-bridge.ps1 `
-            -ReviewPath "$env:REVIEW_PATH" `
-            -ArtifactDirectory "${{ steps.capture.outputs.selected_dir }}" `
-            -DownloadedArtifactId "$env:ARTIFACT_ID" `
-            -DownloadedArtifactName "$env:ARTIFACT_NAME" `
-            -DownloadedArtifactRunId "${{ github.run_id }}" `
-            -CandidatePath "$env:RESULT_DIR/weather-candidate.json" `
-            -DryRunPath "$env:RESULT_DIR/weather-dry-run.json" `
-            -PendingPreviewPath "$env:RESULT_DIR/pending-preview.json"
-          if ("${{ steps.bridge.outputs.pending_prepared }}" -eq 'false') { throw 'Daily pending preview was not prepared.' }
-
-      - name: Register verified weather as one pending
+      - name: Register verified weather with private evidence
         id: submit
-        if: ${{ success() && steps.bridge.outcome == 'success' }}
-        shell: pwsh
+        if: ${{ success() && steps.capture.outcome == 'success' }}
         env:
           WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
           WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
-          RESULT_DIR: ${{ runner.temp }}/weather-reviewed-result
-          REVIEW_ENVELOPE: ${{ runner.temp }}/weather-review-envelope.json
         run: >-
-          ./tools/weather-cloud-submit-unified.ps1
-          -CandidatePath "$env:RESULT_DIR/weather-candidate.json"
-          -CapturePath "${{ steps.bridge.outputs.capture_path }}"
-          -EvidencePath "${{ steps.bridge.outputs.evidence_path }}"
-          -ReviewPath "$env:REVIEW_ENVELOPE"
-          -ResultPath "$env:RESULT_DIR/submit-result.json"
+          node tools/weather-private-submit.mjs
+          --review "${{ runner.temp }}/weather-unified-review.json"
+          --capture-dir "${{ steps.capture.outputs.selected_dir }}"
 
       - name: Finalize slot state
         id: finalize
@@ -451,7 +391,6 @@ jobs:
           CONTENT_DUPLICATE: ${{ steps.submit.outputs.duplicate }}
           PENDING_REGISTERED: ${{ steps.submit.outputs.pending_registered }}
           WEEKLY_COUNT: ${{ steps.submit.outputs.weekly_count }}
-          SOURCE_URL: ${{ steps.capture.outputs.selected_source_url }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
@@ -489,7 +428,7 @@ jobs:
               candidateCount: Number(process.env.CANDIDATE_COUNT || 0),
               usableCandidateCount: Number(process.env.USABLE_COUNT || 0),
               weeklyCount: Number(process.env.WEEKLY_COUNT || 0),
-              sourceUrl: process.env.SOURCE_URL || '',
+              sourceUrl: '',
               reportId: process.env.REPORT_ID || '',
               duplicate: process.env.CONTENT_DUPLICATE === 'true',
               runUrl: process.env.RUN_URL

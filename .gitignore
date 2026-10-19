@@ -7,6 +7,9 @@ assets/weather-templates/source/
 !.env.example
 .clasprc.json
 .clasprc.json.*
+apps-script/*private-config.gs
+private-weather-*.json
+weather-live-*-sources.json
 assets/puzzles/source/
 assets/puzzles/source-char2/
 assets/puzzles/review/bright-restoration-paired-test/

@@ -84,6 +84,7 @@ function doPost(e) {
   try {
     const body = parseBody_(e);
     const action = String(body.action || "");
+    if (action === "getWeatherPrivateSources") return getWeatherPrivateSources_(body);
     if (action === "recordAccess") return recordAccess_();
     if (action === "getAccessStats") return getAccessStats_(body);
     if (action === "requestWeatherAutomation") return requestWeatherAutomation_(body);

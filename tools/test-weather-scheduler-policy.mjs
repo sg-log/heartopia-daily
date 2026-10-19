@@ -55,8 +55,7 @@ test('scheduler reviews each Web or X candidate as same-image unified first, the
   assert.match(workflow, /weather-unified-review\.mjs/)
   assert.match(workflow, /weather-direct-daily-panel-review\.mjs/)
   assert.match(workflow, /weeklyCount/)
-  assert.match(workflow, /weather-artifact-review-bridge\.ps1/)
-  assert.match(workflow, /weather-cloud-submit-unified\.ps1/)
+  assert.match(workflow, /weather-private-submit\.mjs/)
   const unifiedReview = workflow.indexOf('weather-unified-review.mjs')
   const dailyOnlyReview = workflow.indexOf('weather-direct-daily-panel-review.mjs')
   assert.ok(unifiedReview >= 0 && dailyOnlyReview > unifiedReview, 'unified review must run before daily-only review for each candidate')
@@ -96,11 +95,13 @@ test('daily-only submit stores seven blank weeks while unified submit keeps same
   assert.doesNotMatch(unifiedSubmit, /crossSource|週間出典:/)
 })
 
-test('failed candidate diagnostics artifact remains enabled', () => {
-  assert.match(workflow, /name: Upload failed candidate diagnostics/)
-  assert.match(workflow, /name: weather-scheduled-failure-\$\{\{ github\.run_id \}\}/)
-  assert.match(workflow, /path: \$\{\{ runner\.temp \}\}\/weather-candidate-\*/)
-  assert.match(workflow, /retention-days: 3/)
+test('weather references and evidence never enter public Actions artifacts or result issues', () => {
+  assert.doesNotMatch(workflow, /actions\/upload-artifact/)
+  assert.doesNotMatch(workflow, /selected_source_url=/)
+  assert.doesNotMatch(workflow, /sourceUrl: process\.env/)
+  assert.match(workflow, /sourceUrl: ''/)
+  assert.doesNotMatch(workflow, /Write-Host[^\n]*\$\(\[string\]\$(?:candidate|fallback)\.sourceUrl\)/)
+  assert.match(workflow, /weather-private-source-config\.mjs/)
 })
 
 test('failed primary stays quiet while Apps Script retry is the terminal notification point', () => {

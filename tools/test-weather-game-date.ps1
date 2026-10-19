@@ -11,8 +11,8 @@ $slots = [ordered]@{}
 }
 $candidate = [pscustomobject]@{
     sourceType = 'x'
-    sourceUrl = 'https://x.com/i/status/2100325752185159960'
-    sourceId = '2100325752185159960'
+    sourceUrl = 'https://x.com/i/status/10005'
+    sourceId = '10005'
     postedAt = '2026-09-17 18:00 (synthetic regression)'
     observedDate = '2026-09-17'
     startSlot = '00'
