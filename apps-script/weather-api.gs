@@ -87,6 +87,7 @@ function doPost(e) {
     if (action === "recordAccess") return recordAccess_();
     if (action === "getAccessStats") return getAccessStats_(body);
     if (action === "requestWeatherAutomation") return requestWeatherAutomation_(body);
+    if (action === "getWeatherSchedulerStatus" || action === "repairWeatherScheduler") return weatherSchedulerAdmin_(body);
     if (action === "submit") return submit_(body);
     if (action === "weatherReviewImage") return createWeatherReviewImage_(body);
     if (action === "weatherEvidence") return getWeatherEvidence_(body);
@@ -314,6 +315,7 @@ function submit_(body) {
       if (sourceUrl) {
         const existing = sheet.getDataRange().getValues();
         const headers = existing[0].map(String);
+        rejectReusedWeatherPost_(existing, headers, date, sourceUrl);
         const idColumn = headers.indexOf("id");
         const dateColumn = headers.indexOf("date");
         const startSlotColumn = headers.indexOf("startSlot");
@@ -1116,6 +1118,16 @@ function headersMatch_(actual, expected) {
 function weatherEvidenceTime_(value) {
   if (typeof value !== "string" || value.length > 40 || !/T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !isFinite(Date.parse(value))) throw new Error("Invalid evidence timestamp");
   return value;
+}
+
+function rejectReusedWeatherPost_(rows, headers, targetDate, sourceUrl) {
+  const postId = value => String(value || '').match(/^https:\/\/(?:www\.)?(?:x\.com|twitter\.com)\/(?:[^/]+\/status|i\/web\/status)\/(\d+)(?:[/?#]|$)/i)?.[1] || '';
+  const id = postId(sourceUrl);
+  if (!id) return;
+  const dateIndex = headers.indexOf('date'), sourceIndex = headers.indexOf('sourceUrl');
+  if (rows.slice(1).some(row => postId(row[sourceIndex]) === id && formatDateValue(row[dateIndex]) !== targetDate)) {
+    throw weatherSubmitFailure_('invalidEvidencePayload', 'payloadValidation');
+  }
 }
 
 function evidenceHash_(bytes) {

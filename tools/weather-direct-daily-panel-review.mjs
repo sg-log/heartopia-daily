@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
-import { extractPostDates, normalizeTargetDate } from './weather-deterministic-review.mjs';
+import { postConfirmsTargetDate, normalizeTargetDate } from './weather-deterministic-review.mjs';
 import { applyTimedSpecialWeatherHints, forecastCoversSlot } from './weather-unified-review.mjs';
 
 const START_SLOTS = ['00','06','12','18'];
@@ -107,7 +107,7 @@ export async function inspectDirectDailyPanelCapture({captureDir,targetDate,repo
   const capture=JSON.parse(await readFile(path.join(captureDir,'capture.json'),'utf8'));
   if(capture?.status!=='captured'||!Array.isArray(capture.rawMedia)||!capture.rawMedia.length)return{ready:false,targetDate,diagnostics:{reason:'captureNotReady'}};
   const postText=await readFile(path.join(captureDir,capture.postContent?.file||'post-content.txt'),'utf8');
-  if(!extractPostDates(postText).includes(targetDate))return{ready:false,targetDate,diagnostics:{reason:'targetDateNotConfirmed'}};
+  if(!postConfirmsTargetDate(postText,targetDate))return{ready:false,targetDate,diagnostics:{reason:'targetDateNotConfirmed'}};
   const templates=await loadTemplates(repoRoot),browser=await chromium.launch({headless:true}),attempts=[];
   try{
     const page=await browser.newPage();

@@ -62,7 +62,29 @@ export function extractPostDates(text) {
 }
 
 export function postConfirmsTargetDate(text, targetDate) {
-  return extractPostDates(text).includes(normalizeTargetDate(targetDate));
+  targetDate = normalizeTargetDate(targetDate);
+  const source = String(text || '').normalize('NFKC');
+  // An embed's footer is its publication timestamp, not the forecast's date.
+  const lines = source.split(/\r?\n/);
+  const footer = lines.findIndex(line => /(?:午前|午後|\d{1,2}:\d{2}|\b(?:AM|PM)\b).*?[·・].*?20\d{2}/i.test(line));
+  const prefix = footer >= 0 ? lines[footer].split(/(?:午前|午後|\d{1,2}:\d{2}|\b(?:AM|PM)\b)/i)[0] : '';
+  const body = (footer >= 0 ? [...lines.slice(0, footer),prefix] : lines).join('\n');
+  const full = [...body.matchAll(/(20\d{2})(?:[\/-]|年\s*)(\d{1,2})(?:[\/-]|月\s*)(\d{1,2})(?:日|\b)/g)];
+  const short = [...body.matchAll(/(?<![\d/])(\d{1,2})(?:\/|月\s*)(\d{1,2})(?:日|(?![\d/]))/g)]
+    .filter(match => !full.some(item => match.index >= item.index && match.index < item.index + item[0].length));
+  const firstFull = full[0], firstShort = short[0];
+  if (firstFull && (!firstShort || firstFull.index < firstShort.index)) {
+    const date = `${firstFull[1]}-${firstFull[2].padStart(2,'0')}-${firstFull[3].padStart(2,'0')}`;
+    return date === targetDate;
+  }
+  if (!firstShort) return false;
+  // Yearless headings must be anchored to the actual post's year, never the run date.
+  const published = footer >= 0 ? extractPostDates(lines[footer])[0] : null;
+  if (!published) return false;
+  const candidates = [-1,0,1].map(offset => `${Number(published.slice(0,4))+offset}-${firstShort[1].padStart(2,'0')}-${firstShort[2].padStart(2,'0')}`)
+    .filter(date => { try { normalizeTargetDate(date); return true; } catch { return false; } });
+  candidates.sort((a,b) => Math.abs(Date.parse(a)-Date.parse(published))-Math.abs(Date.parse(b)-Date.parse(published)));
+  return candidates[0] === targetDate;
 }
 
 export function buildPanelCandidates(width, height) {
@@ -297,7 +319,7 @@ export async function inspectCapture({ captureDir, targetDate, repoRoot = path.r
   if (capture?.status !== 'captured' || !Array.isArray(capture.rawMedia) || !capture.rawMedia.length) throw new Error('captureNotReady');
   const postText = await readFile(path.join(captureDir, capture.postContent?.file || 'post-content.txt'), 'utf8');
   const dates = extractPostDates(postText);
-  if (!dates.includes(targetDate)) {
+  if (!postConfirmsTargetDate(postText, targetDate)) {
     return { schemaVersion: 1, ready: false, targetDate, selectedImage: null, interpretation: { ready:false, observedDate:null, startSlot:null, slots:Array.from({length:5},(_,i)=>({slot:`slot${i}`,visible:false,weather:[],confidence:'low',description:''})), confidence:'low', summary:'投稿本文で対象日を確認できませんでした。', unresolved:[`対象日 ${targetDate} が投稿本文にありません`] }, diagnostics:{postDates:dates} };
   }
   const templates = await loadTemplates(repoRoot);

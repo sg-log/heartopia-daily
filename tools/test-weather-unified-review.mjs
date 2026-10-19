@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractTimedMeteorIntervals, applyTimedSpecialWeatherHints, forecastCoversSlot } from './weather-unified-review.mjs';
+import { extractTimedMeteorIntervals, applyTimedSpecialWeatherHints, forecastCoversSlot, compareVerifiedSources } from './weather-unified-review.mjs';
 import { resolveWeekly } from './weather-direct-panel-review.mjs';
 import { buildUnifiedBindings } from './weather-unified-bind.mjs';
 
@@ -22,6 +22,15 @@ function readyDraft(weeklyDays) {
   if (weeklyDays !== undefined) draft.interpretation.weeklyDays = weeklyDays;
   return draft;
 }
+
+test('independent verified authors are compared and a conflicting forecast is not submitted', () => {
+  const a={candidate:{sourceUrl:'https://x.com/a/status/1'},author:'a',review:readyDraft()};
+  const b={candidate:{sourceUrl:'https://x.com/b/status/2'},author:'b',review:readyDraft()};
+  assert.equal(compareVerifiedSources([a,b]).comparison.independentAuthors,2);
+  b.review.interpretation.slots[0].weather=['雨'];
+  assert.equal(compareVerifiedSources([a,b]).ready,false);
+  assert.equal(compareVerifiedSources([a,b]).reason,'verifiedSourcesConflict');
+});
 
 test('a same-date midnight game forecast covers morning and evening without relabelling', () => {
   const draft = readyDraft();
