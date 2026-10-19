@@ -1338,6 +1338,8 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
               </div>
             </div>
             <div class="buttons"><button type="button" id="runWeatherAutomationBtn">今すぐ実行</button></div>
+            <p class="small" id="weatherSchedulerStatus">定刻実行：朝8時・夜19時（日本時間）</p>
+            <button type="button" class="secondary" id="repairWeatherSchedulerBtn">定刻実行を設定・修復</button>
             <div id="weatherAutomationStatus" class="status"></div>
           </div>
 
@@ -6119,6 +6121,18 @@ async function runWeatherAutomation(){
     E.runWeatherAutomationBtn.disabled = false;
   }
 }
+async function checkWeatherScheduler(repair=false){
+  const status = document.getElementById('weatherSchedulerStatus');
+  const button = document.getElementById('repairWeatherSchedulerBtn');
+  if(!adminKeyValue()) return;
+  button.disabled = true;
+  try{
+    const result = await apiPost({action:repair ? 'repairWeatherScheduler' : 'getWeatherSchedulerStatus',adminKey:adminKeyValue()});
+    if(!result.ok) throw new Error(result.error || '確認できませんでした');
+    status.textContent = `定刻実行：${result.scheduler.installed ? '設定済み' : '未設定です。「定刻実行を設定・修復」を押してください'}／朝8時・夜19時（日本時間）。処理完了後に通知します。`;
+  }catch(error){status.textContent = `定刻実行を確認できませんでした：${error.message}`;}
+  finally{button.disabled=false;}
+}
 
 async function fetchPendingWeatherReports(){
   if(!WEATHER_API_URL){
@@ -6688,6 +6702,7 @@ function setAdminUnlocked(unlocked){
     fetchGiftCodes(true);
     fetchAccessStats();
     fetchPendingGiftReviews();
+    checkWeatherScheduler();
     if(pendingWeatherDeepLinkId() || window.location.hash === "#pendingWeatherReports"){
       setAdminSubtab("daily");
       fetchPendingWeatherReports();
@@ -7063,6 +7078,7 @@ function init(){
   };
   E.saveQuickWeatherBtn.onclick = saveQuickWeather;
   E.runWeatherAutomationBtn.onclick = runWeatherAutomation;
+  document.getElementById('repairWeatherSchedulerBtn').onclick = () => checkWeatherScheduler(true);
 
   E.refreshPendingWeatherBtn.onclick = fetchPendingWeatherReports;
   E.pendingWeatherReports.onclick = event => {
