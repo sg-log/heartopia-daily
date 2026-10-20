@@ -3159,10 +3159,23 @@ async function fetchWeeklyForecasts(){
     renderToday();
   }catch(error){console.warn("週間天気の取得に失敗しました",error);}
 }
+function buildIndependentWeeklyIndex(){
+  const index = new Map();
+  [...independentWeeklyForecasts.entries()]
+    .sort((a,b) => a[0].localeCompare(b[0]))
+    .forEach(([base,weeks]) => {
+      WEATHER_WEEK_KEYS.forEach((key,i) => {
+        const values = weatherValues(weeks[key]);
+        if(values.length) index.set(weekDate(base,i), values);
+      });
+    });
+  return index;
+}
 function weatherData(dateStr){
   const date = normalizeApiDate(dateStr);
   const slotIndexMap = buildWeatherSlotIndex();
   const weekIndexMap = buildWeatherWeekIndex();
+  const independentIndex = buildIndependentWeeklyIndex();
   const slots = Object.fromEntries(WEATHER_SLOT_KEYS.map((key, index) => {
     const hour = slotHourAt("00", index);
     const targetDate = weatherSlotDateFor(date, "00", index);
@@ -3172,10 +3185,11 @@ function weatherData(dateStr){
   const standalone = independentWeeklyForecasts.get(date);
   const weeks = Object.fromEntries(WEATHER_WEEK_KEYS.map((key, index) => {
     const manual = weatherValues(standalone?.[key]);
+    const carry = independentIndex.get(weekDate(date, index)) || [];
     const direct = weatherValues(raw?.weeks?.[key]);
     return [
       key,
-      manual.length ? manual : (direct.length ? direct : (weekIndexMap.get(weekDate(date, index)) || []))
+      manual.length ? manual : (carry.length ? carry : (direct.length ? direct : (weekIndexMap.get(weekDate(date, index)) || [])))
     ];
   }));
   const hasData = WEATHER_SLOT_KEYS.some(key => slots[key].length) || WEATHER_WEEK_KEYS.some(key => weeks[key].length);
