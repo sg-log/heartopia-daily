@@ -1,5 +1,8 @@
 name: Weather calendar private comparison
 on:
+  push:
+    branches: [main]
+    paths: ['tools/weather-calendar-crosscheck-run.mjs','tools/weather-public-discovery.mjs']
   schedule:
     - cron: '45 23 * * *'
     - cron: '45 10 * * *'

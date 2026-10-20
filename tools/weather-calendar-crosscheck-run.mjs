@@ -23,16 +23,18 @@ async function main(){
   const discovery=await discover(targetDate,'',handles),records=[],hashes=[];
   const dir=await fs.mkdtemp(path.join(os.tmpdir(),'weather-compare-'));
   try{
-    let checked=0;
+    let checked=0,captured=0,knownAuthors=0;
     for(const candidate of discovery.candidates){
       if(candidate.sourceType!=='x'||checked>=10||records.length>=5)continue;checked++;
       const captureDir=path.join(dir,String(checked));
       try{
         await run(process.execPath,['tools/weather-x-embed-evidence.mjs','--url',candidate.sourceUrl,'--output-dir',captureDir],{timeout:65000,maxBuffer:1024*1024});
         const capture=JSON.parse(await fs.readFile(path.join(captureDir,'capture.json'),'utf8'));
+        captured++;
         const owner=(capture.rawMedia||[]).map(m=>m.ownerLink).find(Boolean)||'';
         const author=(owner.match(/\/([^/]+)\/status\//)?.[1]||'').toLowerCase();
         if(!allowed.has(author)||records.some(r=>r.author===author))continue;
+        knownAuthors++;
         let review;try{review=await inspectUnifiedCapture({captureDir,targetDate});}catch(_){review={ready:false};}
         if(!review.ready)review=await inspectDirectDailyPanelCapture({captureDir,targetDate});
         if(!review.ready)continue;
@@ -46,7 +48,7 @@ async function main(){
     }
     const result=compareCalendarWithImageReviews(state.calendar,records,targetDate);
     await post({action:'recordWeatherComparison',targetDate,result,evidenceHashes:hashes,notify:process.env.WEATHER_COMPARE_NOTIFY==='true'});
-    console.log(JSON.stringify({status:result.status,comparedCells:result.comparedCells,independentAuthors:result.independentAuthors,privateImages:hashes.length}));
+    console.log(JSON.stringify({status:result.status,searchCandidates:discovery.candidates.length,providerFailures:discovery.attempts.filter(a=>a.status!=='ok').length,captured,knownAuthors,comparedCells:result.comparedCells,independentAuthors:result.independentAuthors,privateImages:hashes.length}));
   }finally{await fs.rm(dir,{recursive:true,force:true});}
 }
 const timer=setTimeout(()=>{console.error('Private comparison reached its time limit.');process.exit(1);},12*60000);

@@ -10,10 +10,20 @@ import {
   extractXHandleFromText,
   isSearchContextFallback,
   isDynamicAuthorFallback,
+  isComparisonAuthorFallback,
   mergeAndRankCandidates,
   selectDiversifiedCandidates,
   targetDateTokens
 } from './weather-public-discovery.mjs';
+
+test('fixed comparison accounts accept short captions without loosening normal discovery',()=>{
+  const p={sourceType:'x',sourceHandle:'example_a',comparisonHandle:'example_a',text:'10/20 #ハトピ'};
+  assert.equal(candidateRelevance(p.text,'2026-10-20').relevant,false);
+  assert.equal(isComparisonAuthorFallback(p,'2026-10-20'),true);
+  assert.equal(isComparisonAuthorFallback({...p,sourceHandle:'someone_else'},'2026-10-20'),false);
+  assert.equal(isComparisonAuthorFallback({...p,comparisonHandle:''},'2026-10-20'),false);
+  assert.equal(isComparisonAuthorFallback({...p,text:'別の話題'},'2026-10-20'),false);
+});
 
 test('normalizes X status URLs without account dependency', () => {
   assert.deepEqual(normalizeCandidateUrl('https://x.com/example/status/10006/photo/1?s=20'), {

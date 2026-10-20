@@ -205,6 +205,12 @@ export function isDynamicAuthorFallback({ sourceType, sourceHandle, dynamicHandl
   const postRelevance = candidateRelevance(text, targetDate, slot);
   return postRelevance.dateMatched && firstExplicitHour(text) === expectedStartSlotFor(slot);
 }
+export function isComparisonAuthorFallback({sourceType,sourceHandle,comparisonHandle,text},targetDate) {
+  if(sourceType!=='x'||!comparisonHandle||String(sourceHandle||'').toLowerCase()!==String(comparisonHandle).toLowerCase())return false;
+  // Known comparison accounts may use short captions or the abbreviated game
+  // hashtag. Discovery is only a candidate gate; image date/identity stay strict.
+  return candidateRelevance(text,targetDate).dateMatched || /天気|予報|weather|forecast/i.test(text||'');
+}
 
 async function inspectPublicXProfile(page, handle) {
   const result = {
@@ -242,7 +248,7 @@ function providerUrl(provider, query) {
   throw new Error(`Unknown provider ${provider}`);
 }
 
-async function collectFromPage(page, provider, query, targetDate, slot = '', limit = 40, dynamicHandle = '') {
+async function collectFromPage(page, provider, query, targetDate, slot = '', limit = 40, dynamicHandle = '', comparisonHandle = '') {
   const url = providerUrl(provider, query);
   const result = { provider, query, url, status: 'ok', error: null, linksSeen: 0, candidates: [], diagnostics: [] };
   try {
@@ -284,13 +290,14 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
         dynamicHandle,
         text: contextText
       }, targetDate, slot);
+      const comparisonAuthorFallback=!relevance.relevant&&isComparisonAuthorFallback({sourceType:normalized.sourceType,sourceHandle,comparisonHandle,text:contextText},targetDate);
       const keepReason = relevance.relevant
         ? 'strict-text'
         : searchContextFallback
           ? 'search-context-fallback'
           : dynamicAuthorFallback
             ? 'dynamic-author-fallback'
-            : 'dropped-text-gate';
+            : comparisonAuthorFallback ? 'comparison-author-fallback' : 'dropped-text-gate';
       if (normalized.sourceType === 'x' && result.diagnostics.length < 120) {
         result.diagnostics.push({
           sourceUrl: normalized.url,
@@ -303,7 +310,7 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
           firstExplicitHour: firstExplicitHour(contextText)
         });
       }
-      if (!relevance.relevant && !searchContextFallback && !dynamicAuthorFallback) continue;
+      if (!relevance.relevant && !searchContextFallback && !dynamicAuthorFallback && !comparisonAuthorFallback) continue;
       result.candidates.push({
         sourceUrl: normalized.url,
         sourceType: normalized.sourceType,
@@ -321,6 +328,7 @@ async function collectFromPage(page, provider, query, targetDate, slot = '', lim
         strictTextRelevant: relevance.relevant,
         searchContextFallback,
         dynamicAuthorFallback,
+        comparisonAuthorFallback,
         dynamicHandle: dynamicHandle || ''
       });
       if (result.candidates.length >= limit) break;
@@ -423,6 +431,7 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = 
       record.strictTextRelevant = Boolean(record.strictTextRelevant || relevance.relevant);
       record.searchContextFallback = Boolean(record.searchContextFallback || c.searchContextFallback);
       record.dynamicAuthorFallback = Boolean(record.dynamicAuthorFallback || c.dynamicAuthorFallback);
+      record.comparisonAuthorFallback = Boolean(record.comparisonAuthorFallback || c.comparisonAuthorFallback);
       record.profileHeartopiaMatched = Boolean(record.profileHeartopiaMatched || c.profileHeartopiaMatched);
       record.profileHeartopiaTerms = [...new Set([...(record.profileHeartopiaTerms || []), ...(c.profileHeartopiaTerms || [])])];
       if (!record.profileCheckStatus && c.profileCheckStatus) record.profileCheckStatus = c.profileCheckStatus;
@@ -432,7 +441,7 @@ export function mergeAndRankCandidates(attempts, targetDate, limit = 24, slot = 
   }
   const relevant = [...merged.values()].filter((candidate) => {
     const strict = candidateRelevance(`${candidate.anchorText || ''} ${candidate.context || ''}`, targetDate, slot).relevant;
-    return strict || candidate.searchContextFallback === true || candidate.dynamicAuthorFallback === true;
+    return strict || candidate.searchContextFallback === true || candidate.dynamicAuthorFallback === true || candidate.comparisonAuthorFallback === true;
   });
   return selectDiversifiedCandidates(relevant, limit);
 }
@@ -441,8 +450,8 @@ export function comparisonSourceQueries(targetDate, handles) {
   if(!Array.isArray(handles) || handles.length>10 || handles.some(h=>typeof h!=='string' || !/^[A-Za-z0-9_]{1,15}$/.test(h))) throw Error('Invalid private source configuration');
   const [,month,day]=targetDate.split('-').map(Number);
   return [...new Set(handles)].flatMap(handle=>[
-    `ハートピア 天気 from:${handle} ${month}/${day}`,
-    `ハートピア 天気 @${handle} ${month}月${day}日`
+    `from:${handle} 天気 ${month}/${day}`,
+    `@${handle} ${month}月${day}日`
   ]);
 }
 
@@ -464,7 +473,10 @@ export async function discover(targetDate, slot = '', comparisonHandles = []) {
     // First pass: broad multi-provider discovery with no author fixed in advance.
     await Promise.all(providers.map(async provider => {
       const searchPage=await context.newPage();
-      try { for(const query of queries) attempts.push(await collectFromPage(searchPage,provider,query,targetDate,slot)); }
+      try { for(const query of queries) {
+        const comparisonHandle=fixedQueries.length ? query.match(/(?:from:|@)([A-Za-z0-9_]+)/)?.[1] || '' : '';
+        attempts.push(await collectFromPage(searchPage,provider,query,targetDate,slot,40,'',comparisonHandle));
+      } }
       finally { await searchPage.close(); }
     }));
 
