@@ -1391,6 +1391,16 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
             <h3>週間予報</h3>
             <p class="small">選択日の翌日〜7日後の天気をまとめて保存できます。</p>
             <div id="quickWeekChips"></div>
+            <details class="weatherScreenshotPanel" id="aiWeeklyImportPanel">
+              <summary>GPTで判読した週間天気を取り込む</summary>
+              <p class="small">スクショをGPTに送り、7日分のJSONを作ってもらって貼り付けてください。既存の時間別天気は変更しません。保存前に差分を確認できます。</p>
+              <label for="aiWeeklyImportJson">GPTから受け取った週間天気JSON</label>
+              <textarea id="aiWeeklyImportJson" rows="7" spellcheck="false" placeholder='{"schemaVersion":1,"source":"game-screenshot","baseDate":"2026-10-20","days":[{"date":"2026-10-21","weather":"晴"}]}'></textarea>
+              <div class="buttons"><button type="button" class="secondary" id="aiWeeklyPreviewBtn">既存データと照合</button></div>
+              <div id="aiWeeklyImportStatus" class="status" role="status" aria-live="polite"></div>
+              <div id="aiWeeklyImportPreview" class="preview" style="white-space:pre-wrap" hidden></div>
+              <div class="buttons"><button type="button" id="aiWeeklySaveBtn" disabled>確認して週間天気を保存</button></div>
+            </details>
             <div class="row adminSaveRow">
               <div><label for="quickWeatherAdminKey">管理キー</label><input id="quickWeatherAdminKey" type="password" autocomplete="off" spellcheck="false" placeholder="管理キー"></div>
               <div class="buttons"><button id="saveQuickWeatherBtn">天気と週間予報を保存</button></div>
@@ -1683,6 +1693,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
 
 <script src="assets/puzzles/puzzles-data.js"></script>
 <script src="assets/weather-screenshot-core.js"></script>
+<script src="assets/weekly-ai-import.js?v=20261020"></script>
 <script>
 const WEATHER_API_URL = "https://script.google.com/macros/s/AKfycbwoPLuj0rSsennsx01-B-6UxqBjqnPieocgVLQnJMKEgRw6fZziV5ZGVA3SusjVLF3o/exec";
 const WEATHER_OPTIONS = [
@@ -7187,6 +7198,19 @@ function init(){
   };
 }
 init();
+HeartopiaWeeklyAIImport.mount({
+  dateInput:E.quickWeatherDate,
+  apiUrl:()=>WEATHER_API_URL,
+  adminKey:adminKeyValue,
+  apiPost,
+  normalizeApiDate,
+  normalizeWeatherSlots,
+  normalizeWeatherWeeks,
+  saveApprovedWeatherToApi,
+  upsertWeather,
+  save,
+  renderToday
+});
 </script>
 <script src="assets/weather-calendar-today-ui.js?v=20261020-design"></script>
 <script>
