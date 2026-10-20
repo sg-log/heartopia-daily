@@ -37,6 +37,7 @@ function getWeatherSchedulerStatus() {
       return trigger.getHandlerFunction() === WEATHER_SCHEDULER_TRIGGER_FUNCTION;
     }),
     primaryTimes: ["08:00", "19:00"],
+    provider: typeof calendarConfigured_ === 'function' && calendarConfigured_() ? 'calendar' : 'legacy',
     githubConfigured: Boolean(props.getProperty(GITHUB_ACTIONS_TOKEN_PROPERTY)),
     nowJst: Utilities.formatDate(now, WEATHER_SCHEDULER_TIME_ZONE, "yyyy-MM-dd HH:mm:ss"),
     morningPrimary: String(props.getProperty(WEATHER_SCHEDULER_ATTEMPT_PROPERTIES.morningPrimary) || ""),
@@ -52,6 +53,7 @@ function getWeatherSchedulerStatus() {
  * missed primary/retry attempt instead of permanently missing that slot.
  */
 function runWeatherScheduler() {
+  if (typeof calendarConfigured_ === 'function' && calendarConfigured_()) return runCalendarWeatherScheduler();
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(3000)) return;
 
@@ -129,7 +131,7 @@ function nextWeatherSchedulerAttempt_(date, minuteOfDay) {
 function weatherSchedulerAdmin_(body) {
   requireKey_(body.adminKey, adminKey_(), "管理キー");
   const status = body.action === "repairWeatherScheduler" ? installWeatherScheduler() : getWeatherSchedulerStatus();
-  if(body.action === "repairWeatherScheduler") {
+  if(body.action === "repairWeatherScheduler" && status.provider !== 'calendar') {
     const token=PropertiesService.getScriptProperties().getProperty(GITHUB_ACTIONS_TOKEN_PROPERTY);
     const response=UrlFetchApp.fetch('https://api.github.com/repos/'+GITHUB_REPOSITORY+'/actions/workflows/weather-scheduler-repair.yml/dispatches',{
       method:'post',muteHttpExceptions:true,contentType:'application/json',headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json'},

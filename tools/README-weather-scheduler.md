@@ -1,5 +1,7 @@
 # Heartopia weather scheduler
 
+After the permitted calendar source is enabled, this workflow handles independent SNS weekly reports only. Current-day hourly weather is owned by the Apps Script calendar path; see `README-weather-today.md`. Fixed comparison accounts belong to a separate private comparison workflow.
+
 ## Forecast coverage
 
 Morning/evening runs require image-verified weather covering 06:00/18:00 on the target date. The image does not have to start at that exact hour: a same-date 00:00 forecast also covers those times. Keep its actual `startSlot` when preparing pending; never relabel it as 06:00/18:00. Different-date, future-start, incomplete, and unverified forecasts remain rejected.

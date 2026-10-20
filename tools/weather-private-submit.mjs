@@ -78,7 +78,12 @@ async function main() {
   const html=await fs.readFile('index.html','utf8'), apiUrl=html.match(/const WEATHER_API_URL\s*=\s*"([^"]+)"/)?.[1];
   if(!apiUrl) throw Error('privateApiMissing');
   const payload=await buildPrivateWeatherPayload(review,capture,args['--capture-dir']);
-  const result=await submitPrivateWeather({payload,apiUrl,postKey:process.env.WEATHER_POST_KEY,adminKey:process.env.WEATHER_ADMIN_KEY});
+  let weeklyOnly=false;
+  if(args['--weekly-only']==='true'){
+    const r=await fetch(apiUrl+'?action=getWeatherCalendar',{signal:AbortSignal.timeout(30000)});const state=await r.json();weeklyOnly=state.ok===true&&state.enabled===true;
+  }
+  const noWeekly=weeklyOnly&&Object.values(payload.weeks).filter(v=>v.length).length<5;
+  const result=noWeekly?{pending_registered:false,duplicate:false,skipped:true,report_id:'',weekly_count:0}:await submitPrivateWeather({payload,apiUrl,postKey:process.env.WEATHER_POST_KEY,adminKey:process.env.WEATHER_ADMIN_KEY});
   if(process.env.GITHUB_OUTPUT) await fs.appendFile(process.env.GITHUB_OUTPUT,Object.entries(result).map(([k,v])=>`${k}=${v}`).join('\n')+'\n');
   console.log(JSON.stringify({registered:result.pending_registered,duplicate:result.duplicate,privateEvidence:true}));
 }

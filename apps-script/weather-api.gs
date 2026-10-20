@@ -68,6 +68,7 @@ function doGet(e) {
     if (action === "approved") {
       return json_({ ok: true, reports: listByStatus_("approved").map(publicWeatherItem_) });
     }
+    if (action === "getWeatherCalendar") return json_({ok:true, enabled:Boolean(calendarConfigured_()), calendar:calendarPublic_()});
     if (action === "getGiftCodes") {
       return json_({ ok: true, codes: listGiftCodes_(false).map(publicGiftItem_) });
     }
@@ -85,10 +86,13 @@ function doPost(e) {
     const body = parseBody_(e);
     const action = String(body.action || "");
     if (action === "getWeatherPrivateSources") return getWeatherPrivateSources_(body);
+    if (["archiveWeatherHistory", "getWeatherHistory", "recordWeatherComparison"].indexOf(action) >= 0) return weatherHistoryAdmin_(body);
+    if (["saveWeatherComparisonEvidence", "getWeatherComparisonEvidence"].indexOf(action) >= 0) return weatherComparisonEvidenceAdmin_(body);
     if (action === "recordAccess") return recordAccess_();
     if (action === "getAccessStats") return getAccessStats_(body);
     if (action === "requestWeatherAutomation") return requestWeatherAutomation_(body);
     if (action === "getWeatherSchedulerStatus" || action === "repairWeatherScheduler") return weatherSchedulerAdmin_(body);
+    if (["getWeatherCalendarStatus", "refreshWeatherCalendar", "initializeWeatherCalendar"].indexOf(action) >= 0) return weatherCalendarAdmin_(body);
     if (action === "submit") return submit_(body);
     if (action === "weatherReviewImage") return createWeatherReviewImage_(body);
     if (action === "weatherEvidence") return getWeatherEvidence_(body);
@@ -1332,7 +1336,7 @@ function parseBody_(e) {
     let large;
     try { large = JSON.parse(text); } catch (_) { throw weatherSubmitFailure_("invalidEvidencePayload", "requestParsing"); }
     const evidenceSubmit = large.action === "submit" && Array.isArray(large.evidenceImages) && large.evidenceImages.length === 1;
-    const reviewImage = ["weatherReviewImage", "saveGiftReviewEvidence"].indexOf(large.action) >= 0 && large.image && typeof large.image === "object";
+    const reviewImage = ["weatherReviewImage", "saveGiftReviewEvidence", "saveWeatherComparisonEvidence"].indexOf(large.action) >= 0 && large.image && typeof large.image === "object";
     if (!evidenceSubmit && !reviewImage) throw weatherSubmitFailure_("requestTooLarge", "requestParsing");
     return large;
   }

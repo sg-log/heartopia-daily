@@ -3292,6 +3292,7 @@ function weeklyForecastItems(w, baseDate){
   });
 }
 function shareWeatherLine(weather){
+  if(globalThis.HeartopiaCalendar?.active()) return "時間別予報はサイトで確認（TH.GL提供）";
   if(!weather) return "天気は未登録";
   const startSlot = normalizeStartSlot(weather.startSlot);
   return slotLabels(startSlot).map(([key,label]) => `${label.replace("時","")} ${slotWeatherMiniText(weather.slots[key], key, startSlot)}`).join(" / ");
@@ -4954,7 +4955,7 @@ async function drawShareImageCanvas(date, data, weather, options={}){
   ctx.font = '900 26px "Noto Sans JP","Segoe UI Emoji",sans-serif';
   ctx.fillText("今日の天気",90,335);
   fillRoundRect(ctx,90,355,1020,105,22,"#f7faf7","#dde6df");
-  if(weather){
+  if(weather && !globalThis.HeartopiaCalendar?.active()){
     const startSlot = normalizeStartSlot(weather.startSlot);
     slotLabels(startSlot).forEach(([key,label], index) => {
       const x = 110 + index * 196;
@@ -4968,7 +4969,7 @@ async function drawShareImageCanvas(date, data, weather, options={}){
   }else{
     ctx.fillStyle = "#7a746d";
     ctx.font = '800 30px "Noto Sans JP","Segoe UI Emoji",sans-serif';
-    ctx.fillText("天気は未登録",120,420);
+    ctx.fillText(globalThis.HeartopiaCalendar?.active()?"時間別予報はサイトで確認（TH.GL提供）":"天気は未登録",120,420);
   }
 
   ctx.fillStyle = "#5d746b";
@@ -5140,10 +5141,11 @@ async function sharePlaceCardImageFile(){
 function discord(dateStr, data, weather){
   const startSlot = normalizeStartSlot(weather?.startSlot);
   const slot = currentSlot(startSlot);
-  const w = weather && slot ? weatherText(weather.slots[slot], slot, startSlot, "") : "";
+  const w = globalThis.HeartopiaCalendar?.active() ? "" : weather && slot ? weatherText(weather.slots[slot], slot, startSlot, "") : "";
   const gifts = activeGiftCodes();
+  const calendarLink = globalThis.HeartopiaCalendar?.active() ? "\n時間別予報：TH.GL\nhttps://heartopia.th.gl/forecast\n" : "";
   const giftText = gifts.length ? `\n\n【ギフトコード】\n${gifts.map(item => `${item.code}${item.reward ? `\n報酬：${item.reward}` : ""}\n期限：${giftExpiryText(item.expiresAt)}`).join("\n\n")}` : "";
-  return `【今日の採取メモ】\n\n日付：${jpDate(dateStr)}\n\n無垢な蛍石：${data.fluorite || "未入力"}\nツルツルオーク：${data.oak || "未入力"}\n${w ? `\nいまの天気：${w}\n` : ""}${giftText}\n※観測データをもとにした非公式の予想です。`;
+  return `【今日の採取メモ】\n\n日付：${jpDate(dateStr)}\n\n無垢な蛍石：${data.fluorite || "未入力"}\nツルツルオーク：${data.oak || "未入力"}\n${w ? `\nいまの天気：${w}\n` : ""}${calendarLink}${giftText}\n※観測データをもとにした非公式の予想です。`;
 }
 
 function renderToday(){
@@ -5178,6 +5180,7 @@ function renderToday(){
 }
 
 function renderWeather(date, w){
+  if(globalThis.HeartopiaCalendar?.active()){ E.weatherResult.innerHTML=HeartopiaCalendar.html(); return; }
   if(!w){
     E.weatherResult.innerHTML = `<div class="weatherNow">天気は未登録です。</div>`;
     return;
@@ -5190,6 +5193,7 @@ function renderWeather(date, w){
 }
 
 function renderWeatherSummary(){
+  if(globalThis.HeartopiaCalendar?.active()){ E.weatherSummary.innerHTML=HeartopiaCalendar.html(); return; }
   const today = dateValue(gameToday());
   const w = weatherData(today);
   if(!w){
@@ -7170,6 +7174,10 @@ function init(){
   };
 }
 init();
+</script>
+<script src="assets/weather-calendar-today-ui.js"></script>
+<script>
+HeartopiaCalendar.start({apiUrl:WEATHER_API_URL,post:apiPost,adminKey:adminKeyValue,adminRoute:isAdminRoute(),onChange:()=>{renderWeather(E.targetDate.value,weatherData(E.targetDate.value));renderWeatherSummary();E.discordText.textContent=discord(E.targetDate.value,dayData(cycleDay(E.targetDate.value)),weatherData(E.targetDate.value));renderShareImagePreview(E.targetDate.value,dayData(cycleDay(E.targetDate.value)),weatherData(E.targetDate.value));}});
 </script>
 </body>
 </html>
