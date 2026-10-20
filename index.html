@@ -3137,6 +3137,28 @@ function buildWeatherWeekIndex(){
     });
   return map;
 }
+const independentWeeklyForecasts = new Map();
+function setWeeklyForecastRecord(record){
+  if(!record || !record.baseDate) return;
+  independentWeeklyForecasts.set(normalizeApiDate(record.baseDate), normalizeWeatherWeeks({weeks:record.weeks || {}}));
+}
+async function readWeeklyForecasts(){
+  if(!WEATHER_API_URL) throw new Error("天気APIが設定されていません。");
+  const url = new URL(WEATHER_API_URL);
+  url.searchParams.set("action","getWeeklyForecasts");
+  const response = await fetch(url);
+  const data = await response.json();
+  if(data.ok !== true || !Array.isArray(data.forecasts)) throw new Error(data.error || "週間天気の取得に失敗しました。");
+  return data;
+}
+async function fetchWeeklyForecasts(){
+  try{
+    const result = await readWeeklyForecasts();
+    independentWeeklyForecasts.clear();
+    result.forecasts.forEach(setWeeklyForecastRecord);
+    renderToday();
+  }catch(error){console.warn("週間天気の取得に失敗しました",error);}
+}
 function weatherData(dateStr){
   const date = normalizeApiDate(dateStr);
   const slotIndexMap = buildWeatherSlotIndex();
@@ -3147,11 +3169,13 @@ function weatherData(dateStr){
     return [key, slotIndexMap.get(weatherDateTimeKey(targetDate, hour)) || []];
   }));
   const raw = rawWeatherData(date);
+  const standalone = independentWeeklyForecasts.get(date);
   const weeks = Object.fromEntries(WEATHER_WEEK_KEYS.map((key, index) => {
+    const manual = weatherValues(standalone?.[key]);
     const direct = weatherValues(raw?.weeks?.[key]);
     return [
       key,
-      direct.length ? direct : (weekIndexMap.get(weekDate(date, index)) || [])
+      manual.length ? manual : (direct.length ? direct : (weekIndexMap.get(weekDate(date, index)) || []))
     ];
   }));
   const hasData = WEATHER_SLOT_KEYS.some(key => slots[key].length) || WEATHER_WEEK_KEYS.some(key => weeks[key].length);
@@ -6796,6 +6820,7 @@ function init(){
     if(input) input.addEventListener("input", () => syncAdminKeys(input));
   });
   fetchApprovedWeather();
+  fetchWeeklyForecasts();
   fetchGiftCodes().then(async () => {
     await syncGiftClaimBackup();
     renderToday();
@@ -7204,11 +7229,8 @@ HeartopiaWeeklyAIImport.mount({
   adminKey:adminKeyValue,
   apiPost,
   normalizeApiDate,
-  normalizeWeatherSlots,
-  normalizeWeatherWeeks,
-  saveApprovedWeatherToApi,
-  upsertWeather,
-  save,
+  readWeeklyForecasts,
+  setWeeklyForecastRecord,
   renderToday
 });
 </script>
