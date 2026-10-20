@@ -1,0 +1,25 @@
+name: Weather calendar setup
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/weather-calendar-setup.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: weather-calendar-setup
+  cancel-in-progress: false
+jobs:
+  initialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Initialize permitted forecast, private history and personal notification destination
+        env:
+          WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
+          WEATHER_PRIVATE_WEBHOOK_URL: ${{ secrets.WEATHER_DC_WEBHOOK_URL }}
+        run: node tools/weather-calendar-setup.mjs

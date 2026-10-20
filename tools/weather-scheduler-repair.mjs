@@ -15,4 +15,4 @@ const after=repair?await call('repairWeatherScheduler'):before;
 console.log(JSON.stringify({wasInstalled:before.installed,installed:after.installed,githubConfigured:after.githubConfigured,primaryTimes:after.primaryTimes,
   previousMorning:before.morningPrimary,previousEvening:before.eveningPrimary,dispatchProbeStatus:after.dispatchProbeStatus,
   repairRequested:repair,weatherDispatched:false,discordNotified:false}));
-if(repair&&(!after.installed||!after.githubConfigured||after.dispatchProbeStatus!==204))throw Error('Primary weather scheduler dispatch is not ready');
+if(repair&&(!after.installed||(after.provider!=='calendar'&&(!after.githubConfigured||after.dispatchProbeStatus!==204))))throw Error('Primary weather scheduler dispatch is not ready');

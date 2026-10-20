@@ -1,0 +1,37 @@
+name: Weather calendar private comparison
+on:
+  schedule:
+    - cron: '45 23 * * *'
+    - cron: '45 10 * * *'
+  workflow_dispatch:
+    inputs:
+      notify:
+        description: 'Notify the personal destination on a corroborated discrepancy'
+        type: boolean
+        default: false
+  workflow_run:
+    workflows: ['Weather calendar setup']
+    types: [completed]
+permissions:
+  contents: read
+concurrency:
+  group: weather-calendar-private-comparison
+  cancel-in-progress: false
+jobs:
+  compare:
+    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Compare only privately configured accounts and keep evidence private
+        env:
+          WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
+          WEATHER_COMPARE_NOTIFY: ${{ github.event_name == 'schedule' && 'true' || inputs.notify && 'true' || 'false' }}
+        run: node tools/weather-calendar-crosscheck-run.mjs

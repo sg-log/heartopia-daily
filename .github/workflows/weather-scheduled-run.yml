@@ -37,6 +37,7 @@ permissions:
   actions: read
 
 env:
+  WEATHER_COLLECTION_ROLE: weekly
   WEATHER_DC_WEBHOOK_URL: ${{ secrets.WEATHER_DC_WEBHOOK_URL }}
 
 concurrency:
@@ -366,6 +367,7 @@ jobs:
           node tools/weather-private-submit.mjs
           --review "${{ runner.temp }}/weather-unified-review.json"
           --capture-dir "${{ steps.capture.outputs.selected_dir }}"
+          --weekly-only true
 
       - name: Finalize slot state
         id: finalize
@@ -385,6 +387,7 @@ jobs:
           CONTENT_DUPLICATE: ${{ steps.submit.outputs.duplicate }}
           PENDING_REGISTERED: ${{ steps.submit.outputs.pending_registered }}
           WEEKLY_COUNT: ${{ steps.submit.outputs.weekly_count }}
+          SKIPPED: ${{ steps.submit.outputs.skipped }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
@@ -394,7 +397,7 @@ jobs:
               core.setOutput('notify_failure', 'false')
               return
             }
-            const submitSucceeded = process.env.SUBMIT_OUTCOME === 'success' && (process.env.PENDING_REGISTERED === 'true' || process.env.CONTENT_DUPLICATE === 'true')
+            const submitSucceeded = process.env.SUBMIT_OUTCOME === 'success' && (process.env.PENDING_REGISTERED === 'true' || process.env.CONTENT_DUPLICATE === 'true' || process.env.SKIPPED === 'true')
             const terminalSuccess = submitSucceeded
             const origin = process.env.ORIGIN || 'unknown'
             const attemptKind = process.env.ATTEMPT_KIND || 'unknown'
@@ -418,7 +421,7 @@ jobs:
               snooze: process.env.IS_SNOOZE === 'true',
               origin,
               attemptKind,
-              status: terminalSuccess ? (process.env.CONTENT_DUPLICATE === 'true' ? 'content-duplicate' : 'pending') : 'failed',
+              status: terminalSuccess ? (process.env.SKIPPED === 'true' ? 'no-weekly' : process.env.CONTENT_DUPLICATE === 'true' ? 'content-duplicate' : 'pending') : 'failed',
               candidateCount: Number(process.env.CANDIDATE_COUNT || 0),
               usableCandidateCount: Number(process.env.USABLE_COUNT || 0),
               weeklyCount: Number(process.env.WEEKLY_COUNT || 0),
@@ -431,7 +434,7 @@ jobs:
             const issue = await github.rest.issues.create({ ...context.repo, title:`[weather-scheduled-result] ${process.env.RUN_KEY}`, body })
             await github.rest.issues.update({ ...context.repo, issue_number:issue.data.number, state:'closed', state_reason:'completed' })
             core.setOutput('terminal_success', terminalSuccess ? 'true' : 'false')
-            core.setOutput('new_pending', submitSucceeded && process.env.CONTENT_DUPLICATE !== 'true' ? 'true' : 'false')
+            core.setOutput('new_pending', process.env.PENDING_REGISTERED === 'true' && process.env.CONTENT_DUPLICATE !== 'true' ? 'true' : 'false')
             core.setOutput('report_id', process.env.REPORT_ID || '')
             core.setOutput('notify_failure', notifyFailure ? 'true' : 'false')
             if (!terminalSuccess) core.setFailed('Scheduled weather run did not reach a verified current-slot pending or known content duplicate.')
@@ -447,7 +450,7 @@ jobs:
           Invoke-RestMethod -Method Post -Uri $env:WEATHER_DC_WEBHOOK_URL -ContentType 'application/json' -Body $payload | Out-Null
 
       - name: Notify Discord after terminal failure
-        if: ${{ always() && steps.finalize.outputs.terminal_success != 'true' && steps.finalize.outputs.notify_failure == 'true' && env.WEATHER_DC_WEBHOOK_URL != '' }}
+        if: ${{ always() && steps.finalize.outputs.terminal_success != 'true' && steps.finalize.outputs.notify_failure == 'true' && env.WEATHER_DC_WEBHOOK_URL != '' && env.WEATHER_COLLECTION_ROLE != 'weekly' }}
         shell: pwsh
         env:
           RUN_KEY: ${{ steps.slot.outputs.run_key }}
