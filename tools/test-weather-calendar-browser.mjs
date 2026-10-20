@@ -22,13 +22,13 @@ test('today-only forecast replaces daily display, preserves independent SNS week
     browser=await chromium.launch({headless:true});
     const context=await browser.newContext({viewport:{width:390,height:844},timezoneId:'Asia/Tokyo'});
     await context.addInitScript(()=>{const Original=Date;globalThis.Date=class extends Original{constructor(...args){super(...(args.length?args:['2026-10-20T00:30:00Z']));}static now(){return new Original('2026-10-20T00:30:00Z').getTime();}};});
-    const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+    const page=await context.newPage(),errors=[];let sourceUnavailable=false;page.on('pageerror',e=>errors.push(e.message));
     await page.route('**/*',async route=>{
       const req=route.request(),u=new URL(req.url());
       if(u.hostname==='127.0.0.1'){await route.continue();return;}
       if(u.hostname==='script.google.com'){
         const action=u.searchParams.get('action')||JSON.parse(req.postData()||'{}').action;
-        const body=action==='getWeatherCalendar'?{ok:true,enabled:true,calendar}:action==='approved'?{ok:true,reports:[report]}:action==='getGiftCodes'?{ok:true,codes:[]}:action==='getSiteNotice'?{ok:true,notice:{}}:{ok:true};
+        const body=action==='getWeatherCalendar'?{ok:true,enabled:true,calendar:sourceUnavailable?null:calendar}:action==='approved'?{ok:true,reports:[report]}:action==='getGiftCodes'?{ok:true,codes:[]}:action==='getSiteNotice'?{ok:true,notice:{}}:{ok:true};
         await route.fulfill({status:200,headers:{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'},body:JSON.stringify(body)});return;
       }
       await route.abort();
@@ -41,5 +41,10 @@ test('today-only forecast replaces daily display, preserves independent SNS week
     const size=await page.locator('#weatherResult .weatherLineText').first().evaluate(el=>({height:el.getBoundingClientRect().height,fontSize:parseFloat(getComputedStyle(el).fontSize)}));
     assert.ok(size.height<=size.fontSize*1.6,'three-character weather labels stay on one line on mobile');
     if(process.env.WEATHER_TEST_SCREENSHOT)await page.screenshot({path:process.env.WEATHER_TEST_SCREENSHOT,fullPage:false});
+    sourceUnavailable=true;
+    await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+    await page.waitForFunction(()=>!HeartopiaCalendar.active());
+    const fallback=await page.locator('#weatherResult').textContent();assert.equal(await page.locator('#weatherResult .weatherSlotList .weatherLine').count(),5);assert.ok(!fallback.includes('Weather forecast by TH.GL'));
+    assert.equal(await page.locator('#weeklyWeather .weeklyWeatherRow').count(),7);
   }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));}
 });

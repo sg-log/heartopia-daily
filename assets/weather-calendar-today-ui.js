@@ -78,5 +78,5 @@
     setInterval(()=>{if(!document.hidden)load();},30*60000);
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)load();});
   }
-  root.HeartopiaCalendar={jst,valid,current,intervals,publicHtml,html,active:()=>enabled,start};
+  root.HeartopiaCalendar={jst,valid,current,intervals,publicHtml,html,active:()=>enabled&&Boolean(current(snapshot,new Date())),start};
 })(typeof globalThis==='object'?globalThis:this);
