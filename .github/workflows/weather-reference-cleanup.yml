@@ -34,6 +34,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           CLEANUP_APPLY: ${{ github.event_name == 'push' && 'true' || inputs.apply && 'true' || 'false' }}
+          CLEANUP_RESUME_PREVIOUS: ${{ github.event_name == 'push' && 'true' || 'false' }}
         run: node tools/weather-reference-cleanup.mjs
       - name: Check private source setup without collecting posts or notifying Discord
         if: ${{ always() }}

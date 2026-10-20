@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {redactWeatherReferences,collectCleanupPlan,applyCleanupPlan} from './weather-reference-cleanup.mjs';
+import {redactWeatherReferences,collectCleanupPlan,applyCleanupPlan,resumePreviousCleanup} from './weather-reference-cleanup.mjs';
 test('redacts external weather references but preserves run keys, success markers and GitHub links',()=>{
   const body='<!-- heartopia-weather-scheduled-success:2026-10-19-morning -->\n{"sourceUrl":"https://x.com/example/status/123","runUrl":"https://github.com/example/repo/actions/runs/12"}';
   const r=redactWeatherReferences(body);assert.ok(!r.includes('x.com'));assert.ok(r.includes('scheduled-success:2026-10-19-morning'));assert.ok(r.includes('github.com'));assert.equal(redactWeatherReferences(r),r);
@@ -18,4 +18,9 @@ test('applies only the planned actions and continues with a compact failure coun
   const calls=[];const api=async(method,url,body)=>{calls.push({method,url,body});if(url.includes('/runs/'))throw Error('denied');};
   const r=await applyCleanupPlan({api,plan:{runs:[10],artifacts:[20],issues:[{number:30,body:'redacted'}]}});
   assert.deepEqual(r,{logsDeleted:0,artifactsDeleted:1,issuesRedacted:1,commentsRedacted:0,alreadyAbsent:0,failures:1});assert.deepEqual(calls.map(c=>c.method),['PATCH','DELETE','DELETE']);
+});
+test('one-time resume targets the remaining 136 old logs and stops if the old plan differs',()=>{
+  const p={runs:[...Array.from({length:863},(_,i)=>i+1),39187968927],artifacts:[],issues:[],comments:[]};
+  const r=resumePreviousCleanup(p);assert.equal(r.runs.length,136);assert.equal(r.runs[0],728);assert.equal(r.runs.at(-1),863);
+  assert.throws(()=>resumePreviousCleanup({...p,runs:p.runs.slice(1)}),/Changed/);
 });

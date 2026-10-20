@@ -55,10 +55,16 @@ export async function applyCleanupPlan({api,plan}) {
   for(const id of plan.runs)try{const r=await api('DELETE',`/actions/runs/${id}/logs`);if(r?.alreadyAbsent)result.alreadyAbsent++;else result.logsDeleted++;}catch{result.failures++;}
   return result;
 }
+export function resumePreviousCleanup(plan) {
+  const runs=plan.runs.filter(id=>id!==39187968927);
+  if(runs.length!==863)throw Error('previousCleanupPlanChanged');
+  return {...plan,runs:runs.slice(727)};
+}
 async function main() {
   const repository=process.env.GITHUB_REPOSITORY,token=process.env.GITHUB_TOKEN;
   if(!/^[\w.-]+\/[\w.-]+$/.test(repository||'') || !token)throw Error('missingRepositoryAccess');
-  const cutoff=process.env.CLEANUP_CUTOFF_UTC || new Date().toISOString();
+  const resume=process.env.CLEANUP_RESUME_PREVIOUS==='true';
+  const cutoff=resume?'2026-10-19T02:01:46Z':process.env.CLEANUP_CUTOFF_UTC || new Date().toISOString();
   let calls=0;
   const api=async(method,suffix,body)=>{
     if(++calls>850)throw Error('requestBudgetReached');
@@ -67,10 +73,11 @@ async function main() {
     if(!response.ok)throw Error('cleanupRequestFailed');
     return response.status===204?null:response.json();
   };
-  const plan=await collectCleanupPlan({api,cutoff});
+  const collected=await collectCleanupPlan({api,cutoff});
+  const plan=resume?resumePreviousCleanup(collected):collected;
   console.log(JSON.stringify({plannedLogs:plan.runs.length,plannedArtifacts:plan.artifacts.length,plannedIssueEdits:plan.issues.length,plannedCommentEdits:plan.comments.length}));
   if(process.env.CLEANUP_APPLY!=='true')return;
   const result=await applyCleanupPlan({api,plan});console.log(JSON.stringify(result));
-  if(result.failures)process.exitCode=1;
+  if(result.failures || (resume && result.alreadyAbsent))process.exitCode=1;
 }
 if(process.argv[1] && import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href)main().catch(()=>{console.error('Weather reference cleanup incomplete; no source details were logged.');process.exitCode=1;});
