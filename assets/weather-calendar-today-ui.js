@@ -25,7 +25,7 @@
     const h=current(s,now);if(!h)return '';
     const t=jst(now),groups=intervals(s,now),old=new Date(now)-Date.parse(s.checkedAt)>72*3600000;
     return `<div class="weatherNow"><strong>${groups[0].icon} ${escape(h.label)}</strong> <span class="small">日本時間 ${escape(t.date)} ${String(t.hour).padStart(2,'0')}:00台</span></div>
-      <div class="weatherSlotList">${groups.map(g=>`<div class="weatherLine"><span class="weatherLineTime">${String(g.start).padStart(2,'0')}:00–${String(g.end).padStart(2,'0')}:00</span><span>${g.icon} ${escape(g.label)}</span></div>`).join('')}</div>
+      <div class="weatherCalendarSlots" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:8px">${groups.map(g=>`<div class="weatherLine"><span class="weatherLineTime">${String(g.start).padStart(2,'0')}:00–${String(g.end).padStart(2,'0')}:00</span><span class="weatherLineText" style="white-space:nowrap">${g.icon} ${escape(g.label)}</span></div>`).join('')}</div>
       <p class="small">今日の時間別予報です。${old?'保存済みの予報を表示しています。':''}</p>${creditHtml()}`;
   }
   function html(now=new Date()){return publicHtml(snapshot,now)||`<p class="small">今日の時間別予報を取得できませんでした。</p>${creditHtml()}`;}
