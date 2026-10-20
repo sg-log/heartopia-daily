@@ -197,6 +197,10 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 .weatherLineText{font-size:14px;font-weight:800;line-height:1.15;color:#5f5953;white-space:normal}
 .weatherLine.current .weatherLineTime,
 .weatherLine.current .weatherLineText{font-weight:900}
+.weatherHourlySlots .weatherLineTime{font-size:12px;font-variant-numeric:tabular-nums}
+.weatherHourlySlots .weatherLineLabel{font-size:10px;font-weight:800;line-height:1.2;min-height:12px;color:#5f5953;white-space:nowrap}
+.weatherAttribution{font-size:10px;line-height:1.6;margin:10px 0 0;color:#82796d}
+.weatherAttribution a{color:inherit;text-decoration:underline}
 .weeklyWeather{
   display:grid;
   grid-template-columns:repeat(7,minmax(0,1fr));
@@ -1135,7 +1139,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
       <div class="card s6">
         <h2>今日の天気メモ</h2>
         <div id="weatherSummary"></div>
-        <p class="small">天気は自動取得ではありません。ゲーム内予報を見て登録した分だけ表示します。</p>
+        <p class="small">時間別天気は当日の予報を自動表示します。週間天気はゲーム内予報を確認して登録した分を表示します。</p>
         <h3>週間天気</h3>
         <div id="weeklyWeather"></div>
       </div>
@@ -5180,7 +5184,13 @@ function renderToday(){
 }
 
 function renderWeather(date, w){
-  if(globalThis.HeartopiaCalendar?.active()){ E.weatherResult.innerHTML=HeartopiaCalendar.html(); return; }
+  if(globalThis.HeartopiaCalendar?.active() && date === dateValue(gameToday())){
+    E.weatherResult.innerHTML = `${HeartopiaCalendar.slotsHtml()}
+      ${focusWeatherHtml(w, date)}
+      ${weeklyRowsHtml(w || {weeks:{}}, date, "compactWeatherWeek")}
+      ${HeartopiaCalendar.creditHtml()}`;
+    return;
+  }
   if(!w){
     E.weatherResult.innerHTML = `<div class="weatherNow">天気は未登録です。</div>`;
     return;
@@ -5193,7 +5203,10 @@ function renderWeather(date, w){
 }
 
 function renderWeatherSummary(){
-  if(globalThis.HeartopiaCalendar?.active()){ E.weatherSummary.innerHTML=HeartopiaCalendar.html(); return; }
+  if(globalThis.HeartopiaCalendar?.active()){
+    E.weatherSummary.innerHTML = `<span class="datepill">${esc(jpDate(HeartopiaCalendar.jst(new Date()).date))}</span>${HeartopiaCalendar.html()}`;
+    return;
+  }
   const today = dateValue(gameToday());
   const w = weatherData(today);
   if(!w){
@@ -7175,7 +7188,7 @@ function init(){
 }
 init();
 </script>
-<script src="assets/weather-calendar-today-ui.js"></script>
+<script src="assets/weather-calendar-today-ui.js?v=20261020-design"></script>
 <script>
 HeartopiaCalendar.start({apiUrl:WEATHER_API_URL,post:apiPost,adminKey:adminKeyValue,adminRoute:isAdminRoute(),onChange:()=>{renderWeather(E.targetDate.value,weatherData(E.targetDate.value));renderWeatherSummary();E.discordText.textContent=discord(E.targetDate.value,dayData(cycleDay(E.targetDate.value)),weatherData(E.targetDate.value));renderShareImagePreview(E.targetDate.value,dayData(cycleDay(E.targetDate.value)),weatherData(E.targetDate.value));}});
 </script>

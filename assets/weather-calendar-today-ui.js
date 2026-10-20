@@ -1,6 +1,6 @@
 (function(root) {
   'use strict';
-  const icons={clear:'☀️',cloud:'☁️',heat:'🔥',petal:'🌸',meteor:'☄️',aurora:'🌌',sunshower:'🌦️',rain:'🌧️',snow:'❄️',rainbow:'🌈'};
+  const icons={clear:'☀️',cloud:'☁️',heat:'🔥',petal:'🌸',meteor:'🌠',aurora:'🌌',sunshower:'🌦️',rain:'🌧️',snow:'❄️',rainbow:'🌈'};
   const creditUrl='https://heartopia.th.gl/forecast',cacheKey='heartopiaWeatherToday:v2';
   const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let snapshot=null,enabled=false;
@@ -20,14 +20,20 @@
     }
     return groups;
   }
-  const creditHtml=()=>`<p class="small"><a href="${creditUrl}" target="_blank" rel="noopener noreferrer">Weather forecast by TH.GL</a> · <a href="${creditUrl}" target="_blank" rel="noopener noreferrer">翌日以降の時間別予報</a></p>`;
-  function publicHtml(s,now){
+  const creditHtml=()=>`<p class="weatherAttribution">時間別予報：<a href="${creditUrl}" target="_blank" rel="noopener noreferrer" title="翌日以降の時間別予報（TH.GL）">Weather forecast by TH.GL</a></p>`;
+  function slotRowsHtml(s,now){
     const h=current(s,now);if(!h)return '';
     const t=jst(now),groups=intervals(s,now),old=new Date(now)-Date.parse(s.checkedAt)>72*3600000;
-    return `<div class="weatherNow"><strong>${groups[0].icon} ${escape(h.label)}</strong> <span class="small">日本時間 ${escape(t.date)} ${String(t.hour).padStart(2,'0')}:00台</span></div>
-      <div class="weatherCalendarSlots" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:8px">${groups.map(g=>`<div class="weatherLine"><span class="weatherLineTime">${String(g.start).padStart(2,'0')}:00–${String(g.end).padStart(2,'0')}:00</span><span class="weatherLineText" style="white-space:nowrap">${g.icon} ${escape(g.label)}</span></div>`).join('')}</div>
-      <p class="small">今日の時間別予報です。${old?'保存済みの予報を表示しています。':''}</p>${creditHtml()}`;
+    return `<div class="weatherNow"><div class="weatherSlotList weatherHourlySlots">${groups.map((g,i)=>{
+      const start=String(g.start).padStart(2,'0'),end=String(g.end).padStart(2,'0');
+      const label=g.icon==='🌠'?'流星':g.label==='晴'?'晴れ':g.label;
+      return `<div class="weatherLine${i===0?' current':''}"${i===0?' aria-current="time"':''} title="日本時間 ${escape(t.date)} ${start}:00–${end}:00 ${escape(g.label)}">
+        <div class="weatherLineTime">${start}</div><div class="weatherLineText">${g.icon}</div><div class="weatherLineLabel">${escape(label)}</div>
+      </div>`;
+    }).join('')}</div></div>${old?'<p class="small">保存済みの予報を表示しています。</p>':''}`;
   }
+  function publicHtml(s,now){const rows=slotRowsHtml(s,now);return rows?rows+creditHtml():'';}
+  const slotsHtml=(now=new Date())=>slotRowsHtml(snapshot,now);
   function html(now=new Date()){return publicHtml(snapshot,now)||`<p class="small">今日の時間別予報を取得できませんでした。</p>${creditHtml()}`;}
   function start(options){
     let busy=false,clock='';
@@ -78,5 +84,5 @@
     setInterval(()=>{if(!document.hidden)load();},30*60000);
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)load();});
   }
-  root.HeartopiaCalendar={jst,valid,current,intervals,publicHtml,html,active:()=>enabled&&Boolean(current(snapshot,new Date())),start};
+  root.HeartopiaCalendar={jst,valid,current,intervals,publicHtml,html,slotsHtml,creditHtml,active:()=>enabled&&Boolean(current(snapshot,new Date())),start};
 })(typeof globalThis==='object'?globalThis:this);
