@@ -1,0 +1,25 @@
+name: Weather weekly chat bridge CI
+on:
+  pull_request:
+    paths:
+      - 'tools/weekly-chat-bridge.mjs'
+      - 'tools/test-weekly-chat-bridge.mjs'
+      - '.github/workflows/weather-weekly-chat-bridge.yml'
+      - '.github/workflows/weather-weekly-chat-ci.yml'
+      - 'tools/README-weather-weekly-chat.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run owner-only, state-constrained weekly chat bridge tests
+        run: node --test tools/test-weekly-chat-bridge.mjs
