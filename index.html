@@ -7252,6 +7252,7 @@ HeartopiaWeeklyAIImport.mount({
   readWeeklyForecasts,
   setWeeklyForecastRecord,
   getVisibleWeeks:baseDate=>weatherData(baseDate)?.weeks || {},
+  refreshApprovedWeather:()=>fetchApprovedWeather({admin:true}),
   renderToday,
   onDateChanged:loadQuickWeatherFromDate,
   reveal:()=>{
