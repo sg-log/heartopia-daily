@@ -71,7 +71,11 @@ const importUrl = url.href;
 - PRの `Weather weekly automation CI` と既存の他CIが成功すること。
 - 実ブラウザ（PC/スマホ）で「リンク→管理ログイン→差分→保存→リロード後表示」を確認。
 - 既存の当日TH.GL表示、ギフトコード、管理画面、日付切替に副作用がないこと。
-- Apps Scriptを同じデプロイへpush／デプロイ更新してからWeb側のmainを更新（順序の検証を含む）。
+- **本番Apps ScriptにはGitHubに入っていない非公開設定ファイル2本**（`weather-calendar-private-config.js`、`weather-source-private-config.js`）が存在する。直接repoから`clasp push --force`するとそれらのコードが消えるおそれがあるため禁止。
+- 2026-10-21にクローンした本番Apps Scriptの公開7ファイルとGitHub mainを比較済み。weather-api.jsとweather-scheduler.jsは改行CRLF/LFだけ異なり、正規化後のgit blob SHAは一致した。他5ファイルはそのまま一致。
+- 更新は`tools/stage-weekly-ai-release.ps1`の`-Mode Preview`を先に実行する。現行Googleプロジェクトの全13ファイルを一時ディレクトリへ新規cloneし、非公開の2ファイルを残した状態で**weather-api.jsのみ**差し替える。現在のリモートweather-apiがgit origin/mainと異なる場合は停止する。プレビューはGoogle側を変更しない。
+- プレビュー結果が安全ならユーザーが`-Mode Push`を明示実行し、「PUSH WEEKLY」と入力して確認する。Google側のエディタを更新するだけで、公開web app `/exec`はまだ切り替わらない。更新後に既存deployment IDを調べ、既存デプロイを更新してから公開APIが使えるか確かめる。
+- 既存の天気自動化とギフトコードが壊れていないことを実環境で確認後、Web側のmainを更新（順序の検証を含む）。
 - **mainへのmerge、公開GitHub Pagesへの反映、Apps Scriptデプロイは必ずユーザーの明示確認後。**
 - 保存後の実データ確認なしに「反映済み」と報告しない。
 
