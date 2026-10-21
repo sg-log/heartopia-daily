@@ -5,7 +5,7 @@ const WEATHER = new Set(["晴", "雨", "流星群", "虹", "猛暑", "雪", "桜
 const KEYS = Array.from({length: 7}, (_, i) => "week" + (i + 1));
 const REQUEST_HEADER = "<!-- HEARTOPIA_WEEKLY_CHAT_REQUEST_V1\n";
 const REQUEST_FOOTER = "\n-->";
-const RESULT_HEADER = "<!-- HEARTOPIA_WEEKLY_CHAT_RESULT_V1 -->\n";
+const RESULT_HEADER = "<!-- HEARTOPIA_WEEKLY_CHAT_RESULT_V1\n";
 
 export function validDate(input) {
   if (typeof input !== "string" || !/^20\d{2}-\d{2}-\d{2}$/.test(input)) throw Error("Invalid game date");
@@ -79,7 +79,7 @@ export function requestBody(data) {
   return REQUEST_HEADER + JSON.stringify(data) + REQUEST_FOOTER;
 }
 export function resultBody(data) {
-  return RESULT_HEADER + "&#96;&#96;&#96;json\n" + JSON.stringify(data) + "\n&#96;&#96;&#96;";
+  return (data.ok ? "✅ " : "❌ ") + (data.type === "read" ? "週間天気の読み取り結果" : data.type === "save" ? "週間天気の更新結果" : "週間天気の処理エラー") + "\n\n" + RESULT_HEADER + JSON.stringify(data) + "\n-->";
 }
 function normalizedRecords(records) {
   if (!Array.isArray(records) || records.length > 5000) throw Error("Invalid independent weekly response");
