@@ -33,6 +33,25 @@ function parse(text,expected){
  });
  return {baseDate,days};
 }
+const hashPrefix="#weekly-import=";
+function buildImportLink(payload,siteUrl){
+ const base=payload && payload.baseDate,parsed=parse(JSON.stringify(payload),base);
+ const normalized={schemaVersion:1,source:"game-screenshot",baseDate:parsed.baseDate,days:parsed.days.map(d=>({date:d.date,weather:d.weather}))};
+ const destination=new URL(siteUrl);
+ if(destination.protocol!=="https:")throw Error("取り込み先はHTTPSが必要です。");
+ destination.search="?admin=1";
+ destination.hash="weekly-import="+encodeURIComponent(JSON.stringify(normalized));
+ return destination.href;
+}
+function parseImportHash(hash){
+ if(typeof hash!=="string"||!hash.startsWith(hashPrefix))return null;
+ const encoded=hash.slice(hashPrefix.length);
+ if(encoded.length>6000)throw Error("取り込みリンクが長すぎます。");
+ let text;try{text=decodeURIComponent(encoded);}catch(_){throw Error("取り込みリンクが壊れています。");}
+ let payload;try{payload=JSON.parse(text);}catch(_){throw Error("取り込みリンクのJSONが壊れています。");}
+ const parsed=parse(text,payload?.baseDate);
+ return {text:JSON.stringify({schemaVersion:1,source:"game-screenshot",baseDate:parsed.baseDate,days:parsed.days.map(d=>({date:d.date,weather:d.weather}))}),baseDate:parsed.baseDate};
+}
 function emptyWeeks(){return Object.fromEntries(["week1","week2","week3","week4","week5","week6","week7"].map(k=>[k,[]]));}
 function mount(dep){
  const input=document.getElementById("aiWeeklyImportJson"),out=document.getElementById("aiWeeklyImportPreview"),status=document.getElementById("aiWeeklyImportStatus"),check=document.getElementById("aiWeeklyPreviewBtn"),save=document.getElementById("aiWeeklySaveBtn");
@@ -55,6 +74,20 @@ function mount(dep){
    }
   }
   return existing;
+ }
+ const deepLink=typeof location==="object" ? location.hash : "";
+ if(deepLink.startsWith(hashPrefix)){
+  try{
+   const incoming=parseImportHash(deepLink);
+   dep.dateInput.value=incoming.baseDate;
+   dep.onDateChanged?.();
+   input.value=incoming.text;
+   const panel=document.getElementById("aiWeeklyImportPanel");
+   if(panel)panel.open=true;
+   dep.reveal?.();
+   status.textContent="スクショの7日間データを受け取りました。「既存データと照合」を押してください。";
+   if(typeof history==="object" && typeof history.replaceState==="function")history.replaceState(null,"",location.pathname+location.search);
+  }catch(e){message(e);}
  }
  input.addEventListener("input",clear);
  dep.dateInput.addEventListener("change",clear);
@@ -89,5 +122,5 @@ function mount(dep){
   }catch(e){message(e);}
  });
 }
-root.HeartopiaWeeklyAIImport={parse,mount};
+root.HeartopiaWeeklyAIImport={parse,mount,buildImportLink,parseImportHash};
 })(typeof globalThis!=="undefined"?globalThis:this);
