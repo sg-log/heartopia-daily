@@ -2,6 +2,9 @@
 !weather-api.gs
 !weather-review-image.gs
 !weather-scheduler.gs
+!weather-calendar.gs
+!weather-history.gs
+!weather-private-sources.gs
 !gift-code-config.gs
 !gift-code-parser.gs
 !gift-code-storage.gs
