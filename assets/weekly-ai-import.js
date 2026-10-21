@@ -74,6 +74,7 @@ function mount(dep){
    }
   }
   data.forecasts.forEach(dep.setWeeklyForecastRecord);
+  if(typeof dep.refreshApprovedWeather==="function") await dep.refreshApprovedWeather();
   const visible=dep.getVisibleWeeks(base);
   return {existing,visible};
  }
