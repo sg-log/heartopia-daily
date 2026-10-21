@@ -14,6 +14,11 @@ $branch = (& git -C $repoRoot branch --show-current).Trim()
 if ($LASTEXITCODE -ne 0 -or $branch -ne 'feat/weekly-ai-import-20261020') {
   throw 'Switch to feat/weekly-ai-import-20261020 before staging.'
 }
+$localCommit = (& git -C $repoRoot rev-parse HEAD).Trim()
+$remoteCommit = (& git -C $repoRoot rev-parse ('origin/' + $branch)).Trim()
+if ($LASTEXITCODE -ne 0 -or $localCommit -ne $remoteCommit) {
+  throw 'Local feature branch is not at its latest fetched origin commit. Fetch and update before staging.'
+}
 $changes = @(& git -C $repoRoot status --porcelain -- apps-script/weather-api.gs)
 if ($LASTEXITCODE -ne 0 -or $changes.Count -gt 0) {
   throw 'weather-api.gs has uncommitted changes. Stop.'
