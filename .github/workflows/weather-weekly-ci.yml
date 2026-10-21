@@ -7,6 +7,10 @@ on:
       - 'tools/weather-weekly-*.mjs'
       - 'tools/test-weather-weekly.mjs'
       - 'tools/README-weather-weekly.md'
+      - 'assets/weekly-ai-import.js'
+      - 'apps-script/weather-api.gs'
+      - 'index.html'
+      - 'tools/test-weather-weekly-ai-import.mjs'
   workflow_dispatch:
 
 permissions:
@@ -22,4 +26,4 @@ jobs:
         with:
           node-version: '22'
       - name: Run weekly weather tests
-        run: node --test tools/test-weather-weekly.mjs
+        run: node --test tools/test-weather-weekly.mjs tools/test-weather-weekly-ai-import.mjs
