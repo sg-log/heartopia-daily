@@ -6773,6 +6773,12 @@ function setAdminUnlocked(unlocked){
       setAdminSubtab("daily");
       fetchPendingWeatherReports();
     }
+    const importPanel=document.getElementById("aiWeeklyImportPanel");
+    if(importPanel?.open && document.getElementById("aiWeeklyImportJson")?.value){
+      setAdminSubtab("daily");
+      setAdminCardCollapsed(importPanel.closest(".card.s12"),false,false);
+      requestAnimationFrame(()=>importPanel.scrollIntoView({behavior:"smooth",block:"center"}));
+    }
   }
 }
 function setupAdminVisibility(){
@@ -7245,7 +7251,13 @@ HeartopiaWeeklyAIImport.mount({
   normalizeApiDate,
   readWeeklyForecasts,
   setWeeklyForecastRecord,
-  renderToday
+  renderToday,
+  onDateChanged:loadQuickWeatherFromDate,
+  reveal:()=>{
+    setAdminSubtab("daily");
+    const panel=document.getElementById("aiWeeklyImportPanel");
+    setAdminCardCollapsed(panel?.closest(".card.s12"),false,false);
+  }
 });
 </script>
 <script src="assets/weather-calendar-today-ui.js?v=20261020-design"></script>
