@@ -38,6 +38,7 @@ on:
       - 'tools/test-weather-calendar.mjs'
       - 'tools/test-weather-history.mjs'
       - 'tools/test-weather-calendar-browser.mjs'
+      - 'tools/test-weather-weekly-ai-browser.mjs'
       - 'tools/weather-calendar-crosscheck.mjs'
       - 'tools/weather-calendar-crosscheck-run.mjs'
   workflow_dispatch:
@@ -86,3 +87,5 @@ jobs:
         run: ./tools/test-weather-cloud-submit.ps1
       - name: Validate weekly content dedupe
         run: node --test tools/test-weather-weekly.mjs
+      - name: Validate weekly AI import in Chromium
+        run: node --test tools/test-weather-weekly-ai-browser.mjs
