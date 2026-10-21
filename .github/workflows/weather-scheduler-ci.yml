@@ -38,6 +38,8 @@ on:
       - 'tools/test-weather-calendar.mjs'
       - 'tools/test-weather-history.mjs'
       - 'tools/test-weather-calendar-browser.mjs'
+      - 'tools/test-weather-weekly-ai-browser.mjs'
+      - 'tools/stage-weekly-ai-release.ps1'
       - 'tools/weather-calendar-crosscheck.mjs'
       - 'tools/weather-calendar-crosscheck-run.mjs'
   workflow_dispatch:
@@ -86,3 +88,12 @@ jobs:
         run: ./tools/test-weather-cloud-submit.ps1
       - name: Validate weekly content dedupe
         run: node --test tools/test-weather-weekly.mjs
+      - name: Parse safe weekly Apps Script stage helper
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path './tools/stage-weekly-ai-release.ps1'), [ref]$tokens, [ref]$errors)
+          if ($errors.Count) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+      - name: Validate weekly AI import in Chromium
+        run: node --test tools/test-weather-weekly-ai-browser.mjs

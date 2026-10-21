@@ -6,6 +6,7 @@ const GITHUB_REPOSITORY = "sg-log/heartopia-daily";
 const GITHUB_WEATHER_WORKFLOW = "weather-scheduled-run.yml";
 const HEARTOPIA_DAILY_URL = "https://sg-log.github.io/heartopia-daily/";
 const SHEET_NAME = "weather_reports";
+const WEEKLY_FORECAST_SHEET = "weekly_forecasts";
 const OLD_WEEK_HEADERS = ["week1", "week2", "week3", "week4", "week5"];
 const WEEK_HEADERS = ["week1", "week2", "week3", "week4", "week5", "week6", "week7"];
 const OLD_HEADERS = [
@@ -68,6 +69,7 @@ function doGet(e) {
     if (action === "approved") {
       return json_({ ok: true, reports: listByStatus_("approved").map(publicWeatherItem_) });
     }
+    if (action === "getWeeklyForecasts") return json_({ok:true, forecasts:listWeeklyForecasts_()});
     if (action === "getWeatherCalendar") return json_({ok:true, enabled:Boolean(calendarConfigured_()), calendar:calendarPublic_()});
     if (action === "getGiftCodes") {
       return json_({ ok: true, codes: listGiftCodes_(false).map(publicGiftItem_) });
@@ -117,6 +119,7 @@ function doPost(e) {
     if (action === "syncGiftClaims") return syncGiftClaims_(body);
     if (action === "setGiftClaimState") return setGiftClaimState_(body);
     if (action === "saveApproved") return saveApproved_(body);
+    if (action === "saveWeeklyForecast") return saveWeeklyForecast_(body);
     if (action === "approve") return changeStatus_(body, "approved");
     if (action === "reject") return changeStatus_(body, "rejected");
     if (action === "saveGiftCode" || action === "updateGiftCode") return saveGiftCode_(body);
@@ -375,6 +378,87 @@ function submit_(body) {
     throw weatherSubmitFailure_("appsScriptError", "submit");
   }
   return json_({ ok: true, id: receiptId, status: "pending", duplicate: duplicate });
+}
+
+
+function getWeeklyForecastSheet_(create) {
+  const book = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = book.getSheetByName(WEEKLY_FORECAST_SHEET);
+  if (!sheet && !create) return null;
+  if (!sheet) sheet = book.insertSheet(WEEKLY_FORECAST_SHEET);
+  const headers = ["baseDate"].concat(WEEK_HEADERS, ["updatedAt"]);
+  if (sheet.getLastRow() === 0) sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  const actual = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
+  if (headers.some(function(header, i) { return String(actual[i]) !== header; })) {
+    throw new Error("weekly_forecasts の列名が不正です");
+  }
+  return sheet;
+}
+function weeklyForecastValues_(row) {
+  const result = {};
+  WEEK_HEADERS.forEach(function(key, i) {
+    result[key] = normalizeSlotList_(row[i + 1]).filter(function(w) { return VALID_WEATHER_VALUES.indexOf(w) >= 0; }).slice(0,1);
+  });
+  return result;
+}
+function listWeeklyForecasts_() {
+  const sheet = getWeeklyForecastSheet_(false);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  return sheet.getDataRange().getValues().slice(1).filter(function(row) {
+    return String(row[0] || "").trim();
+  }).map(function(row) {
+    return {baseDate:formatDateValue(row[0]), weeks:weeklyForecastValues_(row)};
+  });
+}
+function saveWeeklyForecast_(body) {
+  requireKey_(body.adminKey, adminKey_(), "管理キー");
+  const baseDate = validateDateForWrite_(body.baseDate);
+  const updates = body.updates;
+  if (!Array.isArray(updates) || updates.length < 1 || updates.length > 7) throw new Error("週間更新は1〜7日分が必要です");
+  if (!body.expected || typeof body.expected !== "object") throw new Error("更新前の週間データを指定してください");
+  const expected = {};
+  WEEK_HEADERS.forEach(function(key) {
+    if (!Array.isArray(body.expected[key]) || body.expected[key].length > 1) throw new Error("更新前の週間データが不正です");
+    expected[key] = validateSlotListForWrite_(body.expected[key], key);
+  });
+  const unique = {};
+  const validated = updates.map(function(update) {
+    if (!update || typeof update !== "object") throw new Error("更新内容が不正です");
+    const date = validateDateForWrite_(update.date);
+    const day = Math.round((Date.parse(date + "T00:00:00Z") - Date.parse(baseDate + "T00:00:00Z")) / 86400000);
+    if (day < 1 || day > 7 || unique[day]) throw new Error("基準日の翌日から7日後までの日付を重複なく指定してください");
+    unique[day] = true;
+    const weather = String(update.weather || "").trim();
+    if (VALID_WEATHER_VALUES.indexOf(weather) < 0) throw new Error("未対応の天気があります");
+    return {key:"week"+day, weather:weather};
+  });
+  return withScriptLock_(function() {
+    const sheet = getWeeklyForecastSheet_(true);
+    const rows = sheet.getDataRange().getValues();
+    const matches = [];
+    for (let i=1; i<rows.length; i++) {
+      if (formatDateValue(rows[i][0]) === baseDate) matches.push(i+1);
+    }
+    if (matches.length > 1) throw new Error("週間予報の同日行が重複しています");
+    const current = matches.length ? weeklyForecastValues_(rows[matches[0]-1]) :
+      Object.fromEntries(WEEK_HEADERS.map(function(key) {return [key, []];}));
+    if (WEEK_HEADERS.some(function(key) { return JSON.stringify(current[key]) !== JSON.stringify(expected[key]); })) {
+      throw new Error("週間予報が別の操作で更新されました。再確認してください");
+    }
+    validated.forEach(function(u) { current[u.key] = [u.weather]; });
+    const values = WEEK_HEADERS.map(function(key) {return JSON.stringify(current[key]);});
+    const timestamp = new Date().toISOString();
+    if (matches.length) {
+      sheet.getRange(matches[0], 2, 1, 7).setValues([values]);
+      sheet.getRange(matches[0], 9).setValue(timestamp);
+    } else {
+      const rowIndex = sheet.getLastRow()+1;
+      if (rowIndex > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), rowIndex-sheet.getMaxRows());
+      sheet.getRange(rowIndex, 1).setNumberFormat("@");
+      sheet.getRange(rowIndex, 1, 1, 9).setValues([[baseDate].concat(values,[timestamp])]);
+    }
+    return json_({ok:true, forecast:{baseDate:baseDate, weeks:current}});
+  });
 }
 
 function saveApproved_(body) {

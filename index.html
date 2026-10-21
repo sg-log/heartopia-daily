@@ -1391,6 +1391,16 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
             <h3>週間予報</h3>
             <p class="small">選択日の翌日〜7日後の天気をまとめて保存できます。</p>
             <div id="quickWeekChips"></div>
+            <details class="weatherScreenshotPanel" id="aiWeeklyImportPanel">
+              <summary>GPTで判読した週間天気を取り込む</summary>
+              <p class="small">スクショをGPTに送り、7日分のJSONを作ってもらって貼り付けてください。既存の時間別天気は変更しません。保存前に差分を確認できます。</p>
+              <label for="aiWeeklyImportJson">GPTから受け取った週間天気JSON</label>
+              <textarea id="aiWeeklyImportJson" rows="7" spellcheck="false" placeholder='{"schemaVersion":1,"source":"game-screenshot","baseDate":"2026-10-20","days":[{"date":"2026-10-21","weather":"晴"}]}'></textarea>
+              <div class="buttons"><button type="button" class="secondary" id="aiWeeklyPreviewBtn">既存データと照合</button></div>
+              <div id="aiWeeklyImportStatus" class="status" role="status" aria-live="polite"></div>
+              <div id="aiWeeklyImportPreview" class="preview" style="white-space:pre-wrap" hidden></div>
+              <div class="buttons"><button type="button" id="aiWeeklySaveBtn" disabled>確認して週間天気を保存</button></div>
+            </details>
             <div class="row adminSaveRow">
               <div><label for="quickWeatherAdminKey">管理キー</label><input id="quickWeatherAdminKey" type="password" autocomplete="off" spellcheck="false" placeholder="管理キー"></div>
               <div class="buttons"><button id="saveQuickWeatherBtn">天気と週間予報を保存</button></div>
@@ -1683,6 +1693,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
 
 <script src="assets/puzzles/puzzles-data.js"></script>
 <script src="assets/weather-screenshot-core.js"></script>
+<script src="assets/weekly-ai-import.js?v=20261020"></script>
 <script>
 const WEATHER_API_URL = "https://script.google.com/macros/s/AKfycbwoPLuj0rSsennsx01-B-6UxqBjqnPieocgVLQnJMKEgRw6fZziV5ZGVA3SusjVLF3o/exec";
 const WEATHER_OPTIONS = [
@@ -3126,21 +3137,59 @@ function buildWeatherWeekIndex(){
     });
   return map;
 }
+const independentWeeklyForecasts = new Map();
+function setWeeklyForecastRecord(record){
+  if(!record || !record.baseDate) return;
+  independentWeeklyForecasts.set(normalizeApiDate(record.baseDate), normalizeWeatherWeeks({weeks:record.weeks || {}}));
+}
+async function readWeeklyForecasts(){
+  if(!WEATHER_API_URL) throw new Error("天気APIが設定されていません。");
+  const url = new URL(WEATHER_API_URL);
+  url.searchParams.set("action","getWeeklyForecasts");
+  const response = await fetch(url);
+  const data = await response.json();
+  if(data.ok !== true || !Array.isArray(data.forecasts)) throw new Error(data.error || "週間天気の取得に失敗しました。");
+  return data;
+}
+async function fetchWeeklyForecasts(){
+  try{
+    const result = await readWeeklyForecasts();
+    independentWeeklyForecasts.clear();
+    result.forecasts.forEach(setWeeklyForecastRecord);
+    renderToday();
+  }catch(error){console.warn("週間天気の取得に失敗しました",error);}
+}
+function buildIndependentWeeklyIndex(){
+  const index = new Map();
+  [...independentWeeklyForecasts.entries()]
+    .sort((a,b) => a[0].localeCompare(b[0]))
+    .forEach(([base,weeks]) => {
+      WEATHER_WEEK_KEYS.forEach((key,i) => {
+        const values = weatherValues(weeks[key]);
+        if(values.length) index.set(weekDate(base,i), values);
+      });
+    });
+  return index;
+}
 function weatherData(dateStr){
   const date = normalizeApiDate(dateStr);
   const slotIndexMap = buildWeatherSlotIndex();
   const weekIndexMap = buildWeatherWeekIndex();
+  const independentIndex = buildIndependentWeeklyIndex();
   const slots = Object.fromEntries(WEATHER_SLOT_KEYS.map((key, index) => {
     const hour = slotHourAt("00", index);
     const targetDate = weatherSlotDateFor(date, "00", index);
     return [key, slotIndexMap.get(weatherDateTimeKey(targetDate, hour)) || []];
   }));
   const raw = rawWeatherData(date);
+  const standalone = independentWeeklyForecasts.get(date);
   const weeks = Object.fromEntries(WEATHER_WEEK_KEYS.map((key, index) => {
+    const manual = weatherValues(standalone?.[key]);
+    const carry = independentIndex.get(weekDate(date, index)) || [];
     const direct = weatherValues(raw?.weeks?.[key]);
     return [
       key,
-      direct.length ? direct : (weekIndexMap.get(weekDate(date, index)) || [])
+      manual.length ? manual : (carry.length ? carry : (direct.length ? direct : (weekIndexMap.get(weekDate(date, index)) || [])))
     ];
   }));
   const hasData = WEATHER_SLOT_KEYS.some(key => slots[key].length) || WEATHER_WEEK_KEYS.some(key => weeks[key].length);
@@ -6724,6 +6773,12 @@ function setAdminUnlocked(unlocked){
       setAdminSubtab("daily");
       fetchPendingWeatherReports();
     }
+    const importPanel=document.getElementById("aiWeeklyImportPanel");
+    if(importPanel?.open && document.getElementById("aiWeeklyImportJson")?.value){
+      setAdminSubtab("daily");
+      setAdminCardCollapsed(importPanel.closest(".card.s12"),false,false);
+      requestAnimationFrame(()=>importPanel.scrollIntoView({behavior:"smooth",block:"center"}));
+    }
   }
 }
 function setupAdminVisibility(){
@@ -6785,6 +6840,7 @@ function init(){
     if(input) input.addEventListener("input", () => syncAdminKeys(input));
   });
   fetchApprovedWeather();
+  fetchWeeklyForecasts();
   fetchGiftCodes().then(async () => {
     await syncGiftClaimBackup();
     renderToday();
@@ -7187,6 +7243,24 @@ function init(){
   };
 }
 init();
+HeartopiaWeeklyAIImport.mount({
+  dateInput:E.quickWeatherDate,
+  apiUrl:()=>WEATHER_API_URL,
+  adminKey:adminKeyValue,
+  apiPost,
+  normalizeApiDate,
+  readWeeklyForecasts,
+  setWeeklyForecastRecord,
+  getVisibleWeeks:baseDate=>weatherData(baseDate)?.weeks || {},
+  refreshApprovedWeather:()=>fetchApprovedWeather({admin:true}),
+  renderToday,
+  onDateChanged:loadQuickWeatherFromDate,
+  reveal:()=>{
+    setAdminSubtab("daily");
+    const panel=document.getElementById("aiWeeklyImportPanel");
+    setAdminCardCollapsed(panel?.closest(".card.s12"),false,false);
+  }
+});
 </script>
 <script src="assets/weather-calendar-today-ui.js?v=20261020-design"></script>
 <script>
