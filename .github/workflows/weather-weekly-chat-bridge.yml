@@ -1,0 +1,34 @@
+name: Weather weekly chat approval bridge
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: weather-weekly-chat-bridge
+  cancel-in-progress: false
+
+jobs:
+  chat:
+    # Public issues are untrusted. Only the repository owner's own new issue may trigger the bridge.
+    if: >-
+      github.event.issue.user.login == github.repository_owner &&
+      github.event.issue.pull_request == null &&
+      (startsWith(github.event.issue.title, 'Heartopia weekly chat READ ') ||
+       startsWith(github.event.issue.title, 'Heartopia weekly chat SAVE '))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Read or save screenshot-based weekly forecast
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
+        run: node tools/weekly-chat-bridge.mjs
