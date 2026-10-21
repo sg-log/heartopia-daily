@@ -66,3 +66,74 @@ test("週間専用の保存は他の天気データを触らず、未指定日�
  assert.throws(()=>doSave(JSON.parse(JSON.stringify(saved)),[{date:"2026-10-28",weather:"晴"}]));
  assert.equal(api.visited.includes("weather_reports"),false);
 });
+
+const observedScreenshot={
+ schemaVersion:1,source:"game-screenshot",baseDate:"2026-10-21",
+ days:[
+  {date:"2026-10-22",weather:"流星群"},{date:"2026-10-23",weather:"虹"},
+  {date:"2026-10-24",weather:"晴"},{date:"2026-10-25",weather:"雨"},
+  {date:"2026-10-26",weather:"晴"},{date:"2026-10-27",weather:"晴"},
+  {date:"2026-10-28",weather:"晴"}
+ ]
+};
+test("実スクショ7日分からリンクを作成・復元できる",()=>{
+ const context=vm.createContext({URL});
+ vm.runInContext(fs.readFileSync(new URL("../assets/weekly-ai-import.js",import.meta.url),"utf8"),context);
+ const api=context.HeartopiaWeeklyAIImport;
+ const url=api.buildImportLink(observedScreenshot,"https://sg-log.github.io/heartopia-daily/");
+ assert.ok(url.startsWith("https://sg-log.github.io/heartopia-daily/?admin=1#weekly-import="));
+ const imported=api.parseImportHash(new URL(url).hash);
+ assert.equal(imported.baseDate,"2026-10-21");
+ assert.deepEqual(JSON.parse(JSON.stringify(api.parse(imported.text,"2026-10-21").days.map(x=>x.weather))),["流星群","虹","晴","雨","晴","晴","晴"]);
+ assert.throws(()=>api.parseImportHash("#weekly-import=%ZZ"));
+});
+test("リンクを開くだけでは保存せず、差分確認後に週間データだけ保存する",async()=>{
+ const url=new URL("https://sg-log.github.io/heartopia-daily/?admin=1");
+ url.hash="weekly-import="+encodeURIComponent(JSON.stringify(observedScreenshot));
+ const handlers={};
+ const elements=Object.fromEntries(["aiWeeklyImportJson","aiWeeklyImportPreview","aiWeeklyImportStatus","aiWeeklyPreviewBtn","aiWeeklySaveBtn","aiWeeklyImportPanel"].map(id=>[id,{
+  id,hidden:false,disabled:false,textContent:"",value:"",open:false,
+  addEventListener:(type,fn)=>{handlers[id+":"+type]=fn;},
+  scrollIntoView:()=>{}
+ }]));
+ const historyCalls=[];
+ const context=vm.createContext({
+  URL,location:url,history:{replaceState:(...args)=>historyCalls.push(args)},
+  document:{getElementById:id=>elements[id]||null}
+ });
+ vm.runInContext(fs.readFileSync(new URL("../assets/weekly-ai-import.js",import.meta.url),"utf8"),context);
+ const api=context.HeartopiaWeeklyAIImport;
+ const dateInput={value:"2026-10-20",addEventListener:(name,fn)=>{handlers["date:"+name]=fn;}};
+ let saved=null,renderCount=0;
+ const empty=Object.fromEntries(Array.from({length:7},(_,i)=>["week"+(i+1),[]]));
+ let backend={ok:true,forecasts:[]};
+ api.mount({
+  dateInput,apiUrl:()=>"https://example.test",adminKey:()=>"SECRET",
+  onDateChanged:()=>{},reveal:()=>{},normalizeApiDate:x=>x,
+  getVisibleWeeks:()=>({...empty,week1:["雨"]}),
+  readWeeklyForecasts:async()=>backend,
+  setWeeklyForecastRecord:()=>{},
+  renderToday:()=>{renderCount++;},
+  apiPost:async payload=>{
+   saved=payload;
+   const weeks=JSON.parse(JSON.stringify(empty));
+   payload.updates.forEach((d,i)=>{weeks["week"+(i+1)]=[d.weather];});
+   backend={ok:true,forecasts:[{baseDate:payload.baseDate,weeks}]};
+   return {ok:true,forecast:backend.forecasts[0]};
+  }
+ });
+ assert.equal(dateInput.value,"2026-10-21");
+ assert.equal(elements.aiWeeklyImportPanel.open,true);
+ assert.ok(elements.aiWeeklyImportJson.value.includes("流星群"));
+ assert.equal(saved,null,"link must never auto-save");
+ assert.equal(historyCalls.length,1);
+ await handlers["aiWeeklyPreviewBtn:click"]();
+ assert.ok(elements.aiWeeklyImportPreview.textContent.includes("雨 → 流星群"));
+ assert.equal(elements.aiWeeklySaveBtn.disabled,false);
+ await handlers["aiWeeklySaveBtn:click"]();
+ assert.equal(saved.action,"saveWeeklyForecast");
+ assert.ok(!("slots" in saved) && !("slot0" in saved),"daily forecast must be untouched");
+ assert.equal(saved.updates.length,7);
+ assert.equal(renderCount,1);
+ assert.match(elements.aiWeeklyImportStatus.textContent,/保存と再取得を確認/);
+});
