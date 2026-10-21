@@ -73,7 +73,9 @@ function mount(dep){
     existing[k]=value;
    }
   }
-  return existing;
+  data.forecasts.forEach(dep.setWeeklyForecastRecord);
+  const visible=dep.getVisibleWeeks(base);
+  return {existing,visible};
  }
  const deepLink=typeof location==="object" ? location.hash : "";
  if(deepLink.startsWith(hashPrefix)){
@@ -85,6 +87,7 @@ function mount(dep){
    const panel=document.getElementById("aiWeeklyImportPanel");
    if(panel)panel.open=true;
    dep.reveal?.();
+   if(dep.adminKey() && typeof requestAnimationFrame==="function")requestAnimationFrame(()=>panel?.scrollIntoView({behavior:"smooth",block:"center"}));
    status.textContent="スクショの7日間データを受け取りました。「既存データと照合」を押してください。";
    if(typeof history==="object" && typeof history.replaceState==="function")history.replaceState(null,"",location.pathname+location.search);
   }catch(e){message(e);}
@@ -97,10 +100,10 @@ function mount(dep){
    if(!dep.apiUrl()||!dep.adminKey())throw Error("天気APIと管理キーを確認してください。");
    const parsed=parse(input.value,dep.dateInput.value);
    status.textContent="保存済み週間天気と照合中…";
-   const existing=await current(parsed.baseDate);
+   const {existing,visible}=await current(parsed.baseDate);
    if(dep.dateInput.value!==parsed.baseDate)throw Error("日付が変わりました。");
-   const changes=parsed.days.filter(d=>JSON.stringify(existing[d.key])!==JSON.stringify([d.weather]));
-   out.textContent=[parsed.baseDate+"を基準とする週間予報",...parsed.days.map(d=>d.date+": "+(existing[d.key].join("・")||"未登録")+" → "+d.weather),"指定していない日付と今日の時間別天気は変更しません。"].join("\n");
+   const changes=parsed.days.filter(d=>JSON.stringify(visible[d.key]||[])!==JSON.stringify([d.weather]));
+   out.textContent=[parsed.baseDate+"を基準とする週間予報",...parsed.days.map(d=>d.date+": "+((visible[d.key]||[]).join("・")||"未登録")+" → "+d.weather),"指定していない日付と今日の時間別天気は変更しません。"].join("\n");
    out.hidden=false;
    if(!changes.length){status.textContent="差分なし。保存不要です。";return;}
    plan={parsed,existing};
@@ -118,7 +121,15 @@ function mount(dep){
    if(response?.ok!==true||!response.forecast)throw Error(response?.error||"サーバーへの保存を確認できませんでした。");
    dep.setWeeklyForecastRecord(response.forecast);
    dep.renderToday();
-   status.textContent="週間予報を保存しました。公開画面を再読み込みして確認してください。";
+   let verified=false;
+   try{
+    const reread=await dep.readWeeklyForecasts();
+    const saved=reread.forecasts.find(row=>row.baseDate===p.parsed.baseDate);
+    verified=Boolean(saved && p.parsed.days.every(day=>JSON.stringify(saved.weeks[day.key])===JSON.stringify([day.weather])));
+   }catch(_){}
+   status.textContent=verified
+    ?"週間予報の保存と再取得を確認しました。公開画面でも表示を確認してください。"
+    :"保存APIは成功しましたが、公開データの再取得は未確認です。連続保存せず、画面を更新して確認してください。";
   }catch(e){message(e);}
  });
 }
