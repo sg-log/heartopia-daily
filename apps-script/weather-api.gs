@@ -70,7 +70,7 @@ function doGet(e) {
       return json_({ ok: true, reports: listByStatus_("approved").map(publicWeatherItem_) });
     }
     if (action === "getWeeklyForecasts") return json_({ok:true, forecasts:listWeeklyForecasts_()});
-    if (action === "getWeatherCalendar") return json_({ok:true, enabled:Boolean(calendarConfigured_()), calendar:calendarPublic_()});
+    if (action === "getWeatherCalendar") return json_({ok:true, enabled:Boolean(calendarConfigured_() || fiveConfigured_()), calendar:calendarPublic_(), fiveSlots:fivePublic_()});
     if (action === "getGiftCodes") {
       return json_({ ok: true, codes: listGiftCodes_(false).map(publicGiftItem_) });
     }
@@ -95,6 +95,7 @@ function doPost(e) {
     if (action === "requestWeatherAutomation") return requestWeatherAutomation_(body);
     if (action === "getWeatherSchedulerStatus" || action === "repairWeatherScheduler") return weatherSchedulerAdmin_(body);
     if (["getWeatherCalendarStatus", "refreshWeatherCalendar", "initializeWeatherCalendar"].indexOf(action) >= 0) return weatherCalendarAdmin_(body);
+    if (["getWeatherFiveSlotsStatus", "refreshWeatherFiveSlots", "initializeWeatherFiveSlots"].indexOf(action) >= 0) return fiveAdmin_(body);
     if (action === "submit") return submit_(body);
     if (action === "weatherReviewImage") return createWeatherReviewImage_(body);
     if (action === "weatherEvidence") return getWeatherEvidence_(body);

@@ -58,13 +58,14 @@ test('today-only forecast keeps the approved game-style card, weekly focus and a
     browser=await chromium.launch({headless:true});
     const context=await browser.newContext({viewport:{width:390,height:844},timezoneId:'Asia/Tokyo'});
     await context.addInitScript(()=>{globalThis.weatherTestTime='2026-10-20T00:30:00Z';const Original=Date;globalThis.Date=class extends Original{constructor(...args){super(...(args.length?args:[globalThis.weatherTestTime]));}static now(){return new Original(globalThis.weatherTestTime).getTime();}};});
-    const page=await context.newPage(),errors=[];let sourceUnavailable=false;page.on('pageerror',e=>errors.push(e.message));
+    const page=await context.newPage(),errors=[];let sourceUnavailable=false,fiveSlots=null,offline=false;page.on('pageerror',e=>errors.push(e.message));
     await page.route('**/*',async route=>{
       const req=route.request(),u=new URL(req.url());
       if(u.hostname==='127.0.0.1'){await route.continue();return;}
       if(u.hostname==='script.google.com'){
+        if(offline){await route.abort();return;}
         const action=u.searchParams.get('action')||JSON.parse(req.postData()||'{}').action;
-        const body=action==='getWeatherCalendar'?{ok:true,enabled:true,calendar:sourceUnavailable?null:calendar}:action==='approved'?{ok:true,reports:[report]}:action==='getGiftCodes'?{ok:true,codes:[]}:action==='getSiteNotice'?{ok:true,notice:{}}:{ok:true};
+        const body=action==='getWeatherCalendar'?{ok:true,enabled:true,calendar:sourceUnavailable?null:calendar,fiveSlots}:action==='approved'?{ok:true,reports:[report]}:action==='getGiftCodes'?{ok:true,codes:[]}:action==='getSiteNotice'?{ok:true,notice:{}}:{ok:true};
         await route.fulfill({status:200,headers:{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'},body:JSON.stringify(body)});return;
       }
       await route.abort();
@@ -101,5 +102,26 @@ test('today-only forecast keeps the approved game-style card, weekly focus and a
     await page.waitForFunction(()=>!HeartopiaCalendar.active());
     const fallback=await page.locator('#weatherResult').textContent();assert.equal(await page.locator('#weatherResult .weatherSlotList .weatherLine').count(),5);assert.ok(!fallback.includes('Weather forecast by TH.GL'));
     assert.equal(await page.locator('#weeklyWeather .weeklyWeatherRow').count(),7);
+    fiveSlots={version:1,timeZone:'Asia/Tokyo',gameDate:'2026-10-20',checkedAt:'2026-10-20T00:00:00Z',slots:[6,12,18,24,30].map((offset,i)=>{const d=new Date(Date.parse('2026-10-20T00:00:00Z')+offset*3600000);return {date:d.toISOString().slice(0,10),hour:d.getUTCHours(),category:['clear','clear','meteor','clear','rain'][i],label:['晴れ','晴れ','流星','晴れ','雨'][i]};}),credit:{label:'Tidebell',url:'https://tidebell.com/calendar'}};
+    await page.evaluate(()=>{weatherTestTime='2026-10-20T11:49:00Z';document.dispatchEvent(new Event('visibilitychange'));});
+    await page.waitForFunction(()=>HeartopiaCalendar.active()&&document.querySelectorAll('#weatherResult .weatherLineLabel')[4]?.textContent==='雨');
+    assert.deepEqual(await page.locator('#weatherResult .weatherLineText').allTextContents(),['☀️','☀️','🌠','🌙','🌧️']);
+    assert.deepEqual(await page.locator('#weatherResult .weatherLineLabel').allTextContents(),['晴れ','晴れ','流星','晴れ','雨']);
+    assert.equal(await page.locator('#weatherResult .weatherLine.current .weatherLineTime').textContent(),'18');
+    assert.equal(await page.locator('#weatherResult .compactWeatherWeek .weeklyWeatherRow').count(),7,'game UI weekly forecast is retained');
+    if(process.env.WEATHER_FILLED_FIVE_SCREENSHOT)await page.locator('.weatherCard').screenshot({path:process.env.WEATHER_FILLED_FIVE_SCREENSHOT});
+    offline=true;
+    await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+    await page.waitForTimeout(100);
+    assert.deepEqual(await page.locator('#weatherResult .weatherLineLabel').allTextContents(),['晴れ','晴れ','流星','晴れ','雨'],'network failure never erases the five cached facts');
+    await page.reload({waitUntil:'networkidle'});
+    await page.waitForFunction(()=>HeartopiaCalendar.active());
+    assert.equal(await page.locator('#weatherResult .weatherLineLabel').count(),5,'saved five-slot forecast survives reload while offline');
+    await page.evaluate(()=>{weatherTestTime='2026-10-20T15:05:00Z';renderWeather(E.targetDate.value,weatherData(E.targetDate.value));});
+    assert.equal(await page.locator('#weatherResult .weatherLine.current .weatherLineTime').textContent(),'00');
+    assert.equal(await page.locator('#weatherResult .weatherLineLabel').count(),5,'midnight keeps the same game-day forecast');
+    await page.evaluate(()=>{weatherTestTime='2026-10-20T21:00:00Z';});
+    assert.equal(await page.evaluate(()=>HeartopiaCalendar.active()),false,'yesterday forecast never masquerades as the new game day');
+    assert.deepEqual(errors,[]);
   }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));}
 });

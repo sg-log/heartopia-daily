@@ -15,6 +15,7 @@
     "apps-script/weather-review-image.gs",
     "apps-script/weather-scheduler.gs",
     "apps-script/weather-calendar.gs",
+    "apps-script/weather-five-slots.gs",
     "apps-script/weather-history.gs",
     "apps-script/weather-private-sources.gs",
     "apps-script/gift-code-config.gs",
