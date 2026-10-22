@@ -21,14 +21,28 @@
     return groups;
   }
   const creditHtml=()=>`<p class="weatherAttribution">時間別予報：<a href="${creditUrl}" target="_blank" rel="noopener noreferrer" title="翌日以降の時間別予報（TH.GL）">Weather forecast by TH.GL</a></p>`;
+  function fixedSlots(s,now){
+    const t=jst(now),base=new Date(t.date+'T00:00:00Z');
+    if(t.hour<6)base.setUTCDate(base.getUTCDate()-1);
+    const active=t.hour<6?3:Math.floor((t.hour-6)/6);
+    return [6,12,18,24,30].map((offset,i)=>{
+      const point=new Date(base.getTime()+offset*3600000),date=point.toISOString().slice(0,10),hour=point.getUTCHours();
+      // The highlighted block shows the current hour, not a guessed past forecast.
+      const sampleHour=i===active?t.hour:hour;
+      const h=valid(s)&&s.date===t.date&&date===t.date&&sampleHour>=t.hour?s.hours.find(value=>value.hour===sampleHour):null;
+      return {date,hour,current:i===active,sampleHour:h?sampleHour:null,
+        icon:h?(h.category==='clear'&&(sampleHour<6||sampleHour>=18)?'🌙':icons[h.category]):'—',
+        label:h?(h.category==='meteor'?'流星':h.label==='晴'?'晴れ':h.label):''};
+    });
+  }
   function slotRowsHtml(s,now){
     const h=current(s,now);if(!h)return '';
-    const t=jst(now),groups=intervals(s,now),old=new Date(now)-Date.parse(s.checkedAt)>72*3600000;
-    return `<div class="weatherNow"><div class="weatherSlotList weatherHourlySlots">${groups.map((g,i)=>{
-      const start=String(g.start).padStart(2,'0'),end=String(g.end).padStart(2,'0');
-      const label=g.icon==='🌠'?'流星':g.label==='晴'?'晴れ':g.label;
-      return `<div class="weatherLine${i===0?' current':''}"${i===0?' aria-current="time"':''} title="日本時間 ${escape(t.date)} ${start}:00–${end}:00 ${escape(g.label)}">
-        <div class="weatherLineTime">${start}</div><div class="weatherLineText">${g.icon}</div><div class="weatherLineLabel">${escape(label)}</div>
+    const old=new Date(now)-Date.parse(s.checkedAt)>72*3600000;
+    return `<div class="weatherNow"><div class="weatherSlotList weatherHourlySlots">${fixedSlots(s,now).map(g=>{
+      const start=String(g.hour).padStart(2,'0');
+      const detail=g.sampleHour===null?'予報データなし':String(g.sampleHour).padStart(2,'0')+':00時点の予報 '+g.label;
+      return `<div class="weatherLine${g.current?' current':''}"${g.current?' aria-current="time"':''} title="日本時間 ${escape(g.date)} ${start}:00 / ${escape(detail)}">
+        <div class="weatherLineTime">${start}</div><div class="weatherLineText">${g.icon}</div><div class="weatherLineLabel">${escape(g.label)}</div>
       </div>`;
     }).join('')}</div></div>${old?'<p class="small">保存済みの予報を表示しています。</p>':''}`;
   }
@@ -84,5 +98,5 @@
     setInterval(()=>{if(!document.hidden)load();},30*60000);
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)load();});
   }
-  root.HeartopiaCalendar={jst,valid,current,intervals,publicHtml,html,slotsHtml,creditHtml,active:()=>enabled&&Boolean(current(snapshot,new Date())),start};
+  root.HeartopiaCalendar={jst,valid,current,intervals,fixedSlots,publicHtml,html,slotsHtml,creditHtml,active:()=>enabled&&Boolean(current(snapshot,new Date())),start};
 })(typeof globalThis==='object'?globalThis:this);

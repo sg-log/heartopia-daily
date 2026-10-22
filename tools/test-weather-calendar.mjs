@@ -144,5 +144,28 @@ test('public API exposes only current-hour and later values today, with required
   const p=s.c.calendarPublic_();assert.equal(p.date,'2026-10-19');assert.equal(p.hours.length,1);assert.equal(p.hours[0].hour,23);
   assert.equal(p.days,undefined);assert.equal(p.types,undefined);assert.equal(p.calendarYear,undefined);assert.equal(p.sourceUrl,undefined);
   assert.equal(p.credit.url,'https://heartopia.th.gl/forecast');
-  const ui=uiContext.HeartopiaCalendar.publicHtml(p,'2026-10-19T14:02:00Z');assert.ok(!ui.includes('2026-10-20'));assert.ok(ui.includes('翌日以降の時間別予報'));
+  const ui=uiContext.HeartopiaCalendar.publicHtml(p,'2026-10-19T14:02:00Z');assert.ok(ui.includes('翌日以降の時間別予報'));
+  const points=uiContext.HeartopiaCalendar.fixedSlots(p,'2026-10-19T14:02:00Z');
+  assert.equal(points.length,5);assert.ok(points.filter(x=>x.date!=='2026-10-19').every(x=>x.sampleHour===null));
+});
+
+test('fixed five times stay anchored to the 06:00 game day without inventing missing weather',()=>{
+  const ui=uiContext.HeartopiaCalendar;
+  const s={version:2,timeZone:'Asia/Tokyo',date:'2026-10-22',checkedAt:'2026-10-22T00:00:00Z',hours:Array.from({length:8},(_,i)=>({hour:16+i,category:i<2?'clear':'meteor',label:i<2?'晴れ':'流星群'}))};
+  const points=ui.fixedSlots(s,'2026-10-22T07:38:00Z');
+  assert.deepEqual(Array.from(points,x=>x.hour),[6,12,18,0,6]);
+  assert.deepEqual(Array.from(points,x=>x.icon),['—','☀️','🌠','—','—']);
+  assert.equal(points[1].current,true);assert.equal(points[1].sampleHour,16);
+  assert.equal(points[0].sampleHour,null);assert.equal(points[3].date,'2026-10-23');assert.equal(points[3].sampleHour,null);
+  assert.deepEqual(Array.from(ui.fixedSlots({...s,hours:s.hours.map(x=>({...x,category:'clear',label:'晴れ'}))},'2026-10-22T07:38:00Z'),x=>x.hour),[6,12,18,0,6],'equal forecasts must not collapse the five times');
+});
+
+test('midnight stays in the fourth slot and 06:00 resets to the first slot',()=>{
+  const ui=uiContext.HeartopiaCalendar;
+  const s={version:2,timeZone:'Asia/Tokyo',date:'2026-10-23',checkedAt:'2026-10-22T10:00:00Z',hours:Array.from({length:24},(_,hour)=>({hour,category:'clear',label:'晴れ'}))};
+  const before=ui.fixedSlots(s,'2026-10-22T17:00:00Z');
+  assert.equal(before[0].date,'2026-10-22');assert.equal(before[3].current,true);assert.equal(before[3].icon,'🌙');assert.equal(before[4].icon,'☀️');
+  assert.ok(before.slice(0,3).every(x=>x.sampleHour===null));
+  const after=ui.fixedSlots(s,'2026-10-22T21:00:00Z');
+  assert.equal(after[0].date,'2026-10-23');assert.equal(after[0].current,true);assert.equal(after[4].date,'2026-10-24');assert.equal(after[4].sampleHour,null);
 });

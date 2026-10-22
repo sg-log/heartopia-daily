@@ -49,7 +49,7 @@ test('today-only forecast keeps the approved game-style card, weekly focus and a
     const file=path.resolve(root,'.'+decodeURIComponent(pathname));
     if(pathname!=='/'&&!file.startsWith(root+path.sep)){res.writeHead(403).end();return;}
     const body=pathname==='/'?html:await fs.readFile(file);
-    const type=pathname==='/'?'text/html':file.endsWith('.js')?'text/javascript':file.endsWith('.json')?'application/json':file.endsWith('.png')?'image/png':file.endsWith('.svg')?'image/svg+xml':'application/octet-stream';
+    const type=pathname==='/'?'text/html':file.endsWith('.css')?'text/css':file.endsWith('.js')?'text/javascript':file.endsWith('.json')?'application/json':file.endsWith('.png')?'image/png':file.endsWith('.svg')?'image/svg+xml':'application/octet-stream';
     res.writeHead(200,{'Content-Type':type});res.end(body);
   }catch(_){res.writeHead(404).end();}});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -74,15 +74,19 @@ test('today-only forecast keeps the approved game-style card, weekly focus and a
     await page.waitForFunction(()=>document.querySelectorAll('#weatherResult .compactWeatherWeek .weeklyWeatherRow').length===7&&document.querySelector('#weatherResult .focusWeatherChip'));
     const actual=await page.evaluate(()=>({daily:document.getElementById('weatherResult').innerHTML,summary:document.getElementById('weatherSummary').innerHTML,weeklyRows:document.querySelectorAll('#weeklyWeather .weeklyWeatherRow').length,share:document.querySelector('.shareImageWeatherLine')?.textContent||'',discord:document.getElementById('discordText').textContent}));
     assert.deepEqual(errors,[]);assert.ok(actual.daily.includes('Weather forecast by TH.GL'));assert.ok(actual.summary.includes('weatherHourlySlots'));
-    assert.ok(!actual.daily.includes('2026-10-21'));assert.equal(actual.weeklyRows,7);assert.ok(actual.share.includes('サイトで確認'));assert.ok(!actual.discord.includes('いまの天気：'));
-    assert.deepEqual(await page.locator('#weatherResult .weatherLineTime').allTextContents(),['09','18']);
-    assert.deepEqual(await page.locator('#weatherResult .weatherLineLabel').allTextContents(),['くもり','流星']);
+    assert.equal(actual.weeklyRows,7);assert.ok(actual.share.includes('サイトで確認'));assert.ok(!actual.discord.includes('いまの天気：'));
+    assert.deepEqual(await page.locator('#weatherResult .weatherLineTime').allTextContents(),['06','12','18','00','06']);
+    assert.deepEqual(await page.locator('#weatherResult .weatherLineLabel').allTextContents(),['くもり','くもり','流星','','']);
+    assert.deepEqual(await page.locator('#weatherResult .weatherLineText').allTextContents(),['☁️','☁️','🌠','—','—']);
     assert.equal(await page.locator('#weatherResult .weatherLine[aria-current="time"]').count(),1);
-    assert.equal(await page.locator('#weatherResult .weatherLine.current .weatherLineTime').textContent(),'09');
+    assert.equal(await page.locator('#weatherResult .weatherLine.current .weatherLineTime').textContent(),'06');
     assert.ok(actual.daily.includes('🌠'));assert.ok(!actual.daily.includes('☄️'));assert.ok(!actual.daily.includes('いま'));
     const geometry=await page.locator('#weatherResult .weatherHourlySlots').evaluate(el=>({columns:getComputedStyle(el).gridTemplateColumns.split(' ').length,aligned:['.weatherLineTime','.weatherLineText','.weatherLineLabel'].every(selector=>{const nodes=[...el.querySelectorAll(selector)],ys=nodes.map(node=>node.getBoundingClientRect().top);return Math.max(...ys)-Math.min(...ys)<0.5;}),singleLine:[...el.querySelectorAll('.weatherLineLabel')].every(node=>node.getBoundingClientRect().height<=parseFloat(getComputedStyle(node).fontSize)*1.6)}));
     assert.equal(geometry.columns,5);assert.ok(geometry.aligned);assert.ok(geometry.singleLine);
+    assert.equal(await page.locator('.weatherHeading').evaluate(el=>el.scrollWidth>el.clientWidth),false);
+    assert.equal(await page.locator('.weatherBirdClock').evaluate(el=>getComputedStyle(el).width),'104px','real page must load the clock stylesheet');
     if(process.env.WEATHER_TEST_SCREENSHOT)await page.screenshot({path:process.env.WEATHER_TEST_SCREENSHOT,fullPage:false});
+    if(process.env.WEATHER_FIXED_FIVE_SCREENSHOT)await page.locator('.weatherCard').screenshot({path:process.env.WEATHER_FIXED_FIVE_SCREENSHOT});
     await page.evaluate(()=>{weatherTestTime='2026-10-20T09:05:00Z';renderWeather(E.targetDate.value,weatherData(E.targetDate.value));});
     assert.equal(await page.locator('#weatherResult .weatherLine.current .weatherLineTime').textContent(),'18');
     assert.equal(await page.locator('#weatherResult .weatherLine.current .weatherLineText').textContent(),'🌠');
