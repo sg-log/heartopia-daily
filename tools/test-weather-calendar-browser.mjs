@@ -4,6 +4,42 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import {chromium} from 'playwright';
+
+test('bird clock uses Japan time, rolls date at midnight and fits the weather heading',async()=>{
+  const html=await fs.readFile('index.html','utf8');
+  const style=html.match(/<style>([\s\S]*?)<\/style>/)[1];
+  const heading=html.match(/<div class="weatherHeading">([\s\S]*?)<div id="weatherResult">/)[1];
+  const css=await fs.readFile('assets/weather-bird-clock.css','utf8');
+  const script=await fs.readFile('assets/weather-bird-clock.js','utf8');
+  const png=(await fs.readFile('assets/weather-bird-clock.png')).toString('base64');
+  const browser=await chromium.launch({headless:true});
+  try{
+    const page=await browser.newPage({viewport:{width:390,height:400},timezoneId:'America/Los_Angeles'});
+    await page.clock.install({time:new Date('2026-10-22T14:59:00Z')});
+    let requests=0;await page.route(/^https?:/,route=>{requests++;return route.abort();});
+    const markup=heading.replace('assets/weather-bird-clock.png','data:image/png;base64,'+png);
+    await page.setContent(`<style>${style}\n${css}</style><main><div class="card weatherCard" style="max-width:370px"><div class="weatherHeading">${markup}</div></main><script>${script}</script>`,{waitUntil:'load'});
+    assert.equal(await page.locator('#weatherBirdClockTime').textContent(),'23:59');
+    assert.equal(await page.locator('#weatherClockDate').textContent(),'10/22（木）');
+    assert.equal(await page.locator('#weatherClockDate').getAttribute('datetime'),'2026-10-22');
+    await page.clock.fastForward(60050);
+    assert.equal(await page.locator('#weatherBirdClockTime').textContent(),'00:00');
+    assert.equal(await page.locator('#weatherClockDate').textContent(),'10/23（金）');
+    await page.clock.setSystemTime(new Date('2026-10-22T21:05:00Z'));
+    await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+    assert.equal(await page.locator('#weatherBirdClockTime').textContent(),'06:05');
+    assert.equal(await page.locator('#weatherClockDate').textContent(),'10/23（金）');
+    assert.equal(await page.locator('#weatherBirdClock').getAttribute('aria-label'),'日本時間 06時05分');
+    for(const width of [320,390,1080]){
+      await page.setViewportSize({width,height:400});
+      assert.equal(await page.locator('.weatherHeading').evaluate(el=>el.scrollWidth>el.clientWidth),false,'heading must fit at '+width);
+    }
+    assert.equal(await page.locator('.weatherBirdClock img').evaluate(el=>el.naturalWidth>0),true);
+    assert.equal(requests,0,'clock updates without a network request');
+    if(process.env.WEATHER_CLOCK_SCREENSHOT){await page.setViewportSize({width:390,height:400});await page.locator('.weatherCard').screenshot({path:process.env.WEATHER_CLOCK_SCREENSHOT});}
+  }finally{await browser.close();}
+});
+
 test('today-only forecast keeps the approved game-style card, weekly focus and aligned current-hour cells',async()=>{
   const root=process.cwd(),html=await fs.readFile(process.env.WEATHER_TEST_INDEX||'index.html','utf8');
   const calendar={version:2,timeZone:'Asia/Tokyo',date:'2026-10-20',checkedAt:'2026-10-20T00:00:00Z',hours:Array.from({length:15},(_,i)=>({hour:i+9,category:i<9?'cloud':'meteor',label:i<9?'くもり':'流星群'})),credit:{label:'Weather forecast by TH.GL',url:'https://heartopia.th.gl/forecast'}};

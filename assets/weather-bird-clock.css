@@ -1,0 +1,39 @@
+.weatherCard .weatherHeading{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:6px;
+  min-height:80px;
+  margin-bottom:4px;
+}
+.weatherCard .weatherHeading h2{margin:0;white-space:nowrap}
+.weatherClockGroup{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.weatherClockDate{
+  font-size:12px;
+  font-weight:600;
+  line-height:1.5;
+  color:#786f64;
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+.weatherBirdClock{position:relative;width:104px;height:80px;flex:none;overflow:hidden}
+.weatherBirdClock img{position:absolute;width:125px;height:auto;max-width:none;left:-9px;top:-8px;pointer-events:none}
+.weatherBirdClock time{
+  position:absolute;
+  left:56px;
+  top:48px;
+  transform:translate(-50%,-50%);
+  font-family:Consolas,'Courier New',monospace;
+  font-size:18px;
+  font-weight:700;
+  line-height:1;
+  color:#fffbea;
+  letter-spacing:-.8px;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+  text-shadow:0 0 1px #fff6d4;
+}
+@media(max-width:340px){
+  .weatherClockDate{font-size:11px}
+  .weatherClockGroup{gap:0}
+}

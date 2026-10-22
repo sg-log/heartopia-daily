@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
+<link rel="stylesheet" href="assets/weather-bird-clock.css?v=20261022">
+<script src="assets/weather-bird-clock.js?v=20261022" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800;900&display=swap" rel="stylesheet">
@@ -1078,7 +1080,16 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
       </div>
 
       <div class="card s4 weatherCard">
-        <h2>今日の天気</h2>
+        <div class="weatherHeading">
+          <h2>今日の天気</h2>
+          <div class="weatherClockGroup">
+            <time id="weatherClockDate" class="weatherClockDate">--/--</time>
+            <div id="weatherBirdClock" class="weatherBirdClock" role="img" aria-label="小鳥の時計">
+              <img src="assets/weather-bird-clock.png" width="1443" height="1090" alt="" decoding="async">
+              <time id="weatherBirdClockTime" aria-hidden="true">--:--</time>
+            </div>
+          </div>
+        </div>
         <div id="weatherResult"></div>
       </div>
 
