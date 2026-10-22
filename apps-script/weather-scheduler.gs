@@ -53,6 +53,10 @@ function getWeatherSchedulerStatus() {
  * missed primary/retry attempt instead of permanently missing that slot.
  */
 function runWeatherScheduler() {
+  if (typeof fiveConfigured_ === 'function' && fiveConfigured_()) {
+    try { runCalendarWeatherScheduler(); } finally { runFiveWeatherScheduler(); }
+    return;
+  }
   if (typeof calendarConfigured_ === 'function' && calendarConfigured_()) return runCalendarWeatherScheduler();
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(3000)) return;

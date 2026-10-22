@@ -23,3 +23,7 @@ jobs:
           WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
           WEATHER_PRIVATE_WEBHOOK_URL: ${{ secrets.WEATHER_DC_WEBHOOK_URL }}
         run: node tools/weather-calendar-setup.mjs
+      - name: Initialize and verify five six-hour weather slots
+        env:
+          WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
+        run: node tools/weather-five-slots-setup.mjs

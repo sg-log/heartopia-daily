@@ -33,6 +33,9 @@ on:
       - 'tools/test-weather-private-submit.mjs'
       - 'tools/test-weather-reference-cleanup.mjs'
       - 'apps-script/weather-calendar.gs'
+      - 'apps-script/weather-five-slots.gs'
+      - 'tools/test-weather-five-slots.mjs'
+      - 'tools/weather-five-slots-setup.mjs'
       - 'apps-script/weather-history.gs'
       - 'assets/weather-calendar-today-ui.js'
       - 'tools/test-weather-calendar.mjs'
@@ -63,7 +66,7 @@ jobs:
       - name: Validate scheduler policy
         run: node --test tools/test-weather-scheduler-policy.mjs
       - name: Validate permitted calendar, private history and SNS-only weekly integration
-        run: node --test tools/test-weather-calendar.mjs tools/test-weather-history.mjs tools/test-weather-calendar-crosscheck.mjs tools/test-weather-calendar-browser.mjs tools/test-weather-apps-script-scheduler.mjs
+        run: node --test tools/test-weather-calendar.mjs tools/test-weather-five-slots.mjs tools/test-weather-history.mjs tools/test-weather-calendar-crosscheck.mjs tools/test-weather-calendar-browser.mjs tools/test-weather-apps-script-scheduler.mjs
       - name: Validate private evidence and reference cleanup
         run: node --test tools/test-weather-private-submit.mjs tools/test-weather-reference-cleanup.mjs
       - name: Validate public weather discovery helpers

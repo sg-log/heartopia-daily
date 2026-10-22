@@ -35,6 +35,13 @@ test('another day or unused type changing does not invent a revision for this da
   a.types[2].label='別の表記';a.days.push({date:'2026-10-20',hours:Array(24).fill(2)});
   assert.equal(s.c.weatherHistoryCalendar_(a).added,1);assert.equal(s.rows().filter(r=>r[2]==='2026-10-19').length,1);
 });
+
+test('six-hour source history stays independent from hourly history and deduplicates unchanged forecasts',()=>{
+  const s=setup();s.c.weatherHistoryCalendar_(snapshot());
+  const events=[{kind:'five-slot-forecast',targetDate:'2026-10-19',payload:{recordType:'forecast',resolutionHours:6,slots:['clear','clear','meteor','clear']}}];
+  assert.equal(s.c.weatherHistoryAppend_(events).added,1);assert.equal(s.c.weatherHistoryAppend_(events).added,0);
+  assert.equal(s.rows().length,2);assert.equal(s.rows()[0][1],'calendar-forecast');assert.equal(s.rows()[1][1],'five-slot-forecast');
+});
 test('imports existing legacy rows without modifying them, filling missing dates or inventing approval',()=>{
   const legacy=[['id','date','status','slot0'],['one','2026-10-15','approved','晴'],['two','2026-10-17','pending','雨'],['three','2026-10-17','rejected','晴']];
   const before=JSON.stringify(legacy);const s=setup(legacy);

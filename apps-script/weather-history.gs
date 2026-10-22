@@ -34,7 +34,7 @@ function weatherHistorySheet_() {
 function weatherHistoryAppend_(events) {
   const now = new Date().toISOString();
   const rows = events.map(function(event) {
-    if (!['legacy-report','calendar-forecast','sns-comparison','sns-evidence'].includes(event.kind) || !/^20\d{2}-\d{2}-\d{2}$/.test(event.targetDate)) throw new Error('Invalid history event');
+    if (!['legacy-report','calendar-forecast','five-slot-forecast','sns-comparison','sns-evidence'].includes(event.kind) || !/^20\d{2}-\d{2}-\d{2}$/.test(event.targetDate)) throw new Error('Invalid history event');
     const payload = weatherHistoryCanonical_(event.payload);
     if (payload.length > 45000) throw new Error('Weather history record too large');
     const key = weatherHistoryHash_(event.kind + '\n' + event.targetDate + '\n' + payload);

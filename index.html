@@ -7273,7 +7273,7 @@ HeartopiaWeeklyAIImport.mount({
   }
 });
 </script>
-<script src="assets/weather-calendar-today-ui.js?v=20261022-five"></script>
+<script src="assets/weather-calendar-today-ui.js?v=20261022-filled"></script>
 <script>
 HeartopiaCalendar.start({apiUrl:WEATHER_API_URL,post:apiPost,adminKey:adminKeyValue,adminRoute:isAdminRoute(),onChange:()=>{renderWeather(E.targetDate.value,weatherData(E.targetDate.value));renderWeatherSummary();E.discordText.textContent=discord(E.targetDate.value,dayData(cycleDay(E.targetDate.value)),weatherData(E.targetDate.value));renderShareImagePreview(E.targetDate.value,dayData(cycleDay(E.targetDate.value)),weatherData(E.targetDate.value));}});
 </script>
