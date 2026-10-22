@@ -27,7 +27,7 @@
     }
     return groups;
   }
-  const creditHtml=(s=preferred(new Date()))=>`<p class="weatherAttribution">${validFive(s)?'予報：<a href="https://tidebell.com/calendar" target="_blank" rel="noopener noreferrer">Tidebell</a> · 照合：':'時間別予報：'}<a href="${creditUrl}" target="_blank" rel="noopener noreferrer" title="翌日以降の時間別予報（TH.GL）">Weather forecast by TH.GL</a></p>`;
+  const creditHtml=()=>`<p class="weatherAttribution">時間別予報：<a href="${creditUrl}" target="_blank" rel="noopener noreferrer" title="翌日以降の時間別予報（TH.GL）">Weather forecast by TH.GL</a></p>`;
   function fixedSlots(s,now){
     const t=jst(now),base=new Date(t.date+'T00:00:00Z');
     if(t.hour<6)base.setUTCDate(base.getUTCDate()-1);
