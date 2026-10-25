@@ -1040,22 +1040,45 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
 .pendingWeatherImageDialogClose{padding:7px 11px;background:#fff;color:#3f3a36}
 .pendingWeatherImageDialog img{display:block;max-width:100%;max-height:80vh;width:auto;height:auto;margin:auto;object-fit:contain;border-radius:10px;background:#fff}
 @media(max-width:640px){.pendingWeatherCard{padding:12px}.pendingWeatherSlots{gap:6px}.pendingWeatherCard .quickWeatherSlot{grid-template-columns:44px minmax(0,1fr)}.pendingWeatherCard .quickWeatherSlot .weatherChip{min-width:42px;padding:6px 7px}.pendingWeatherWeeks .weatherSlot{grid-template-columns:72px minmax(0,1fr);gap:7px}.pendingWeatherImages img{width:100%;max-height:none}}
+
+/* UI refresh: presentation only; weather, credits, administration and Discord logic remain unchanged */
+.siteHeader{padding:24px 18px 6px}
+.siteHeaderRow{display:flex;align-items:center;justify-content:flex-start;gap:clamp(55px,8vw,118px);min-height:94px}
+.siteHeaderBrand{flex:0 0 auto;min-width:0}
+.siteHeaderBrand h1{font-size:clamp(29px,4.1vw,42px);line-height:1.15;letter-spacing:-.045em}
+.siteHeaderBrand p{margin:6px 0 0;color:var(--muted);font-size:12px;white-space:nowrap}
+.siteHeaderNav{display:flex;align-items:center;gap:clamp(18px,2.8vw,34px);white-space:nowrap;flex:0 0 auto}
+.siteHeaderNav .tab,.siteHeaderNav a{display:inline-block;border:0;border-bottom:2px solid transparent;border-radius:0;padding:7px 1px 9px;box-shadow:none;background:transparent;color:var(--text);font-family:inherit;font-weight:700;font-size:14px;line-height:1.4;text-decoration:none;cursor:pointer}
+.siteHeaderNav .tab.active{background:transparent;color:var(--accent2);border-bottom-color:var(--accent);box-shadow:none}
+.siteHeaderNav .tab:hover,.siteHeaderNav a:hover{color:var(--accent2)}
+.legacyTabs,.legacyTabs[hidden],#gift-codes[hidden]{display:none!important}
+#today .grid{align-items:start}
+#today .card{box-shadow:0 6px 23px rgba(45,38,31,.055);border-radius:16px}
+.todayCard .shareTodayBtn{width:36px;height:35px;display:inline-flex;align-items:center;justify-content:center;padding:7px;border-radius:9px}
+.todayCard .shareTodayBtn svg{display:block;flex:none}
+#today .item{border-radius:14px}#today .itemIcon{border-radius:12px}
+.siteFooter{justify-self:stretch;border-top:1px solid var(--line);margin:28px 0 8px;padding:14px 5px 8px;text-align:right}
+.siteFooter a{font-size:12px;font-weight:700;color:var(--muted);text-decoration:none}
+.siteFooter a:hover{color:var(--accent2);text-decoration:underline}
+body.siteAdminRoute .siteHeaderNav,body.siteAdminRoute .siteFooter{display:none}
+@media(max-width:960px){.siteHeaderRow{gap:clamp(24px,4vw,54px)}.siteHeaderBrand h1{font-size:clamp(28px,3.9vw,38px)}.siteHeaderBrand p{white-space:normal;font-size:11px}.siteHeaderNav{gap:clamp(12px,2vw,24px)}.siteHeaderNav .tab,.siteHeaderNav a{font-size:13px}}
+@media(max-width:700px){.siteHeader{padding:14px 14px 1px}.siteHeaderRow{display:block;min-height:0}.siteHeaderBrand h1{font-size:27px}.siteHeaderBrand p{font-size:11px;line-height:1.5}.siteHeaderNav{margin-top:10px;gap:22px;max-width:100%;overflow-x:auto;scrollbar-width:none}.siteHeaderNav::-webkit-scrollbar{display:none}.siteHeaderNav .tab,.siteHeaderNav a{padding:6px 0 7px;font-size:12px}.siteFooter{margin:20px 2px 0}.todayCard .shareTodayBtn{width:34px;height:33px}}
+@media(max-width:370px){.siteHeaderNav{gap:14px}.siteHeaderNav .tab,.siteHeaderNav a{font-size:11px}}
 </style>
 </head>
 <body>
-<header>
-  <h1>Heartopia Daily</h1>
-  <p>今日の採取場所をさっと確認できる非公式メモサイトです。</p>
-</header>
-
+<header class="siteHeader"><div class="siteHeaderRow">
+<div class="siteHeaderBrand"><h1>Heartopia Daily</h1><p>今日の採取場所をさっと確認できる非公式メモサイトです。</p></div>
+<nav class="siteHeaderNav" aria-label="メインナビゲーション">
+<button type="button" class="tab active" data-tab="today">今日の情報</button>
+<a href="codes.html" class="siteHeaderLink">ギフトコード</a>
+<button type="button" class="tab" data-tab="puzzles">パズル管理</button>
+</nav></div></header>
 <main>
-  <section class="tabs">
-    <button class="tab active" data-tab="today">今日の場所</button>
-    <button class="tab" data-tab="weather">天気メモ</button>
-    <button class="tab" data-anchor="gift-codes">ギフコ</button>
-    <button class="tab" data-tab="puzzles">パズル</button>
-    <button class="tab" data-tab="about">このサイトについて</button>
-  </section>
+<section class="tabs legacyTabs" hidden>
+<button class="tab" data-tab="weather">天気メモ</button>
+<button class="tab" data-tab="about">このサイトについて</button>
+</section>
   <div id="siteNotice" class="siteNotice" hidden></div>
 
   <section id="today" class="panel active">
@@ -1073,7 +1096,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
           <div class="buttons dateShortcuts">
             <button id="todayBtn">今日</button>
             <button class="secondary" id="tomorrowBtn">明日</button>
-            <button class="secondary shareTodayBtn" id="shareTodayImageBtn"><span aria-hidden="true">↗</span><span>共有</span></button>
+            <button class="secondary shareTodayBtn" id="shareTodayImageBtn" title="採取場所の画像を共有" aria-label="採取場所の画像を共有"><svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.7 10.7 6.6-4.2m-6.6 6.8 6.6 4.2"/></svg></button>
           </div>
         </div>
         <div class="hero" id="todayResult"></div>
@@ -1093,7 +1116,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
         <div id="weatherResult"></div>
       </div>
 
-      <div class="card s12" id="gift-codes">
+      <div id="gift-codes" hidden>
         <details class="giftDetails">
           <summary>ギフトコード</summary>
           <div class="giftDetailsBody">
@@ -1698,6 +1721,7 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
       </div>
     </div>
   </section>
+  <footer id="siteFooter" class="siteFooter"><a href="#about" id="aboutFooterLink">このサイトについて</a></footer>
 </main>
 
 <div id="toast" class="toast"></div>
@@ -6810,6 +6834,7 @@ function setupAdminVisibility(){
 }
 
 function init(){
+  document.body.classList.toggle("siteAdminRoute",isAdminRoute());
   setupAdminVisibility();
   setupAdminSubtabs();
   setupAdminCardFolding();
@@ -6884,6 +6909,16 @@ function init(){
       }
       renderToday();
     };
+  });
+  document.querySelectorAll(".siteHeaderNav .tab").forEach(tab=>tab.addEventListener("click",()=>{
+    if(!isAdminRoute())history.replaceState(null,"",tab.dataset.tab==="puzzles"?"#puzzles":location.pathname);
+  }));
+  document.getElementById("aboutFooterLink")?.addEventListener("click",event=>{
+    event.preventDefault();
+    if(isAdminRoute())return;
+    document.querySelector('.tab[data-tab="about"]')?.click();
+    history.replaceState(null,"","#about");
+    window.scrollTo({top:0,behavior:"instant"});
   });
   E.openAdminBtn.onclick = () => {
     const key = E.adminGateKey.value.trim();
@@ -7254,6 +7289,13 @@ function init(){
   };
 }
 init();
+if(!isAdminRoute()){
+ if(location.hash==="#gift-codes")location.replace("codes.html");
+ else if(location.hash==="#puzzles"||location.hash==="#about"){
+   document.querySelector('.tab[data-tab="'+location.hash.slice(1)+'"]')?.click();
+   window.scrollTo({top:0,behavior:"instant"});
+ }
+}
 HeartopiaWeeklyAIImport.mount({
   dateInput:E.quickWeatherDate,
   apiUrl:()=>WEATHER_API_URL,
