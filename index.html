@@ -1074,6 +1074,39 @@ body.siteAdminRoute .siteAdminReturn{display:inline-block;margin-left:auto}
 @media(max-width:960px){.siteHeaderRow{gap:clamp(24px,4vw,54px)}.siteHeaderBrand h1{font-size:clamp(28px,3.9vw,38px)}.siteHeaderBrand p{white-space:normal;font-size:11px}.siteHeaderNav{gap:clamp(12px,2vw,24px)}.siteHeaderNav .tab,.siteHeaderNav a{font-size:13px}}
 @media(max-width:700px){.siteHeader{padding:14px 14px 1px}.siteHeaderRow{display:block;min-height:0}.siteHeaderBrand h1{font-size:27px}.siteHeaderBrand p{font-size:11px;line-height:1.5}.siteHeaderNav{margin-top:10px;gap:22px;max-width:100%;overflow-x:auto;scrollbar-width:none}.siteHeaderNav::-webkit-scrollbar{display:none}.siteHeaderNav .tab,.siteHeaderNav a{padding:6px 0 7px;font-size:12px}.siteFooter{margin:20px 2px 0}.todayCard .shareTodayBtn{width:34px;height:33px}}
 @media(max-width:370px){.siteHeaderNav{gap:14px}.siteHeaderNav .tab,.siteHeaderNav a{font-size:11px}}
+
+/* Refined controls and card shapes across TOP, puzzle and admin pages. */
+input,select,textarea{border-radius:9px}
+button{border-radius:9px}
+button.secondary,button.danger{border-radius:9px}
+.card,#today .card{border-radius:13px}
+.item,#today .item{border-radius:11px}
+.itemIcon,#today .itemIcon{border-radius:10px}
+.datepill{border-radius:7px}
+.todayDateField input{border-radius:9px}
+.dateShortcuts button,.todayCard .shareTodayBtn{border-radius:9px}
+.puzzleCharacterTab{border-radius:9px}
+.puzzleProgress strong,.puzzleState{border-radius:7px}
+.focusWeather{border-radius:11px}
+.focusWeatherChip{border-radius:8px}
+.focusWeatherEmpty{font-size:12px;font-weight:500;color:var(--muted);line-height:1.5}
+/* Soft, visually grouped navigation without pill-shaped buttons. */
+.siteHeaderNav{
+  gap:clamp(18px,2.8vw,32px);
+  padding:7px 15px 6px;
+  border:1px solid rgba(226,216,204,.72);
+  background:rgba(255,254,250,.67);
+  border-radius:12px;
+  box-shadow:0 4px 18px rgba(45,38,31,.035);
+}
+.siteHeaderNav .tab,.siteHeaderNav a{padding-top:5px;padding-bottom:7px}
+/* About entry is part of the TOP only. */
+#today:not(.active) ~ .siteFooter{display:none}
+@media(max-width:700px){
+  .siteHeaderNav{display:flex;width:max-content;max-width:100%;margin-top:12px;padding:5px 12px 4px;gap:clamp(12px,4vw,22px)}
+  .siteHeaderNav .tab,.siteHeaderNav a{padding:5px 0 7px}
+  .dateShortcuts button,.todayCard .shareTodayBtn{border-radius:8px}
+}
 </style>
 </head>
 <body>
@@ -3362,9 +3395,13 @@ function renderWeeklyWeather(startDate){
   E.weeklyWeather.innerHTML = w ? weeklyRowsHtml(w, base, "weeklyWeather") : `<div class="weatherNow">週間天気は未登録です。</div>`;
 }
 function focusWeatherHtml(w, baseDate){
-  if(!w) return "";
   const items = focusWeatherItems(w, baseDate);
-  return items.length ? `<div class="focusWeather"><div class="focusWeatherLabel">注目天気</div><div class="focusWeatherChips">${items.map(item => `<span class="focusWeatherChip"><span class="focusWeatherIcon">${esc(item.icon)}</span><span class="focusWeatherDay">${esc(item.day)}</span></span>`).join("")}</div></div>` : "";
+  const hasWeeklyData = Boolean(w && WEATHER_WEEK_KEYS.some(key => weatherValues(w.weeks?.[key]).length));
+  const emptyText = hasWeeklyData ? "登録済み予報に注目天気はありません" : "週間天気の登録待ち";
+  return `<div class="focusWeather"><div class="focusWeatherLabel">注目天気</div><div class="focusWeatherChips">${items.length
+    ? items.map(item => `<span class="focusWeatherChip"><span class="focusWeatherIcon">${esc(item.icon)}</span><span class="focusWeatherDay">${esc(item.day)}</span></span>`).join("")
+    : `<span class="focusWeatherEmpty">${esc(emptyText)}</span>`
+  }</div></div>`;
 }
 function focusWeatherItems(w, baseDate){
   if(!w) return [];
@@ -5286,7 +5323,7 @@ function renderWeather(date, w){
     return;
   }
   if(!w){
-    E.weatherResult.innerHTML = `<div class="weatherNow">天気は未登録です。</div>`;
+    E.weatherResult.innerHTML = `<div class="weatherNow">天気は未登録です。</div>${focusWeatherHtml(w, date)}`;
     return;
   }
   E.weatherResult.innerHTML = `
