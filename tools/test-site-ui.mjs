@@ -106,10 +106,11 @@ async function runScenario(width,height,label){
     assert.equal(await page.locator('#weatherBirdClock img[src="assets/weather-bird-clock.png"]').count(),1,'bird clock');
     assert.equal(await page.locator('#weatherResult .weatherLine').count(),5,'weather five slots');
     await page.locator('#weatherResult .focusWeatherLabel').filter({hasText:'注目天気'}).waitFor({state:'visible',timeout:15000});
+    assert.equal((await page.locator('#weatherResult .focusWeatherEmpty').textContent()).trim(),'—','rendered focus empty state is only a dash');
     const emptyFocus = await page.evaluate(()=>focusWeatherHtml(null,document.getElementById('targetDate').value));
-    assert.ok(emptyFocus.includes('週間天気の登録待ち'),'missing weekly forecast keeps an informative focus block');
+    assert.ok(emptyFocus.includes('<span class="focusWeatherEmpty">—</span>'),'missing weekly forecast shows only dash');
     const sunnyFocus=await page.evaluate(()=>focusWeatherHtml({weeks:{week1:['晴'],week2:['晴']}},document.getElementById('targetDate').value));
-    assert.ok(sunnyFocus.includes('登録済み予報に注目天気はありません'),'sunny-only forecast keeps focus header without guessing events');
+    assert.ok(sunnyFocus.includes('<span class="focusWeatherEmpty">—</span>'),'sunny-only forecast shows only dash');
     await page.evaluate(()=>{
       const baseDate=document.getElementById('targetDate').value;
       setWeeklyForecastRecord({baseDate,weeks:{week1:['虹'],week2:['流星群'],week3:['雨']}});
