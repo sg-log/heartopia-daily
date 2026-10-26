@@ -3396,11 +3396,10 @@ function renderWeeklyWeather(startDate){
 }
 function focusWeatherHtml(w, baseDate){
   const items = focusWeatherItems(w, baseDate);
-  const hasWeeklyData = Boolean(w && WEATHER_WEEK_KEYS.some(key => weatherValues(w.weeks?.[key]).length));
-  const emptyText = hasWeeklyData ? "登録済み予報に注目天気はありません" : "週間天気の登録待ち";
+  // No relevant event in the forecast: keep the heading without an explanatory message.
   return `<div class="focusWeather"><div class="focusWeatherLabel">注目天気</div><div class="focusWeatherChips">${items.length
     ? items.map(item => `<span class="focusWeatherChip"><span class="focusWeatherIcon">${esc(item.icon)}</span><span class="focusWeatherDay">${esc(item.day)}</span></span>`).join("")
-    : `<span class="focusWeatherEmpty">${esc(emptyText)}</span>`
+    : `<span class="focusWeatherEmpty">—</span>`
   }</div></div>`;
 }
 function focusWeatherItems(w, baseDate){
