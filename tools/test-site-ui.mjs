@@ -140,6 +140,8 @@ async function runScenario(width,height,label){
     assert.ok(overflow.scroll<=overflow.view+2,'TOP page overflow: '+JSON.stringify(overflow));
 
     await mkdir(screenshots,{recursive:true});
+    // Transient copy feedback is not part of the settled review layout.
+    await page.locator('#toast').evaluate(el=>el.classList.remove('show'));
     await page.screenshot({path:path.join(screenshots,label+'-home.png'),fullPage:true});
     const shareDialogs=[];
     page.on('dialog',async dialog=>{shareDialogs.push(dialog.message());await dialog.accept()});
