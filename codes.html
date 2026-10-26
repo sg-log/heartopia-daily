@@ -1,0 +1,462 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta name="description" content="ハートピアのギフトコードと受取済を管理する非公式メモサイトです。"><title>ギフトコード | Heartopia Daily</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800;900&display=swap" rel="stylesheet"><style>
+:root{--bg:#f5f0e8;--card:#fffefa;--text:#5f5953;--heading:#3f3a36;--muted:#7a746d;--line:#e2d8cc;--accent:#7c9189;--accent2:#5d746b;--soft:#edf3ef}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 0 0,rgba(124,145,137,.2),transparent 34%),var(--bg);color:var(--text);font:14px/1.7 "Noto Sans JP",system-ui,sans-serif}
+header,main{width:min(1080px,100%);margin:auto}header{padding:24px 18px 6px}
+.siteHeaderRow{display:flex;align-items:center;gap:clamp(55px,8vw,118px);min-height:94px}
+h1{margin:0;color:var(--heading);font-size:clamp(29px,4.1vw,42px);line-height:1.15;letter-spacing:-.045em}
+.siteHeaderBrand p{margin:6px 0 0;font-size:12px;color:var(--muted)}
+.siteHeaderNav{display:flex;gap:clamp(18px,2.8vw,34px);align-items:center;white-space:nowrap}
+.siteHeaderNav a{display:inline-block;padding:7px 1px 9px;color:var(--text);border-bottom:2px solid transparent;text-decoration:none;font-weight:700;font-size:14px}
+.siteHeaderNav a.active{color:var(--accent2);border-bottom-color:var(--accent)}.siteHeaderNav a:hover{color:var(--accent2)}
+main{padding:16px}.card{background:rgba(255,254,250,.96);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:0 6px 23px rgba(45,38,31,.055);max-width:820px}
+.small{font-size:12px;color:var(--muted)}
+.siteNotice{width:auto;max-width:100%;margin:0 0 8px;padding:1px 0 0 15px;border:0;border-radius:0;background:transparent;color:var(--muted);font-size:12px;font-weight:500;line-height:1.7;text-align:left;position:relative;overflow-wrap:anywhere}
+.siteNotice::before{content:"";position:absolute;top:9px;left:2px;width:5px;height:5px;border-radius:50%;background:var(--accent)}
+.siteNotice[hidden]{display:none!important}
+.siteNoticeDate{color:#908980;font-size:11px;font-weight:500;margin-right:10px}.giftDetails>summary{cursor:pointer;font-size:20px;font-weight:900;color:var(--heading);list-style:none}.giftDetails>summary::-webkit-details-marker{display:none}.giftDetailsBody{margin-top:12px}
+.giftList{display:grid;gap:10px}.giftCard{border:1px solid #e4ded5;background:#fffefa;border-radius:16px;padding:12px;display:grid;gap:8px}.giftCard.claimed{opacity:.68;background:#f8f7f3}.giftCard.expired{opacity:.62;background:#f3f1ed}
+.giftHead{display:flex;justify-content:flex-start;gap:8px;align-items:center;flex-wrap:wrap}
+.giftCodeText{display:inline-flex;align-items:center;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:18px;font-weight:900;color:var(--heading);letter-spacing:.02em;min-width:9ch;max-width:min(24ch,100%);background:#fbf8f4;border:1px solid #e7e0d6;border-radius:12px;padding:9px 11px;overflow:auto;white-space:nowrap}
+.giftReward{font-weight:900;color:var(--accent2)}.giftMeta{font-size:12px;color:var(--muted);display:grid;gap:2px}
+button{border:0;border-radius:999px;padding:9px 13px;background:var(--accent);color:#fff;font-weight:800;font-size:13px;cursor:pointer}button.secondary,.giftClaim{background:var(--soft);color:var(--accent2);border:1px solid #d7e2dc}.giftClaim.claimed{background:#e7ece8;color:#68766f}button:disabled{opacity:.5;cursor:wait}
+.giftSource{color:var(--accent2);font-weight:800;text-decoration:none}.giftExpiredWrap{margin-top:14px}.giftExpiredWrap summary{cursor:pointer;font-weight:900;color:var(--muted)}
+.giftBackupBox{margin:8px 0 12px;padding:10px 12px;border:1px solid #e1e7e2;border-radius:13px;background:#f7faf7}
+.giftBackupLine{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.giftBackupState{font-size:12px;font-weight:800;color:var(--accent2)}.giftBackupLine button{padding:7px 10px;font-size:12px}
+.giftBackupDetails{margin-top:7px}.giftBackupDetails>summary{cursor:pointer;font-size:12px;font-weight:900;color:var(--muted)}
+.giftBackupRestoreGrid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;margin-top:8px}
+.giftBackupRestoreGrid label{display:block;font-size:12px;color:var(--muted)}.giftBackupRestoreGrid input{display:block;width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--text);font-size:14px}
+.giftBackupRestoreGrid button{white-space:nowrap}.status{font-size:12px;color:var(--accent2);min-height:1.4em;margin-top:8px}
+.siteFooter{border-top:1px solid var(--line);margin-top:32px;padding:14px 4px;text-align:right}
+.siteFooter a{font-size:12px;font-weight:700;color:var(--muted);text-decoration:none}
+.toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#292724;color:#fff;border-radius:999px;padding:10px 14px;box-shadow:0 12px 34px #0002;font-size:13px;opacity:0;pointer-events:none;transition:.2s}.toast.show{opacity:1}
+[hidden]{display:none!important}
+@media(max-width:960px){.siteHeaderRow{gap:clamp(24px,4vw,54px)}.siteHeaderNav{gap:clamp(12px,2vw,24px)}.siteHeaderNav a{font-size:13px}.siteHeaderBrand p{font-size:11px}}
+@media(max-width:700px){header{padding:14px 14px 1px}.siteHeaderRow{display:block;min-height:0}h1{font-size:27px}.siteHeaderBrand p{line-height:1.5}.siteHeaderNav{margin-top:10px;gap:22px;overflow-x:auto}.siteHeaderNav a{font-size:12px;padding:6px 0 7px}main{padding:8px}.card{padding:14px}.giftBackupRestoreGrid{grid-template-columns:1fr}}
+</style></head><body>
+<header class="siteHeader"><div class="siteHeaderRow"><div class="siteHeaderBrand"><h1>Heartopia Daily</h1><p>今日の採取場所をさっと確認できる非公式メモサイトです。</p></div><nav class="siteHeaderNav" aria-label="メインナビゲーション"><a href="./">今日の情報</a><a href="codes.html" class="active" aria-current="page">ギフトコード</a><a href="index.html#puzzles">パズル管理</a></nav></div></header>
+<main><div id="siteNotice" class="siteNotice" hidden></div><div class="card" id="gift-codes">
+        <details class="giftDetails" open>
+          <summary>ギフトコード</summary>
+          <div class="giftDetailsBody">
+            <p class="small">コピーで受取済。受取状態はタップで切替できます。</p>
+            <div class="giftBackupBox">
+              <div class="giftBackupLine">
+                <span id="giftBackupStatus" class="giftBackupState">受取済バックアップを準備中…</span>
+                <button id="giftBackupCopyBtn" type="button" class="secondary">復元コードをコピー</button>
+              </div>
+              <details class="giftBackupDetails">
+                <summary>バックアップと復元</summary>
+                <p class="small">受取済はこの端末とサーバーへ自動保存します。ブラウザのサイトデータを全部消した場合は復元コードが必要です。復元コードは他の人に共有しないでください。</p>
+                <div class="giftBackupRestoreGrid">
+                  <label for="giftBackupCodeInput">復元コード
+                    <input id="giftBackupCodeInput" autocomplete="off" spellcheck="false" placeholder="HGD-xxxx-xxxx-...">
+                  </label>
+                  <button id="giftBackupRestoreBtn" type="button" class="secondary">このコードで復元</button>
+                </div>
+                <div id="giftBackupRestoreStatus" class="status"></div>
+              </details>
+            </div>
+            <div id="giftCodeList" class="giftList"></div>
+            <details id="expiredGiftCodes" class="giftExpiredWrap">
+              <summary>期限切れコード</summary>
+              <div id="expiredGiftCodeList" class="giftList"></div>
+            </details>
+          </div>
+        </details>
+      </div>
+
+      <p id="giftCodeLoadStatus" class="status" role="status" aria-live="polite">ギフトコードを読み込み中…</p><footer class="siteFooter"><a href="index.html#about">このサイトについて</a></footer></main><div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script>
+"use strict";
+const WEATHER_API_URL="https://script.google.com/macros/s/AKfycbwoPLuj0rSsennsx01-B-6UxqBjqnPieocgVLQnJMKEgRw6fZziV5ZGVA3SusjVLF3o/exec";
+const GIFT_BACKUP_ID_KEY="heartopiaGiftClaimBackupId.v1";
+const ACCESS_SENT_DATE_KEY="heartopiaAccessSentDate.v1";
+const ACCESS_EXCLUDED_KEY="heartopiaAccessExcluded.v1";
+const GIFT_BACKUP_COOKIE="heartopiaGiftClaimBackupId";
+const GIFT_BACKUP_COOKIE_MAX_AGE=315360000;
+const E=Object.fromEntries(["giftCodeList","expiredGiftCodes","expiredGiftCodeList","giftBackupStatus","giftBackupCopyBtn","giftBackupCodeInput","giftBackupRestoreBtn","giftBackupRestoreStatus"].map(id=>[id,document.getElementById(id)]));
+let giftCodes=[],giftClaimRevision=0,giftBackupSyncInFlight=false;
+const pad=n=>String(n).padStart(2,"0");
+function gameToday(){const d=new Date();d.setHours(d.getHours()-6);return new Date(d.getFullYear(),d.getMonth(),d.getDate())}
+function esc(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
+function isAdminRoute(){return false}
+let toastTimeout;
+function toast(msg){const el=document.getElementById("toast");el.textContent=msg;el.classList.add("show");clearTimeout(toastTimeout);toastTimeout=setTimeout(()=>el.classList.remove("show"),1800)}
+async function apiPost(payload){const response=await fetch(WEATHER_API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)});if(!response.ok)throw Error("HTTP "+response.status);return response.json()}
+
+function parseGiftDateText(text){
+  const source = String(text || "")
+    .normalize("NFKC")
+    .replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+    .replace(/\r\n?/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .replace(/　/g, " ")
+    .replace(/[（(]\s*UTC\s*[+-]\s*\d+\s*[）)]/ig, " ")
+    .replace(/UTC\s*[+-]\s*\d+/ig, " ")
+    .replace(/まで/g, " ");
+  const time = source.match(/(\d{1,2})[:：](\d{2})/);
+  const hour = time ? Number(time[1]) : 23;
+  const minute = time ? Number(time[2]) : 59;
+  let m = source.match(/(20\d{2})\s*[年\/.-]\s*(\d{1,2})\s*[月\/.-]\s*(\d{1,2})\s*日?/);
+  if(m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}T${pad(hour)}:${pad(minute)}`;
+  m = source.match(/(\d{1,2})\s*[月\/.-]\s*(\d{1,2})\s*日?/);
+  if(m){
+    const now = gameToday();
+    let year = now.getFullYear();
+    const candidate = new Date(year, Number(m[1]) - 1, Number(m[2]), hour, minute);
+    if(candidate.getTime() < now.getTime() - 30 * 86400000) year++;
+    return `${year}-${pad(m[1])}-${pad(m[2])}T${pad(hour)}:${pad(minute)}`;
+  }
+  const parsed = new Date(source);
+  if(!Number.isNaN(parsed.getTime())) return `${parsed.getFullYear()}-${pad(parsed.getMonth()+1)}-${pad(parsed.getDate())}T${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
+  return "";
+}
+function normalizeGiftCode(item, order=0){
+  const rawStatus = String(item?.status || "active").trim().toLowerCase();
+  const status = ["active","expired","hidden"].includes(rawStatus) ? rawStatus : "active";
+  return {
+    id:String(item?.id || ""),
+    code:String(item?.code || "").trim(),
+    reward:String(item?.reward || "").trim(),
+    expiresAt:String(item?.expiresAt || "").trim(),
+    sourceUrl:String(item?.sourceUrl || "").trim(),
+    memo:String(item?.memo || "").trim(),
+    status,
+    createdAt:String(item?.createdAt || ""),
+    updatedAt:String(item?.updatedAt || ""),
+    order:Number(order) || 0
+  };
+}
+function giftDate(value){
+  const text = String(value || "").trim();
+  if(!text) return null;
+  const inputValue = parseGiftDateText(text);
+  if(inputValue && inputValue !== text){
+    const parsedInput = new Date(inputValue);
+    if(!Number.isNaN(parsedInput.getTime())) return parsedInput;
+  }
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(text) ? `${text}T23:59:59` : text;
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function giftExpired(item){
+  if(item.status === "expired") return true;
+  const d = giftDate(item.expiresAt);
+  return Boolean(d && d.getTime() < Date.now());
+}
+function giftVisible(item){ return item.code && item.status !== "hidden"; }
+function activeGiftCodes(){
+  return giftCodes.filter(item => giftVisible(item) && !giftExpired(item)).sort(giftCodeSort);
+}
+function expiredGiftCodes(){
+  return giftCodes.filter(item => giftVisible(item) && giftExpired(item)).sort(giftCodeSort);
+}
+function giftCodeSort(a, b){
+  const at = giftSortTime(a);
+  const bt = giftSortTime(b);
+  if(at != null && bt != null && at !== bt) return bt - at;
+  if(at != null && bt == null) return -1;
+  if(at == null && bt != null) return 1;
+  if(a.order !== b.order) return b.order - a.order;
+  return String(a.code).localeCompare(String(b.code), "ja");
+}
+function giftSortTime(item){
+  const updated = giftDate(item.updatedAt);
+  if(updated) return updated.getTime();
+  const created = giftDate(item.createdAt);
+  return created ? created.getTime() : null;
+}
+function giftExpiryText(value){
+  const d = giftDate(value);
+  if(!String(value || "").trim()) return "期限なし";
+  if(!d) return String(value);
+  return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}まで`;
+}
+function giftSourceUrl(url){
+  const text = String(url || "").trim();
+  return /^https:\/\/(?:x\.com|twitter\.com)\/(?:myheartopia|Heartopia_JP)\/status\/\d{15,25}(?:\?[^\s]*)?$/i.test(text) ? text : "";
+}
+function giftClaimKey(code){ return `giftCodeClaimed:${code}`; }
+function giftClaimed(code){ return localStorage.getItem(giftClaimKey(code)) === "1"; }
+function normalizeGiftBackupId(value){
+  const compact = String(value || "").trim().replace(/^HGD-/i,"").replace(/[\s-]/g,"").toLowerCase();
+  return /^[a-f0-9]{32}$/.test(compact) ? compact : "";
+}
+function giftBackupCookieValue(){
+  const prefix = GIFT_BACKUP_COOKIE + "=";
+  return document.cookie.split(";").map(part => part.trim()).find(part => part.startsWith(prefix))?.slice(prefix.length) || "";
+}
+function storeGiftBackupId(value){
+  const id = normalizeGiftBackupId(value);
+  if(!id) return "";
+  try{ localStorage.setItem(GIFT_BACKUP_ID_KEY, id); }catch(_){}
+  document.cookie = `${GIFT_BACKUP_COOKIE}=${id}; Max-Age=${GIFT_BACKUP_COOKIE_MAX_AGE}; Path=/; SameSite=Lax; Secure`;
+  return id;
+}
+function newGiftBackupId(){
+  try{
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return [...bytes].map(value => value.toString(16).padStart(2,"0")).join("");
+  }catch(_){
+    return "";
+  }
+}
+function giftBackupId(){
+  let id = "";
+  try{ id = normalizeGiftBackupId(localStorage.getItem(GIFT_BACKUP_ID_KEY)); }catch(_){}
+  if(!id) id = normalizeGiftBackupId(giftBackupCookieValue());
+  if(!id) id = newGiftBackupId();
+  return storeGiftBackupId(id);
+}
+function giftBackupDisplayCode(value){
+  const id = normalizeGiftBackupId(value);
+  return id ? "HGD-" + id.match(/.{1,4}/g).join("-") : "";
+}
+function localGiftClaimCodes(){
+  try{
+    return Object.keys(localStorage)
+      .filter(key => key.startsWith("giftCodeClaimed:") && localStorage.getItem(key) === "1")
+      .map(key => key.slice("giftCodeClaimed:".length))
+      .filter(Boolean);
+  }catch(_){
+    return [];
+  }
+}
+function applyGiftClaimCodes(codes){
+  (Array.isArray(codes) ? codes : []).forEach(code => {
+    const text = String(code || "").trim();
+    if(text) localStorage.setItem(giftClaimKey(text), "1");
+  });
+}
+function setGiftBackupStatus(text, isError=false){
+  if(E.giftBackupStatus){
+    E.giftBackupStatus.textContent = text;
+    E.giftBackupStatus.style.color = isError ? "#9a5b55" : "";
+  }
+}
+async function syncGiftClaimBackup(options={}){
+  if(isAdminRoute() || !WEATHER_API_URL) return null;
+  if(giftBackupSyncInFlight && !options.force) return null;
+  const id = normalizeGiftBackupId(options.backupId) || giftBackupId();
+  if(!id){
+    setGiftBackupStatus("受取済は端末内に保存中（バックアップ非対応）", true);
+    return null;
+  }
+  storeGiftBackupId(id);
+  const revision = giftClaimRevision;
+  giftBackupSyncInFlight = true;
+  setGiftBackupStatus("受取済をバックアップ中…");
+  try{
+    const result = await apiPost({
+      action:"syncGiftClaims",
+      backupId:id,
+      claims:localGiftClaimCodes()
+    });
+    if(result.ok === false) throw new Error(result.error || "バックアップできませんでした");
+    if(revision === giftClaimRevision){
+      applyGiftClaimCodes(result.claims || []);
+      renderGiftCodes();
+    }
+    setGiftBackupStatus(`受取済バックアップ済み（${(result.claims || []).length}件）`);
+    return result;
+  }catch(error){
+    setGiftBackupStatus("端末内には保存済み。サーバーバックアップは再試行します", true);
+    return null;
+  }finally{
+    giftBackupSyncInFlight = false;
+    if(revision !== giftClaimRevision && !options.noRetry){
+      setTimeout(() => syncGiftClaimBackup({force:true, noRetry:true}), 0);
+    }
+  }
+}
+async function pushGiftClaimState(code, claimed){
+  if(isAdminRoute() || !WEATHER_API_URL) return;
+  const id = giftBackupId();
+  if(!id) return;
+  try{
+    const result = await apiPost({
+      action:"setGiftClaimState",
+      backupId:id,
+      code:String(code || "").trim(),
+      claimed:Boolean(claimed)
+    });
+    if(result.ok === false) throw new Error(result.error || "バックアップできませんでした");
+    setGiftBackupStatus(`受取済バックアップ済み（${(result.claims || []).length}件）`);
+  }catch(_){
+    setGiftBackupStatus("端末内には保存済み。サーバーバックアップは再試行します", true);
+  }
+}
+function setGiftClaimed(code, claimed, options={}){
+  if(claimed) localStorage.setItem(giftClaimKey(code), "1");
+  else localStorage.removeItem(giftClaimKey(code));
+  giftClaimRevision++;
+  if(options.sync !== false) pushGiftClaimState(code, claimed);
+}
+async function copyGiftBackupCode(){
+  const id = giftBackupId();
+  const display = giftBackupDisplayCode(id);
+  if(!display){
+    if(E.giftBackupRestoreStatus) E.giftBackupRestoreStatus.textContent = "復元コードを作成できませんでした。";
+    return;
+  }
+  try{
+    await navigator.clipboard.writeText(display);
+    toast("復元コードをコピーしました");
+    if(E.giftBackupRestoreStatus) E.giftBackupRestoreStatus.textContent = "復元コードをコピーしました。安全な場所に保存してください。";
+  }catch(_){
+    E.giftBackupCodeInput.value = display;
+    E.giftBackupCodeInput.select();
+    if(E.giftBackupRestoreStatus) E.giftBackupRestoreStatus.textContent = "復元コードを表示しました。手動でコピーしてください。";
+  }
+}
+async function restoreGiftClaimsFromCode(){
+  const id = normalizeGiftBackupId(E.giftBackupCodeInput.value);
+  if(!id){
+    E.giftBackupRestoreStatus.textContent = "復元コードの形式を確認してください。";
+    return;
+  }
+  storeGiftBackupId(id);
+  E.giftBackupRestoreBtn.disabled = true;
+  E.giftBackupRestoreStatus.textContent = "受取済を復元中…";
+  try{
+    const result = await syncGiftClaimBackup({backupId:id, force:true});
+    if(!result) throw new Error("復元できませんでした");
+    E.giftBackupRestoreStatus.textContent = `受取済を復元しました（${(result.claims || []).length}件）。`;
+    E.giftBackupCodeInput.value = "";
+  }catch(error){
+    E.giftBackupRestoreStatus.textContent = `復元できませんでした：${error.message}`;
+  }finally{
+    E.giftBackupRestoreBtn.disabled = false;
+  }
+}
+function giftPublicMemo(value){
+  const text = String(value || "").trim();
+  if(!text) return "";
+  if(/^(?:投稿文から下書き|スクショ確認あり|公式Discord自動取得|公式X自動取得)(?:\s*\/\s*日本語名未確認:.*)?$/i.test(text)) return "";
+  return text;
+}
+function giftCardHtml(item, expired=false){
+  const claimed = giftClaimed(item.code);
+  return `
+    <div class="giftCard${claimed ? " claimed" : ""}${expired ? " expired" : ""}">
+      <div class="giftHead">
+        <code class="giftCodeText" data-gift-code-text="${esc(item.code)}">${esc(item.code)}</code>
+        <button type="button" class="giftCopy" data-gift-copy="${esc(item.code)}">コピー</button>
+        <button type="button" class="giftClaim${claimed ? " claimed" : ""}" data-gift-toggle="${esc(item.code)}">${claimed ? "受取済" : "未受取"}</button>
+      </div>
+      ${item.reward ? `<div class="giftReward">報酬：${esc(item.reward)}</div>` : ""}
+      <div class="giftMeta">
+        <div>期限：${esc(giftExpiryText(item.expiresAt))}</div>
+        ${giftPublicMemo(item.memo) ? `<div>メモ：${esc(giftPublicMemo(item.memo))}</div>` : ""}
+        ${giftSourceUrl(item.sourceUrl) ? `<div><a class="giftSource" href="${esc(giftSourceUrl(item.sourceUrl))}" target="_blank" rel="noopener noreferrer">情報源を見る</a></div>` : ""}
+      </div>
+    </div>
+  `;
+}
+function renderGiftCodes(){
+  if(!E.giftCodeList) return;
+  const active = activeGiftCodes();
+  const expired = expiredGiftCodes();
+  E.giftCodeList.innerHTML = active.length ? active.map(item => giftCardHtml(item)).join("") : `<p class="small">有効なギフトコードはありません。</p>`;
+  E.expiredGiftCodeList.innerHTML = expired.length ? expired.map(item => giftCardHtml(item, true)).join("") : `<p class="small">期限切れコードはありません。</p>`;
+  E.expiredGiftCodes.hidden = expired.length === 0;
+}
+
+function findGiftCodeInput(code){
+  return [...document.querySelectorAll(".giftCodeText")].find(node => node.dataset.giftCodeText === code);
+}
+
+async function copyGiftCode(code){
+  try{
+    await navigator.clipboard.writeText(code);
+    setGiftClaimed(code, true);
+    renderGiftCodes();
+    toast("ギフトコードをコピーしました");
+  }catch(error){
+    const input = findGiftCodeInput(code);
+    if(input){
+      const range = document.createRange();
+      range.selectNodeContents(input);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    toast("手動でコピーしてください");
+  }
+}
+
+
+function jstDateValue(date=new Date()){
+ const parts=new Intl.DateTimeFormat("ja-JP",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(date);
+ const values=Object.fromEntries(parts.map(part=>[part.type,part.value]));
+ return values.year+"-"+values.month+"-"+values.day;
+}
+function accessExcluded(){
+ try{return localStorage.getItem(ACCESS_EXCLUDED_KEY)==="1"}catch(error){return true}
+}
+function accessSentDate(){
+ try{return localStorage.getItem(ACCESS_SENT_DATE_KEY)||""}catch(error){return ""}
+}
+function setAccessSentDate(value){localStorage.setItem(ACCESS_SENT_DATE_KEY,value)}
+async function recordAccessIfNeeded(){
+ if(!WEATHER_API_URL||!navigator.locks?.request)return;
+ try{
+  await navigator.locks.request("heartopiaAccessRecord.v1",async()=>{
+   if(accessExcluded())return;
+   const today=jstDateValue(),sentDate=accessSentDate();
+   if(sentDate>=today)return;
+   setAccessSentDate(sentDate);
+   const result=await apiPost({action:"recordAccess"});
+   if(result.ok!==true||!/^\d{4}-\d{2}-\d{2}$/.test(result.date||""))return;
+   setAccessSentDate(result.date);
+  });
+ }catch(error){}
+}
+function normalizeSiteNotice(item){
+ return {noticeDate:String(item?.noticeDate||""),noticeText:String(item?.noticeText||"").trim(),updatedAt:String(item?.updatedAt||"")};
+}
+function noticeDateText(value){
+ const v=String(value||"").trim();
+ if(!v)return "";
+ const d=new Date(v+"T00:00:00");
+ if(Number.isNaN(d.getTime()))return v;
+ return d.getFullYear()+"/"+(d.getMonth()+1)+"/"+d.getDate();
+}
+async function fetchSiteNotice(){
+ const el=document.getElementById("siteNotice");
+ try{
+  const u=new URL(WEATHER_API_URL);u.searchParams.set("action","getSiteNotice");
+  const resp=await fetch(u);if(!resp.ok)throw Error("HTTP "+resp.status);
+  const data=await resp.json();if(data.ok===false)throw Error(data.error||"取得失敗");
+  const item=normalizeSiteNotice(data.notice);
+  if(!item.noticeText){el.hidden=true;return}
+  const day=noticeDateText(item.noticeDate);
+  el.innerHTML=(day?'<span class="siteNoticeDate">'+esc(day)+'</span>':"")+'<span>'+esc(item.noticeText)+'</span>';
+  el.hidden=false;
+ }catch(error){el.hidden=true}
+}
+async function fetchGiftCodes(){
+ const status=document.getElementById("giftCodeLoadStatus");
+ try{
+  const url=new URL(WEATHER_API_URL);url.searchParams.set("action","getGiftCodes");
+  const response=await fetch(url);if(!response.ok)throw Error("HTTP "+response.status);
+  const result=await response.json();if(result.ok===false)throw Error(result.error||"APIエラー");
+  giftCodes=(result.codes||[]).map((item,index)=>normalizeGiftCode(item,index)).filter(item=>item.code);
+  renderGiftCodes();status.hidden=true;await syncGiftClaimBackup();
+ }catch(error){status.textContent="ギフトコードを読み込めませんでした："+error.message}
+}
+[E.giftCodeList,E.expiredGiftCodeList].forEach(list=>list.addEventListener("click",event=>{
+ const copy=event.target.closest("[data-gift-copy]"),toggle=event.target.closest("[data-gift-toggle]");
+ if(copy)copyGiftCode(copy.dataset.giftCopy);
+ if(toggle){const code=toggle.dataset.giftToggle;setGiftClaimed(code,!giftClaimed(code));renderGiftCodes();}
+}));
+E.giftBackupCopyBtn.addEventListener("click",copyGiftBackupCode);
+E.giftBackupRestoreBtn.addEventListener("click",restoreGiftClaimsFromCode);
+E.giftBackupCodeInput.addEventListener("keydown",event=>{if(event.key==="Enter")restoreGiftClaimsFromCode()});
+fetchGiftCodes();
+recordAccessIfNeeded();
+fetchSiteNotice();
+
+</script></body></html>

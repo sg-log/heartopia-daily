@@ -1,0 +1,36 @@
+name: Heartopia site UI regression CI
+
+on:
+  pull_request:
+    paths:
+      - "index.html"
+      - "codes.html"
+      - "tools/test-site-ui.mjs"
+      - ".github/workflows/site-ui-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  ui-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TZ: Asia/Tokyo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Browser regression test with mocked API
+        run: node --test tools/test-site-ui.mjs
+      - name: Review screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heartopia-ui-review
+          path: site-ui-screenshots/
+          if-no-files-found: ignore
