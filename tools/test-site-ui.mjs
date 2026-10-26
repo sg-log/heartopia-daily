@@ -117,8 +117,14 @@ async function runScenario(width,height,label){
     });
     assert.equal(await page.locator('#weatherResult .focusWeatherChip').count(),3,'rainbow, meteor and rain shown without inventing dates');
     assert.equal(await page.locator('#weatherResult .focusWeatherChip').first().textContent().then(x=>x.includes('🌈')),true,'rainbow forecast icon');
-    const navBackground=await page.locator('.siteHeaderNav').evaluate(el=>getComputedStyle(el).backgroundColor);
-    assert.match(navBackground,/rgba?\(/,'translucent navigation background');
+    const navStyle=await page.locator('.siteHeaderNav').evaluate(el=>{
+      const style=getComputedStyle(el);
+      return {background:style.backgroundColor,border:style.borderTopWidth,shadow:style.boxShadow,position:style.position};
+    });
+    assert.ok(['rgba(0, 0, 0, 0)','transparent'].includes(navStyle.background),
+      'navigation is part of the header, not a floating capsule: '+JSON.stringify(navStyle));
+    assert.equal(navStyle.border,'0px','no detached navigation border');
+    assert.equal(navStyle.shadow,'none','no navigation container shadow');
     assert.equal(await page.locator('#gift-codes').isVisible(),false,'gift panel not visible on top');
     assert.equal(await page.locator('#siteFooter').isVisible(),true,'About link visible on TOP');
     const controls=await page.evaluate(()=>({
@@ -174,6 +180,13 @@ async function runScenario(width,height,label){
     await page.locator('#giftCodeList .giftCard').first().waitFor({state:'visible'});
     assert.equal(new URL(page.url()).pathname,'/codes.html');
     assert.equal(await page.locator('#siteFooter').count(),0,'About link absent from gift codes page');
+    const giftNav=await page.locator('.siteHeaderNav').evaluate(el=>{
+      const style=getComputedStyle(el);
+      return {background:style.backgroundColor,border:style.borderTopWidth,shadow:style.boxShadow};
+    });
+    assert.ok(['rgba(0, 0, 0, 0)','transparent'].includes(giftNav.background),'gift page nav has no detached white capsule');
+    assert.equal(giftNav.border,'0px');
+    assert.equal(giftNav.shadow,'none');
     const giftShape=await page.locator('#gift-codes').evaluate(el=>Number.parseFloat(getComputedStyle(el).borderTopLeftRadius));
     assert.ok(giftShape<=14,'squarer gift card');
     assert.equal(await page.locator('#giftCodeList .giftCard').count(),1);
