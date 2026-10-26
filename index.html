@@ -1090,20 +1090,20 @@ button.secondary,button.danger{border-radius:9px}
 .focusWeather{border-radius:11px}
 .focusWeatherChip{border-radius:8px}
 .focusWeatherEmpty{font-size:12px;font-weight:500;color:var(--muted);line-height:1.5}
-/* Soft, visually grouped navigation without pill-shaped buttons. */
+/* Navigation belongs to the title row; no detached background pill. */
 .siteHeaderNav{
-  gap:clamp(18px,2.8vw,32px);
-  padding:7px 15px 6px;
-  border:1px solid rgba(226,216,204,.72);
-  background:rgba(255,254,250,.67);
-  border-radius:12px;
-  box-shadow:0 4px 18px rgba(45,38,31,.035);
+  gap:clamp(22px,2.8vw,34px);
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
 }
-.siteHeaderNav .tab,.siteHeaderNav a{padding-top:5px;padding-bottom:7px}
+.siteHeaderNav .tab,.siteHeaderNav a{padding:7px 1px 9px}
 /* About entry is part of the TOP only. */
 #today:not(.active) ~ .siteFooter{display:none}
 @media(max-width:700px){
-  .siteHeaderNav{display:flex;width:max-content;max-width:100%;margin-top:12px;padding:5px 12px 4px;gap:clamp(12px,4vw,22px)}
+  .siteHeaderNav{display:flex;width:max-content;max-width:100%;margin-top:12px;padding:0;gap:clamp(16px,4vw,24px)}
   .siteHeaderNav .tab,.siteHeaderNav a{padding:5px 0 7px}
   .dateShortcuts button,.todayCard .shareTodayBtn{border-radius:8px}
 }
