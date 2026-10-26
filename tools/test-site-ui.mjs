@@ -107,6 +107,12 @@ async function runScenario(width,height,label){
     assert.equal(await page.locator('#weatherResult .weatherLine').count(),5,'weather five slots');
     assert.equal(await page.locator('#gift-codes').isVisible(),false,'gift panel not visible on top');
     assert.equal(await page.locator('#today .compactCopy details').count(),1,'Discord copy accordion');
+    await page.locator('#today .compactCopy > details > summary').click();
+    await page.locator('#copyBtn').click();
+    await page.locator('#copyStatus').filter({hasText:'コピーしました'}).waitFor({state:'visible'});
+    const discordCopy=await page.evaluate(()=>navigator.clipboard.readText());
+    assert.match(discordCopy,/UI_TEST_ACTIVE/,'Discord text still includes gift codes');
+    await page.locator('#today .compactCopy > details > summary').click();
     assert.equal(await page.locator('#tomorrowBtn').evaluate(el=>el.parentElement.contains(document.getElementById('shareTodayImageBtn'))),true,'share beside tomorrow');
 
     const overflow=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,view:window.innerWidth}));
@@ -114,6 +120,15 @@ async function runScenario(width,height,label){
 
     await mkdir(screenshots,{recursive:true});
     await page.screenshot({path:path.join(screenshots,label+'-home.png'),fullPage:true});
+    const shareDialogs=[];
+    page.on('dialog',async dialog=>{shareDialogs.push(dialog.message());await dialog.accept()});
+    await page.locator('#shareTodayImageBtn').click();
+    await page.waitForFunction(()=>document.querySelector('#toast')?.textContent?.includes('画像を'),{timeout:10000});
+    const shareResult=await page.locator('#toast').textContent();
+    assert.ok(
+      /画像をコピーしました|画像を保存しました/.test(shareResult),
+      'share icon returns usable image: '+shareResult+' dialogs='+shareDialogs.join(',')
+    );
 
     await page.locator('.siteHeaderNav button[data-tab="puzzles"]').click();
     assert.equal(await page.locator('#puzzles').isVisible(),true,'puzzles tab opens');
