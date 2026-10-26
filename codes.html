@@ -67,6 +67,8 @@ button{border:0;border-radius:999px;padding:9px 13px;background:var(--accent);co
 "use strict";
 const WEATHER_API_URL="https://script.google.com/macros/s/AKfycbwoPLuj0rSsennsx01-B-6UxqBjqnPieocgVLQnJMKEgRw6fZziV5ZGVA3SusjVLF3o/exec";
 const GIFT_BACKUP_ID_KEY="heartopiaGiftClaimBackupId.v1";
+const ACCESS_SENT_DATE_KEY="heartopiaAccessSentDate.v1";
+const ACCESS_EXCLUDED_KEY="heartopiaAccessExcluded.v1";
 const GIFT_BACKUP_COOKIE="heartopiaGiftClaimBackupId";
 const GIFT_BACKUP_COOKIE_MAX_AGE=315360000;
 const E=Object.fromEntries(["giftCodeList","expiredGiftCodes","expiredGiftCodeList","giftBackupStatus","giftBackupCopyBtn","giftBackupCodeInput","giftBackupRestoreBtn","giftBackupRestoreStatus"].map(id=>[id,document.getElementById(id)]));
@@ -382,6 +384,32 @@ async function copyGiftCode(code){
 }
 
 
+function jstDateValue(date=new Date()){
+ const parts=new Intl.DateTimeFormat("ja-JP",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(date);
+ const values=Object.fromEntries(parts.map(part=>[part.type,part.value]));
+ return values.year+"-"+values.month+"-"+values.day;
+}
+function accessExcluded(){
+ try{return localStorage.getItem(ACCESS_EXCLUDED_KEY)==="1"}catch(error){return true}
+}
+function accessSentDate(){
+ try{return localStorage.getItem(ACCESS_SENT_DATE_KEY)||""}catch(error){return ""}
+}
+function setAccessSentDate(value){localStorage.setItem(ACCESS_SENT_DATE_KEY,value)}
+async function recordAccessIfNeeded(){
+ if(!WEATHER_API_URL||!navigator.locks?.request)return;
+ try{
+  await navigator.locks.request("heartopiaAccessRecord.v1",async()=>{
+   if(accessExcluded())return;
+   const today=jstDateValue(),sentDate=accessSentDate();
+   if(sentDate>=today)return;
+   setAccessSentDate(sentDate);
+   const result=await apiPost({action:"recordAccess"});
+   if(result.ok!==true||!/^\d{4}-\d{2}-\d{2}$/.test(result.date||""))return;
+   setAccessSentDate(result.date);
+  });
+ }catch(error){}
+}
 async function fetchGiftCodes(){
  const status=document.getElementById("giftCodeLoadStatus");
  try{
@@ -401,5 +429,6 @@ E.giftBackupCopyBtn.addEventListener("click",copyGiftBackupCode);
 E.giftBackupRestoreBtn.addEventListener("click",restoreGiftClaimsFromCode);
 E.giftBackupCodeInput.addEventListener("keydown",event=>{if(event.key==="Enter")restoreGiftClaimsFromCode()});
 fetchGiftCodes();
+recordAccessIfNeeded();
 
 </script></body></html>
