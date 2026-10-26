@@ -1064,7 +1064,13 @@ input,select,textarea{font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMa
 .siteFooter{justify-self:stretch;border-top:1px solid var(--line);margin:28px 0 8px;padding:14px 5px 8px;text-align:right}
 .siteFooter a{font-size:12px;font-weight:700;color:var(--muted);text-decoration:none}
 .siteFooter a:hover{color:var(--accent2);text-decoration:underline}
+/* Admin-only return link; do not expose a new admin entry on public pages. */
+.siteAdminReturn{display:none;font-size:12px;font-weight:700;color:var(--muted);text-decoration:none;white-space:nowrap}
+.siteAdminReturn:hover{color:var(--accent2);text-decoration:underline}
 body.siteAdminRoute .siteHeaderNav,body.siteAdminRoute .siteFooter{display:none}
+body.siteAdminRoute .siteHeaderRow{justify-content:space-between;gap:16px}
+body.siteAdminRoute .siteAdminReturn{display:inline-block;margin-left:auto}
+@media(max-width:700px){body.siteAdminRoute .siteHeaderRow{display:flex;align-items:center}}
 @media(max-width:960px){.siteHeaderRow{gap:clamp(24px,4vw,54px)}.siteHeaderBrand h1{font-size:clamp(28px,3.9vw,38px)}.siteHeaderBrand p{white-space:normal;font-size:11px}.siteHeaderNav{gap:clamp(12px,2vw,24px)}.siteHeaderNav .tab,.siteHeaderNav a{font-size:13px}}
 @media(max-width:700px){.siteHeader{padding:14px 14px 1px}.siteHeaderRow{display:block;min-height:0}.siteHeaderBrand h1{font-size:27px}.siteHeaderBrand p{font-size:11px;line-height:1.5}.siteHeaderNav{margin-top:10px;gap:22px;max-width:100%;overflow-x:auto;scrollbar-width:none}.siteHeaderNav::-webkit-scrollbar{display:none}.siteHeaderNav .tab,.siteHeaderNav a{padding:6px 0 7px;font-size:12px}.siteFooter{margin:20px 2px 0}.todayCard .shareTodayBtn{width:34px;height:33px}}
 @media(max-width:370px){.siteHeaderNav{gap:14px}.siteHeaderNav .tab,.siteHeaderNav a{font-size:11px}}
@@ -1077,7 +1083,7 @@ body.siteAdminRoute .siteHeaderNav,body.siteAdminRoute .siteFooter{display:none}
 <button type="button" class="tab active" data-tab="today">今日の情報</button>
 <a href="codes.html" class="siteHeaderLink">ギフトコード</a>
 <button type="button" class="tab" data-tab="puzzles">パズル管理</button>
-</nav></div></header>
+</nav><a class="siteAdminReturn" id="adminReturnToTop" href="./">← TOPへ戻る</a></div></header>
 <main>
 <section class="tabs legacyTabs" hidden>
 <button class="tab" data-tab="weather">天気メモ</button>
@@ -6942,6 +6948,11 @@ function init(){
     sessionStorage.removeItem(ADMIN_SESSION_KEY);
     window.location.href = window.location.pathname;
   };
+  document.getElementById("adminReturnToTop")?.addEventListener("click", event => {
+    if(!isAdminRoute()) return;
+    event.preventDefault();
+    E.logoutAdminBtn.click();
+  });
 
   E.targetDate.onchange = renderToday;
   E.todayBtn.onclick = () => { E.targetDate.value = dateValue(gameToday()); renderToday(); };
