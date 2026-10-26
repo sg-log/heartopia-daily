@@ -184,3 +184,42 @@ async function runScenario(width,height,label){
 test('Heartopia Daily desktop: navigation, weather, gift code and existing features',{timeout:120000},async()=>runScenario(1280,900,'desktop'));
 test('Heartopia Daily mobile: navigation, weather, gift code and existing features',{timeout:120000},async()=>runScenario(390,844,'mobile'));
 test('Heartopia Daily tablet: navigation, weather, gift code and existing features',{timeout:120000},async()=>runScenario(768,1024,'tablet'));
+
+
+test('Admin gate and unlocked admin can return to TOP without retaining the session key',{timeout:120000},async()=>{
+  const server=await staticServer();
+  const browser=await chromium.launch({headless:true});
+  const origin='http://127.0.0.1:'+server.address().port;
+  try{
+    for(const width of [1280,390]){
+      const context=await browser.newContext({viewport:{width,height:900},timezoneId:'Asia/Tokyo'});
+      installApiMock(context);
+      const page=await context.newPage();
+      try{
+        await page.goto(origin+'/?admin=1',{waitUntil:'domcontentloaded'});
+        await page.locator('#admin .adminGate').waitFor({state:'visible',timeout:15000});
+        await page.locator('#adminReturnToTop').waitFor({state:'visible'});
+        assert.equal(await page.locator('.siteHeaderNav').isVisible(),false,'public navigation remains hidden on admin');
+        assert.equal(await page.locator('#siteFooter').isVisible(),false,'public About footer remains hidden on admin');
+        const widthState=await page.evaluate(()=>({view:innerWidth,doc:document.documentElement.scrollWidth}));
+        assert.ok(widthState.doc<=widthState.view+2,'admin gate no horizontal overflow '+JSON.stringify(widthState));
+
+        await page.locator('#adminReturnToTop').click();
+        await page.waitForURL(url=>!url.searchParams.has('admin'),{timeout:15000});
+        await page.locator('#today').waitFor({state:'visible',timeout:15000});
+
+        await page.evaluate(()=>sessionStorage.setItem('heartopiaAdminKey','ui-admin-test'));
+        await page.goto(origin+'/?admin=1',{waitUntil:'domcontentloaded'});
+        await page.locator('#admin .adminShell').waitFor({state:'visible',timeout:15000});
+        await page.locator('#adminReturnToTop').waitFor({state:'visible'});
+        await page.locator('#adminReturnToTop').click();
+        await page.waitForURL(url=>!url.searchParams.has('admin'),{timeout:15000});
+        await page.locator('#today').waitFor({state:'visible',timeout:15000});
+        assert.equal(await page.evaluate(()=>sessionStorage.getItem('heartopiaAdminKey')),null,'return closes admin session');
+      }finally{await context.close()}
+    }
+  }finally{
+    await browser.close();
+    await new Promise(resolve=>server.close(resolve));
+  }
+});
