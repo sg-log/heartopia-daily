@@ -145,6 +145,7 @@ async function runScenario(width,height,label){
     await page.locator('#giftBackupCopyBtn').click();
     const backupCode=await page.evaluate(()=>navigator.clipboard.readText());
     assert.match(backupCode,/^HGD-[0-9a-f-]{39}$/);
+    await page.locator('.giftBackupDetails > summary').click();
     await page.locator('#giftBackupCodeInput').fill(backupCode);
     await page.locator('#giftBackupRestoreBtn').click();
     await page.locator('#giftBackupRestoreStatus').filter({hasText:'受取済を復元しました'}).waitFor({state:'visible'});
