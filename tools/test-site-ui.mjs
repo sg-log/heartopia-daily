@@ -108,6 +108,8 @@ async function runScenario(width,height,label){
     await page.locator('#weatherResult .focusWeatherLabel').filter({hasText:'注目天気'}).waitFor({state:'visible',timeout:15000});
     const emptyFocus = await page.evaluate(()=>focusWeatherHtml(null,document.getElementById('targetDate').value));
     assert.ok(emptyFocus.includes('週間天気の登録待ち'),'missing weekly forecast keeps an informative focus block');
+    const sunnyFocus=await page.evaluate(()=>focusWeatherHtml({weeks:{week1:['晴'],week2:['晴']}},document.getElementById('targetDate').value));
+    assert.ok(sunnyFocus.includes('登録済み予報に注目天気はありません'),'sunny-only forecast keeps focus header without guessing events');
     await page.evaluate(()=>{
       const baseDate=document.getElementById('targetDate').value;
       setWeeklyForecastRecord({baseDate,weeks:{week1:['虹'],week2:['流星群'],week3:['雨']}});
@@ -155,6 +157,9 @@ async function runScenario(width,height,label){
     assert.equal(new URL(page.url()).hash,'#puzzles');
     await page.reload({waitUntil:'domcontentloaded'});
     await page.locator('#puzzles').waitFor({state:'visible',timeout:15000});
+    assert.equal(await page.locator('#siteFooter').isVisible(),false,'About stays hidden after reloading puzzles');
+    await page.locator('.siteHeaderNav button[data-tab="today"]').click();
+    await page.locator('#today').waitFor({state:'visible'});
     await page.locator('#aboutFooterLink').click();
     await page.locator('#about').waitFor({state:'visible'});
     assert.equal(await page.locator('#siteFooter').isVisible(),false,'About footer hidden while About panel is open');
