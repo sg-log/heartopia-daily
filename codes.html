@@ -9,7 +9,9 @@ h1{margin:0;color:var(--heading);font-size:clamp(29px,4.1vw,42px);line-height:1.
 .siteHeaderNav a{display:inline-block;padding:7px 1px 9px;color:var(--text);border-bottom:2px solid transparent;text-decoration:none;font-weight:700;font-size:14px}
 .siteHeaderNav a.active{color:var(--accent2);border-bottom-color:var(--accent)}.siteHeaderNav a:hover{color:var(--accent2)}
 main{padding:16px}.card{background:rgba(255,254,250,.96);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:0 6px 23px rgba(45,38,31,.055);max-width:820px}
-.small{font-size:12px;color:var(--muted)}.giftDetails>summary{cursor:pointer;font-size:20px;font-weight:900;color:var(--heading);list-style:none}.giftDetails>summary::-webkit-details-marker{display:none}.giftDetailsBody{margin-top:12px}
+.small{font-size:12px;color:var(--muted)}
+.siteNotice{width:fit-content;max-width:100%;margin:0 0 12px;padding:8px 11px;border:1px solid #e6e0d7;border-radius:10px;background:rgba(251,248,244,.78);color:var(--muted);font-size:12px;font-weight:700;line-height:1.5;text-align:left}
+.siteNoticeDate{color:var(--accent2);font-weight:900;margin-right:.6em}.giftDetails>summary{cursor:pointer;font-size:20px;font-weight:900;color:var(--heading);list-style:none}.giftDetails>summary::-webkit-details-marker{display:none}.giftDetailsBody{margin-top:12px}
 .giftList{display:grid;gap:10px}.giftCard{border:1px solid #e4ded5;background:#fffefa;border-radius:16px;padding:12px;display:grid;gap:8px}.giftCard.claimed{opacity:.68;background:#f8f7f3}.giftCard.expired{opacity:.62;background:#f3f1ed}
 .giftHead{display:flex;justify-content:flex-start;gap:8px;align-items:center;flex-wrap:wrap}
 .giftCodeText{display:inline-flex;align-items:center;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:18px;font-weight:900;color:var(--heading);letter-spacing:.02em;min-width:9ch;max-width:min(24ch,100%);background:#fbf8f4;border:1px solid #e7e0d6;border-radius:12px;padding:9px 11px;overflow:auto;white-space:nowrap}
@@ -31,7 +33,7 @@ button{border:0;border-radius:999px;padding:9px 13px;background:var(--accent);co
 @media(max-width:700px){header{padding:14px 14px 1px}.siteHeaderRow{display:block;min-height:0}h1{font-size:27px}.siteHeaderBrand p{line-height:1.5}.siteHeaderNav{margin-top:10px;gap:22px;overflow-x:auto}.siteHeaderNav a{font-size:12px;padding:6px 0 7px}main{padding:8px}.card{padding:14px}.giftBackupRestoreGrid{grid-template-columns:1fr}}
 </style></head><body>
 <header class="siteHeader"><div class="siteHeaderRow"><div class="siteHeaderBrand"><h1>Heartopia Daily</h1><p>今日の採取場所をさっと確認できる非公式メモサイトです。</p></div><nav class="siteHeaderNav" aria-label="メインナビゲーション"><a href="./">今日の情報</a><a href="codes.html" class="active" aria-current="page">ギフトコード</a><a href="index.html#puzzles">パズル管理</a></nav></div></header>
-<main><div class="card" id="gift-codes">
+<main><div id="siteNotice" class="siteNotice" hidden></div><div class="card" id="gift-codes">
         <details class="giftDetails" open>
           <summary>ギフトコード</summary>
           <div class="giftDetailsBody">
@@ -410,6 +412,29 @@ async function recordAccessIfNeeded(){
   });
  }catch(error){}
 }
+function normalizeSiteNotice(item){
+ return {noticeDate:String(item?.noticeDate||""),noticeText:String(item?.noticeText||"").trim(),updatedAt:String(item?.updatedAt||"")};
+}
+function noticeDateText(value){
+ const v=String(value||"").trim();
+ if(!v)return "";
+ const d=new Date(v+"T00:00:00");
+ if(Number.isNaN(d.getTime()))return v;
+ return d.getFullYear()+"/"+(d.getMonth()+1)+"/"+d.getDate();
+}
+async function fetchSiteNotice(){
+ const el=document.getElementById("siteNotice");
+ try{
+  const u=new URL(WEATHER_API_URL);u.searchParams.set("action","getSiteNotice");
+  const resp=await fetch(u);if(!resp.ok)throw Error("HTTP "+resp.status);
+  const data=await resp.json();if(data.ok===false)throw Error(data.error||"取得失敗");
+  const item=normalizeSiteNotice(data.notice);
+  if(!item.noticeText){el.hidden=true;return}
+  const day=noticeDateText(item.noticeDate);
+  el.innerHTML=(day?'<span class="siteNoticeDate">'+esc(day)+'</span>':"")+'<span>'+esc(item.noticeText)+'</span>';
+  el.hidden=false;
+ }catch(error){el.hidden=true}
+}
 async function fetchGiftCodes(){
  const status=document.getElementById("giftCodeLoadStatus");
  try{
@@ -430,5 +455,6 @@ E.giftBackupRestoreBtn.addEventListener("click",restoreGiftClaimsFromCode);
 E.giftBackupCodeInput.addEventListener("keydown",event=>{if(event.key==="Enter")restoreGiftClaimsFromCode()});
 fetchGiftCodes();
 recordAccessIfNeeded();
+fetchSiteNotice();
 
 </script></body></html>
