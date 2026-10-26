@@ -33,6 +33,15 @@ button{border:0;border-radius:999px;padding:9px 13px;background:var(--accent);co
 [hidden]{display:none!important}
 @media(max-width:960px){.siteHeaderRow{gap:clamp(24px,4vw,54px)}.siteHeaderNav{gap:clamp(12px,2vw,24px)}.siteHeaderNav a{font-size:13px}.siteHeaderBrand p{font-size:11px}}
 @media(max-width:700px){header{padding:14px 14px 1px}.siteHeaderRow{display:block;min-height:0}h1{font-size:27px}.siteHeaderBrand p{line-height:1.5}.siteHeaderNav{margin-top:10px;gap:22px;overflow-x:auto}.siteHeaderNav a{font-size:12px;padding:6px 0 7px}main{padding:8px}.card{padding:14px}.giftBackupRestoreGrid{grid-template-columns:1fr}}
+
+/* Match TOP's calmer, squarer controls and translucent navigation. */
+button,button.secondary,.giftClaim{border-radius:9px}
+.card{border-radius:13px}
+.giftCard{border-radius:11px}
+.giftCodeText,.giftBackupBox,.giftBackupRestoreGrid input{border-radius:9px}
+.siteHeaderNav{gap:clamp(22px,2.8vw,34px);padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+.siteHeaderNav a{padding:7px 1px 9px}
+@media(max-width:700px){.siteHeaderNav{width:max-content;max-width:100%;margin-top:12px;padding:0;gap:clamp(16px,4vw,24px)}.siteHeaderNav a{padding:5px 0 7px}}
 </style></head><body>
 <header class="siteHeader"><div class="siteHeaderRow"><div class="siteHeaderBrand"><h1>Heartopia Daily</h1><p>今日の採取場所をさっと確認できる非公式メモサイトです。</p></div><nav class="siteHeaderNav" aria-label="メインナビゲーション"><a href="./">今日の情報</a><a href="codes.html" class="active" aria-current="page">ギフトコード</a><a href="index.html#puzzles">パズル管理</a></nav></div></header>
 <main><div id="siteNotice" class="siteNotice" hidden></div><div class="card" id="gift-codes">
@@ -66,7 +75,7 @@ button{border:0;border-radius:999px;padding:9px 13px;background:var(--accent);co
         </details>
       </div>
 
-      <p id="giftCodeLoadStatus" class="status" role="status" aria-live="polite">ギフトコードを読み込み中…</p><footer class="siteFooter"><a href="index.html#about">このサイトについて</a></footer></main><div id="toast" class="toast" role="status" aria-live="polite"></div>
+      <p id="giftCodeLoadStatus" class="status" role="status" aria-live="polite">ギフトコードを読み込み中…</p></main><div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script>
 "use strict";
 const WEATHER_API_URL="https://script.google.com/macros/s/AKfycbwoPLuj0rSsennsx01-B-6UxqBjqnPieocgVLQnJMKEgRw6fZziV5ZGVA3SusjVLF3o/exec";

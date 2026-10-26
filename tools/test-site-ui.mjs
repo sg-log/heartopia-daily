@@ -105,7 +105,34 @@ async function runScenario(width,height,label){
     assert.equal(await page.locator('#todayResult .item img').count(),2,'stone/tree artwork');
     assert.equal(await page.locator('#weatherBirdClock img[src="assets/weather-bird-clock.png"]').count(),1,'bird clock');
     assert.equal(await page.locator('#weatherResult .weatherLine').count(),5,'weather five slots');
+    await page.locator('#weatherResult .focusWeatherLabel').filter({hasText:'注目天気'}).waitFor({state:'visible',timeout:15000});
+    const emptyFocus = await page.evaluate(()=>focusWeatherHtml(null,document.getElementById('targetDate').value));
+    assert.ok(emptyFocus.includes('週間天気の登録待ち'),'missing weekly forecast keeps an informative focus block');
+    const sunnyFocus=await page.evaluate(()=>focusWeatherHtml({weeks:{week1:['晴'],week2:['晴']}},document.getElementById('targetDate').value));
+    assert.ok(sunnyFocus.includes('登録済み予報に注目天気はありません'),'sunny-only forecast keeps focus header without guessing events');
+    await page.evaluate(()=>{
+      const baseDate=document.getElementById('targetDate').value;
+      setWeeklyForecastRecord({baseDate,weeks:{week1:['虹'],week2:['流星群'],week3:['雨']}});
+      renderToday();
+    });
+    assert.equal(await page.locator('#weatherResult .focusWeatherChip').count(),3,'rainbow, meteor and rain shown without inventing dates');
+    assert.equal(await page.locator('#weatherResult .focusWeatherChip').first().textContent().then(x=>x.includes('🌈')),true,'rainbow forecast icon');
+    const navStyle=await page.locator('.siteHeaderNav').evaluate(el=>{
+      const style=getComputedStyle(el);
+      return {background:style.backgroundColor,border:style.borderTopWidth,shadow:style.boxShadow,position:style.position};
+    });
+    assert.ok(['rgba(0, 0, 0, 0)','transparent'].includes(navStyle.background),
+      'navigation is part of the header, not a floating capsule: '+JSON.stringify(navStyle));
+    assert.equal(navStyle.border,'0px','no detached navigation border');
+    assert.equal(navStyle.shadow,'none','no navigation container shadow');
     assert.equal(await page.locator('#gift-codes').isVisible(),false,'gift panel not visible on top');
+    assert.equal(await page.locator('#siteFooter').isVisible(),true,'About link visible on TOP');
+    const controls=await page.evaluate(()=>({
+      date:Number.parseFloat(getComputedStyle(document.getElementById('targetDate')).borderTopLeftRadius),
+      today:Number.parseFloat(getComputedStyle(document.getElementById('todayBtn')).borderTopLeftRadius),
+      card:Number.parseFloat(getComputedStyle(document.getElementById('placeCard')).borderTopLeftRadius)
+    }));
+    assert.ok(controls.date<=10&&controls.today<=10&&controls.card<=14,'refined square controls '+JSON.stringify(controls));
     assert.equal(await page.locator('#today .compactCopy details').count(),1,'Discord copy accordion');
     await page.locator('#today .compactCopy > details > summary').click();
     await page.locator('#copyBtn').click();
@@ -119,6 +146,8 @@ async function runScenario(width,height,label){
     assert.ok(overflow.scroll<=overflow.view+2,'TOP page overflow: '+JSON.stringify(overflow));
 
     await mkdir(screenshots,{recursive:true});
+    // Transient copy feedback is not part of the settled review layout.
+    await page.locator('#toast').evaluate(el=>el.classList.remove('show'));
     await page.screenshot({path:path.join(screenshots,label+'-home.png'),fullPage:true});
     const shareDialogs=[];
     page.on('dialog',async dialog=>{shareDialogs.push(dialog.message());await dialog.accept()});
@@ -132,18 +161,34 @@ async function runScenario(width,height,label){
 
     await page.locator('.siteHeaderNav button[data-tab="puzzles"]').click();
     assert.equal(await page.locator('#puzzles').isVisible(),true,'puzzles tab opens');
+    assert.equal(await page.locator('#siteFooter').isVisible(),false,'About link hidden on puzzle view');
     assert.equal(new URL(page.url()).hash,'#puzzles');
     await page.reload({waitUntil:'domcontentloaded'});
     await page.locator('#puzzles').waitFor({state:'visible',timeout:15000});
+    assert.equal(await page.locator('#siteFooter').isVisible(),false,'About stays hidden after reloading puzzles');
+    await page.locator('.siteHeaderNav button[data-tab="today"]').click();
+    await page.locator('#today').waitFor({state:'visible'});
     await page.locator('#aboutFooterLink').click();
     await page.locator('#about').waitFor({state:'visible'});
+    assert.equal(await page.locator('#siteFooter').isVisible(),false,'About footer hidden while About panel is open');
     assert.equal(await page.locator('#about a[href="?admin=1"]').count(),1,'admin link remains inside About');
     await page.locator('.siteHeaderNav button[data-tab="today"]').click();
     await page.locator('#today').waitFor({state:'visible'});
+    assert.equal(await page.locator('#siteFooter').isVisible(),true,'About link returns with TOP');
 
     await page.locator('.siteHeaderNav a[href="codes.html"]').click();
     await page.locator('#giftCodeList .giftCard').first().waitFor({state:'visible'});
     assert.equal(new URL(page.url()).pathname,'/codes.html');
+    assert.equal(await page.locator('#siteFooter').count(),0,'About link absent from gift codes page');
+    const giftNav=await page.locator('.siteHeaderNav').evaluate(el=>{
+      const style=getComputedStyle(el);
+      return {background:style.backgroundColor,border:style.borderTopWidth,shadow:style.boxShadow};
+    });
+    assert.ok(['rgba(0, 0, 0, 0)','transparent'].includes(giftNav.background),'gift page nav has no detached white capsule');
+    assert.equal(giftNav.border,'0px');
+    assert.equal(giftNav.shadow,'none');
+    const giftShape=await page.locator('#gift-codes').evaluate(el=>Number.parseFloat(getComputedStyle(el).borderTopLeftRadius));
+    assert.ok(giftShape<=14,'squarer gift card');
     assert.equal(await page.locator('#giftCodeList .giftCard').count(),1);
     assert.equal(await page.locator('#expiredGiftCodeList .giftCard').count(),1);
     assert.equal(await page.locator('text=UI_TEST_HIDDEN').count(),0);
