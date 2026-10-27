@@ -10,8 +10,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
-<meta name="description" content="Heartopia Slow Lifeのツルツルオークと無垢な蛍石の場所を確認できる非公式メモサイトです。">
-<title>Heartopia Daily | 今日の採取場所メモ</title>
+<meta name="description" content="ハートピアスローライフの今日のツルツルオーク・無垢な蛍石の採取場所、当日の天気と週間予報を確認できる非公式サイト。ギフトコード一覧とパズル所持管理も利用できます。">
+<title>ハートピアの今日の採取場所・天気｜Heartopia Daily</title>
 <style>
 :root{
   --bg:#f5f0e8;
@@ -1108,6 +1108,22 @@ button.secondary,button.danger{border-radius:9px}
   .dateShortcuts button,.todayCard .shareTodayBtn{border-radius:8px}
 }
 </style>
+
+<link rel="canonical" href="https://sg-log.github.io/heartopia-daily/">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:site_name" content="Heartopia Daily">
+<meta property="og:title" content="ハートピアの今日の採取場所・天気｜Heartopia Daily">
+<meta property="og:description" content="ハートピアスローライフの今日のツルツルオーク・無垢な蛍石の採取場所、当日の天気と週間予報を確認できる非公式サイト。ギフトコード一覧とパズル所持管理も利用できます。">
+<meta property="og:url" content="https://sg-log.github.io/heartopia-daily/">
+<meta property="og:image" content="https://sg-log.github.io/heartopia-daily/assets/og-site.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Heartopia Daily — ハートピアの今日の採取場所・天気・ギフトコード">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="google-site-verification" content="AjKCfy55CZOxQcE-bZKSmUNJSynsaw1nAAnpoph_VYQ">
+<link rel="stylesheet" href="assets/site-privacy.css?v=20261027">
+<script src="assets/site-analytics.js?v=20261027"></script>
 </head>
 <body>
 <header class="siteHeader"><div class="siteHeaderRow">
@@ -1346,8 +1362,8 @@ button.secondary,button.danger{border-radius:9px}
       <div class="card s6">
         <h2>注意</h2>
         <p>
-          現在は身内テスト用の静的HTML版です。
-          今後、公開運用する場合はデータ更新方法を分けて整える予定です。
+          当日の情報を確認できる非公式の個人運営サイトです。
+          ゲーム内の表示と異なる場合は、ゲーム内の情報を優先してください。
         </p>
       </div>
     </div>
@@ -1676,6 +1692,7 @@ button.secondary,button.danger{border-radius:9px}
           </div>
           <div class="card s12">
             <h2>アクセス</h2>
+            <p class="small">日ごとのブラウザー数の目安です。同じブラウザーは1日1回まで集計します。検索語・流入元・リピーターはGoogleの管理画面で確認します。</p>
             <div id="accessStats" class="accessStats"></div>
             <div class="accessChartWrap">
               <div id="accessChart" class="accessChart"></div>
@@ -5680,10 +5697,10 @@ function setAccessSentDate(value){
 }
 
 async function recordAccessIfNeeded(){
-  if(!WEATHER_API_URL || isAdminRoute() || !navigator.locks?.request) return;
+  if(!WEATHER_API_URL || isAdminRoute() || !navigator.locks?.request || window.heartopiaAnalytics?.isExcluded() !== false) return;
   try{
     await navigator.locks.request("heartopiaAccessRecord.v1", async () => {
-      if(isAdminRoute() || accessExcluded()) return;
+      if(isAdminRoute() || accessExcluded() || window.heartopiaAnalytics?.isExcluded() !== false) return;
       const today = jstDateValue();
       const sentDate = accessSentDate();
       if(sentDate >= today) return;
@@ -5765,6 +5782,7 @@ function setupAccessControls(){
   E.accessExcludedToggle.onchange = () => {
     try{
       setAccessExcluded(E.accessExcludedToggle.checked);
+      window.dispatchEvent(new Event("heartopia:access-exclusion-change"));
     }catch(error){
       E.accessExcludedToggle.checked = accessExcluded();
       if(E.accessStatus) E.accessStatus.textContent = "除外設定を保存できませんでした。ブラウザの保存設定を確認してください。";
@@ -7370,5 +7388,12 @@ HeartopiaWeeklyAIImport.mount({
 <script>
 HeartopiaCalendar.start({apiUrl:WEATHER_API_URL,post:apiPost,adminKey:adminKeyValue,adminRoute:isAdminRoute(),onChange:()=>{renderWeather(E.targetDate.value,weatherData(E.targetDate.value));renderWeatherSummary();E.discordText.textContent=discord(E.targetDate.value,dayData(cycleDay(E.targetDate.value)),weatherData(E.targetDate.value));renderShareImagePreview(E.targetDate.value,dayData(cycleDay(E.targetDate.value)),weatherData(E.targetDate.value));}});
 </script>
+<section class="privacyTools" data-analytics-settings aria-label="利用状況の計測設定">
+<p><a href="privacy.html">プライバシー・計測について</a></p>
+<p data-analytics-status role="status">利用状況の計測は、許可するまで開始しません。</p>
+<div data-analytics-choices><button type="button" data-analytics-allow>許可する</button><button type="button" data-analytics-deny>許可しない</button></div>
+<button type="button" data-analytics-change hidden>計測設定を変更</button>
+</section>
 </body>
 </html>
+

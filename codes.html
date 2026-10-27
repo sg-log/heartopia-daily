@@ -1,4 +1,4 @@
-<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta name="description" content="ハートピアのギフトコードと受取済を管理する非公式メモサイトです。"><title>ギフトコード | Heartopia Daily</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800;900&display=swap" rel="stylesheet"><style>
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta name="description" content="ハートピアスローライフのギフトコードと報酬・交換期限を一覧で確認。コピーと受取済チェック、受取状態のバックアップに対応した非公式サイトです。"><title>ハートピアのギフトコード一覧｜Heartopia Daily</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800;900&display=swap" rel="stylesheet"><style>
 :root{--bg:#f5f0e8;--card:#fffefa;--text:#5f5953;--heading:#3f3a36;--muted:#7a746d;--line:#e2d8cc;--accent:#7c9189;--accent2:#5d746b;--soft:#edf3ef}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 0 0,rgba(124,145,137,.2),transparent 34%),var(--bg);color:var(--text);font:14px/1.7 "Noto Sans JP",system-ui,sans-serif}
 header,main{width:min(1080px,100%);margin:auto}header{padding:24px 18px 6px}
@@ -42,7 +42,22 @@ button,button.secondary,.giftClaim{border-radius:9px}
 .siteHeaderNav{gap:clamp(22px,2.8vw,34px);padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
 .siteHeaderNav a{padding:7px 1px 9px}
 @media(max-width:700px){.siteHeaderNav{width:max-content;max-width:100%;margin-top:12px;padding:0;gap:clamp(16px,4vw,24px)}.siteHeaderNav a{padding:5px 0 7px}}
-</style></head><body>
+</style>
+<link rel="canonical" href="https://sg-log.github.io/heartopia-daily/codes.html">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:site_name" content="Heartopia Daily">
+<meta property="og:title" content="ハートピアのギフトコード一覧｜Heartopia Daily">
+<meta property="og:description" content="ハートピアスローライフのギフトコードと報酬・交換期限を一覧で確認。コピーと受取済チェック、受取状態のバックアップに対応した非公式サイトです。">
+<meta property="og:url" content="https://sg-log.github.io/heartopia-daily/codes.html">
+<meta property="og:image" content="https://sg-log.github.io/heartopia-daily/assets/og-site.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Heartopia Daily — ハートピアの今日の採取場所・天気・ギフトコード">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="assets/site-privacy.css?v=20261027">
+<script src="assets/site-analytics.js?v=20261027"></script>
+</head><body>
 <header class="siteHeader"><div class="siteHeaderRow"><div class="siteHeaderBrand"><h1>Heartopia Daily</h1><p>今日の採取場所をさっと確認できる非公式メモサイトです。</p></div><nav class="siteHeaderNav" aria-label="メインナビゲーション"><a href="./">今日の情報</a><a href="codes.html" class="active" aria-current="page">ギフトコード</a><a href="index.html#puzzles">パズル管理</a></nav></div></header>
 <main><div id="siteNotice" class="siteNotice" hidden></div><div class="card" id="gift-codes">
         <details class="giftDetails" open>
@@ -410,10 +425,10 @@ function accessSentDate(){
 }
 function setAccessSentDate(value){localStorage.setItem(ACCESS_SENT_DATE_KEY,value)}
 async function recordAccessIfNeeded(){
- if(!WEATHER_API_URL||!navigator.locks?.request)return;
+ if(!WEATHER_API_URL||!navigator.locks?.request||window.heartopiaAnalytics?.isExcluded()!==false)return;
  try{
   await navigator.locks.request("heartopiaAccessRecord.v1",async()=>{
-   if(accessExcluded())return;
+   if(accessExcluded()||window.heartopiaAnalytics?.isExcluded()!==false)return;
    const today=jstDateValue(),sentDate=accessSentDate();
    if(sentDate>=today)return;
    setAccessSentDate(sentDate);
@@ -468,4 +483,10 @@ fetchGiftCodes();
 recordAccessIfNeeded();
 fetchSiteNotice();
 
-</script></body></html>
+</script><section class="privacyTools" data-analytics-settings aria-label="利用状況の計測設定">
+<p><a href="privacy.html">プライバシー・計測について</a></p>
+<p data-analytics-status role="status">利用状況の計測は、許可するまで開始しません。</p>
+<div data-analytics-choices><button type="button" data-analytics-allow>許可する</button><button type="button" data-analytics-deny>許可しない</button></div>
+<button type="button" data-analytics-change hidden>計測設定を変更</button>
+</section>
+</body></html>

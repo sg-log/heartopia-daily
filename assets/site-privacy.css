@@ -1,0 +1,6 @@
+.privacyTools{max-width:1100px;margin:24px auto 0;padding:12px 16px;color:#7a746d;font:12px/1.8 sans-serif;text-align:center}
+.privacyTools a{color:inherit;text-decoration:underline}
+.privacyTools p{margin:4px 0}
+.privacyTools button{display:inline-block;width:auto;min-width:0;margin:4px;padding:6px 12px;border:1px solid #d7cbbc;border-radius:8px;background:#fffefa;color:#5f5953;font:inherit;cursor:pointer}
+.privacyTools button:hover{background:#f5f0e8}
+.privacyTools [hidden]{display:none!important}
