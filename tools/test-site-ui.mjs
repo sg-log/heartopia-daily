@@ -99,7 +99,7 @@ async function runScenario(width,height,label){
   try{
     await page.goto(origin+'/index.html',{waitUntil:'domcontentloaded'});
     await page.locator('#todayResult .item').first().waitFor({state:'visible'});
-    await page.waitForFunction(()=>document.querySelector('#discordText')?.textContent?.includes('UI_TEST_ACTIVE'),{timeout:15000});
+    await page.waitForFunction(()=>document.querySelector('#giftCodeList')?.textContent?.includes('UI_TEST_ACTIVE'),{timeout:15000});
     await page.locator('#weatherResult a[href="https://heartopia.th.gl/forecast"]').waitFor({state:'attached',timeout:15000});
 
     assert.equal(await page.locator('#todayResult .item img').count(),2,'stone/tree artwork');
@@ -139,7 +139,9 @@ async function runScenario(width,height,label){
     await page.locator('#copyBtn').click();
     await page.locator('#copyStatus').filter({hasText:'コピーしました'}).waitFor({state:'visible'});
     const discordCopy=await page.evaluate(()=>navigator.clipboard.readText());
-    assert.match(discordCopy,/UI_TEST_ACTIVE/,'Discord text still includes gift codes');
+    assert.doesNotMatch(discordCopy,/【ギフトコード】|UI_TEST_ACTIVE|UI_TEST_OLD|UI_TEST_HIDDEN|テスト報酬/,'Discord text omits gift codes even when active codes exist');
+    assert.match(discordCopy,/無垢な蛍石：.+/,'Discord text keeps fluorite locations');
+    assert.match(discordCopy,/ツルツルオーク：.+/,'Discord text keeps oak locations');
     assert.equal(discordCopy.split('https://sg-log.github.io/heartopia-daily/').length-1,1,'Discord text includes the public site URL once');
     assert.match(discordCopy,/時間別予報：TH.GL\r?\nhttps:\/\/heartopia.th.gl\/forecast/,'TH.GL credit remains in shared text');
     await page.locator('#today .compactCopy > details > summary').click();

@@ -5303,10 +5303,8 @@ function discord(dateStr, data, weather){
   const startSlot = normalizeStartSlot(weather?.startSlot);
   const slot = currentSlot(startSlot);
   const w = globalThis.HeartopiaCalendar?.active() ? "" : weather && slot ? weatherText(weather.slots[slot], slot, startSlot, "") : "";
-  const gifts = activeGiftCodes();
   const calendarLink = globalThis.HeartopiaCalendar?.active() ? "\n時間別予報：TH.GL\nhttps://heartopia.th.gl/forecast\n" : "";
-  const giftText = gifts.length ? `\n\n【ギフトコード】\n${gifts.map(item => `${item.code}${item.reward ? `\n報酬：${item.reward}` : ""}\n期限：${giftExpiryText(item.expiresAt)}`).join("\n\n")}` : "";
-  return `【今日の採取メモ】\n\n日付：${jpDate(dateStr)}\n\n無垢な蛍石：${data.fluorite || "未入力"}\nツルツルオーク：${data.oak || "未入力"}\n${w ? `\nいまの天気：${w}\n` : ""}${calendarLink}${giftText}\n※観測データをもとにした非公式の予想です。\n\nHeartopia Daily\n${PUBLIC_SITE_URL}`;
+  return `【今日の採取メモ】\n\n日付：${jpDate(dateStr)}\n\n無垢な蛍石：${data.fluorite || "未入力"}\nツルツルオーク：${data.oak || "未入力"}\n${w ? `\nいまの天気：${w}\n` : ""}${calendarLink}\n※観測データをもとにした非公式の予想です。\n\nHeartopia Daily\n${PUBLIC_SITE_URL}`;
 }
 
 function renderToday(){
