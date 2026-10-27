@@ -71,9 +71,8 @@
     window.gtag('config', ID, Object.assign({
       send_page_view: false, allow_google_signals: false, allow_ad_personalization_signals: false,
       cookie_domain: 'none', cookie_path: '/heartopia-daily/', cookie_expires: 60 * 60 * 24 * 395,
-      cookie_flags: 'SameSite=Lax;Secure',
-      debug_mode: new URL(location.href).searchParams.get('analytics_debug') === '1'
-    }, pageInfo(), campaign()));
+      cookie_flags: 'SameSite=Lax;Secure'
+    }, pageInfo(), campaign(), new URL(location.href).searchParams.get('analytics_debug') === '1' ? { debug_mode: true } : {}));
     window.gtag('event', 'page_view', Object.assign({ send_to: ID }, pageInfo(), campaign()));
     const script = document.createElement('script');
     script.id = 'heartopia-ga4';

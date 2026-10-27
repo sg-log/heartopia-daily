@@ -73,7 +73,7 @@ test('codes page uses a fixed title and URL',()=>{
  const s=boot({url:'https://sg-log.github.io/heartopia-daily/codes.html',storage:{[CONSENT]:'granted'},referrer:'https://google.com/search?q=DO_NOT_SEND'});s.init();const c=s.commands().find(c=>c[0]==='config')[2];assert.equal(c.page_location,'https://sg-log.github.io/heartopia-daily/codes.html');assert.equal(c.page_referrer,'https://google.com/');assert.match(c.page_title,/ギフトコード一覧/);
 });
 test('advertising disabled and automatic pageviews disabled; debug is explicit',()=>{
- const s=boot({storage:{[CONSENT]:'granted'}});s.init();const c=s.commands().find(c=>c[0]==='config')[2];assert.equal(c.send_page_view,false);assert.equal(c.allow_google_signals,false);assert.equal(c.allow_ad_personalization_signals,false);assert.equal(c.debug_mode,false);assert.equal(c.cookie_path,'/heartopia-daily/');
+ const s=boot({storage:{[CONSENT]:'granted'}});s.init();const c=s.commands().find(c=>c[0]==='config')[2];assert.equal(c.send_page_view,false);assert.equal(c.allow_google_signals,false);assert.equal(c.allow_ad_personalization_signals,false);assert.equal(Object.hasOwn(c,'debug_mode'),false);assert.equal(c.cookie_path,'/heartopia-daily/');
  const debug=boot({url:'https://sg-log.github.io/heartopia-daily/?analytics_debug=1',storage:{[CONSENT]:'granted'}});debug.init();assert.equal(debug.commands().find(c=>c[0]==='config')[2].debug_mode,true);
 });
 test('withdrawal disables GA, reloads and removes only this stream cookies',()=>{
