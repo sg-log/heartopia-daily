@@ -645,23 +645,25 @@ test('Japanese evidence replaces English pending evidence without new alerts or 
   assert.deepEqual(h.events.notifications, []);
 });
 
-test('friend notifications omit private Discord sources and retain official X posts', () => {
+test('friend notifications contain only the announcement, escaped code and gift page with previews suppressed', () => {
   const h = makeHarness();
   const api = fs.readFileSync(new URL('../apps-script/weather-api.gs', import.meta.url), 'utf8');
   h.context.HEARTOPIA_DAILY_URL = 'https://sg-log.github.io/heartopia-daily/';
-  h.context.inlineDiscordCode_ = code => code;
   h.context.formatDiscordGiftExpiry_ = text => text;
   h.properties.set('DISCORD_WEBHOOK_URL', 'https://discord.com/api/webhooks/test-only');
-  vm.runInContext(api.slice(api.indexOf('function notifyDiscordGiftCode_'), api.indexOf('function inlineDiscordCode_')), h.context);
+  vm.runInContext(api.slice(api.indexOf('function notifyDiscordGiftCode_'), api.indexOf('function sanitizeDiscordText_')), h.context);
   const privateUrl = 'https://discord.com/channels/111/222/333';
-  h.context.notifyDiscordGiftCode_(candidate({ sourceUrl: privateUrl }));
-  let text = JSON.parse(h.events.reviewFetches.at(-1).payload).content;
-  assert.ok(!text.includes(privateUrl));
-  assert.ok(!text.includes('元ポスト'));
   const official = 'https://x.com/Heartopia_JP/status/2106957555713085600';
-  h.context.notifyDiscordGiftCode_(candidate({ sourceUrl: official }));
-  text = JSON.parse(h.events.reviewFetches.at(-1).payload).content;
-  assert.ok(text.includes(official));
+  for (const sourceUrl of [privateUrl, official]) {
+    const result = h.context.notifyDiscordGiftCode_(candidate({ code: 'p7k5a3n9r2m8', sourceUrl }));
+    assert.equal(result.notified, true);
+    const payload = JSON.parse(h.events.reviewFetches.at(-1).payload);
+    assert.equal(payload.content, '🎁 新しいギフトコードを追加しました！\n\nコード：`p7k5a3n9r2m8`\n\nhttps://sg-log.github.io/heartopia-daily/codes.html');
+    assert.equal(payload.flags, 4);
+    assert.deepEqual(payload.allowed_mentions, { parse: [] });
+  }
+  h.context.notifyDiscordGiftCode_(candidate({ code: 'abc`123' }));
+  assert.ok(JSON.parse(h.events.reviewFetches.at(-1).payload).content.includes('コード：`abc123`'));
 });
 
 test('a queued approval cannot overwrite a code registered or hidden concurrently', () => {

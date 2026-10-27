@@ -670,19 +670,10 @@ function notifyDiscordGiftCode_(item) {
     const lines = [
       "🎁 新しいギフトコードを追加しました！",
       "",
-      "コード：" + inlineDiscordCode_(item.code)
+      "コード：" + inlineDiscordCode_(item.code),
+      "",
+      HEARTOPIA_DAILY_URL + "codes.html"
     ];
-    if (item.reward) {
-      lines.push("報酬：", sanitizeDiscordText_(item.reward));
-    }
-    if (item.expiresAt) {
-      lines.push("", "期限：" + formatDiscordGiftExpiry_(item.expiresAt));
-    }
-    const officialSource = String(item.sourceUrl || "").trim();
-    if (/^https:\/\/(?:x\.com|twitter\.com)\/(?:myheartopia|Heartopia_JP)\/status\/\d{15,25}(?:\?[^\s]*)?$/i.test(officialSource)) {
-      lines.push("", "元ポスト：" + sanitizeDiscordUrl_(officialSource));
-    }
-    lines.push("", "Heartopia Daily：", HEARTOPIA_DAILY_URL);
 
     const response = UrlFetchApp.fetch(webhookUrl, {
       method: "post",
@@ -690,6 +681,7 @@ function notifyDiscordGiftCode_(item) {
       muteHttpExceptions: true,
       payload: JSON.stringify({
         content: lines.join("\n"),
+        flags: 4, // SUPPRESS_EMBEDS: keep the notification compact.
         allowed_mentions: { parse: [] }
       })
     });
