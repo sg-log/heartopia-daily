@@ -1799,6 +1799,7 @@ button.secondary,button.danger{border-radius:9px}
 <script src="assets/weather-screenshot-core.js"></script>
 <script src="assets/weekly-ai-import.js?v=20261020"></script>
 <script>
+const PUBLIC_SITE_URL = "https://sg-log.github.io/heartopia-daily/";
 const WEATHER_API_URL = "https://script.google.com/macros/s/AKfycbwoPLuj0rSsennsx01-B-6UxqBjqnPieocgVLQnJMKEgRw6fZziV5ZGVA3SusjVLF3o/exec";
 const WEATHER_OPTIONS = [
   { value:"晴", label:"晴" },
@@ -5207,7 +5208,7 @@ async function shareShareImageFile(statusEl){
       await saveShareImageFile(statusEl, `${fallbackMessage} 画像を保存しました。`);
       return;
     }
-    await navigator.share({files:[file], title:"Heartopia Daily", text:"今日の採取場所メモ"});
+    await navigator.share({files:[file], title:"Heartopia Daily", text:`今日の採取場所メモ\n${PUBLIC_SITE_URL}`});
     if(statusEl) statusEl.textContent = "共有を開きました";
     toast("共有を開きました");
     return;
@@ -5280,7 +5281,7 @@ async function sharePlaceCardImageFile(){
   if(isMobileShareDevice() && navigator.share && window.File && navigator.canShare){
     const file = new File([blob], `heartopia-place-${date}.png`, {type:"image/png"});
     if(navigator.canShare({files:[file]})){
-      await navigator.share({files:[file], title:"Heartopia Daily", text:"今日の採取場所メモ"});
+      await navigator.share({files:[file], title:"Heartopia Daily", text:`今日の採取場所メモ\n${PUBLIC_SITE_URL}`});
       toast("共有を開きました");
       return;
     }
@@ -5305,7 +5306,7 @@ function discord(dateStr, data, weather){
   const gifts = activeGiftCodes();
   const calendarLink = globalThis.HeartopiaCalendar?.active() ? "\n時間別予報：TH.GL\nhttps://heartopia.th.gl/forecast\n" : "";
   const giftText = gifts.length ? `\n\n【ギフトコード】\n${gifts.map(item => `${item.code}${item.reward ? `\n報酬：${item.reward}` : ""}\n期限：${giftExpiryText(item.expiresAt)}`).join("\n\n")}` : "";
-  return `【今日の採取メモ】\n\n日付：${jpDate(dateStr)}\n\n無垢な蛍石：${data.fluorite || "未入力"}\nツルツルオーク：${data.oak || "未入力"}\n${w ? `\nいまの天気：${w}\n` : ""}${calendarLink}${giftText}\n※観測データをもとにした非公式の予想です。`;
+  return `【今日の採取メモ】\n\n日付：${jpDate(dateStr)}\n\n無垢な蛍石：${data.fluorite || "未入力"}\nツルツルオーク：${data.oak || "未入力"}\n${w ? `\nいまの天気：${w}\n` : ""}${calendarLink}${giftText}\n※観測データをもとにした非公式の予想です。\n\nHeartopia Daily\n${PUBLIC_SITE_URL}`;
 }
 
 function renderToday(){

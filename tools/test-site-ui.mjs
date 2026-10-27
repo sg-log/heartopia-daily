@@ -140,6 +140,8 @@ async function runScenario(width,height,label){
     await page.locator('#copyStatus').filter({hasText:'コピーしました'}).waitFor({state:'visible'});
     const discordCopy=await page.evaluate(()=>navigator.clipboard.readText());
     assert.match(discordCopy,/UI_TEST_ACTIVE/,'Discord text still includes gift codes');
+    assert.equal(discordCopy.split('https://sg-log.github.io/heartopia-daily/').length-1,1,'Discord text includes the public site URL once');
+    assert.match(discordCopy,/時間別予報：TH.GL\r?\nhttps:\/\/heartopia.th.gl\/forecast/,'TH.GL credit remains in shared text');
     await page.locator('#today .compactCopy > details > summary').click();
     assert.equal(await page.locator('#tomorrowBtn').evaluate(el=>el.parentElement.contains(document.getElementById('shareTodayImageBtn'))),true,'share beside tomorrow');
 
@@ -230,6 +232,58 @@ async function runScenario(width,height,label){
 test('Heartopia Daily desktop: navigation, weather, gift code and existing features',{timeout:120000},async()=>runScenario(1280,900,'desktop'));
 test('Heartopia Daily mobile: navigation, weather, gift code and existing features',{timeout:120000},async()=>runScenario(390,844,'mobile'));
 test('Heartopia Daily tablet: navigation, weather, gift code and existing features',{timeout:120000},async()=>runScenario(768,1024,'tablet'));
+
+test('Image sharing includes the canonical public URL without private route data and keeps save fallback',{timeout:120000},async()=>{
+  const server=await staticServer();
+  const browser=await chromium.launch({headless:true});
+  try{
+    const context=await browser.newContext({viewport:{width:390,height:844},timezoneId:'Asia/Tokyo',userAgent:'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36'});
+    installApiMock(context);
+    await context.addInitScript(()=>{
+      window.sharedForTest=[];
+      window.shareSupportedForTest=true;
+      Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>window.shareSupportedForTest});
+      Object.defineProperty(navigator,'share',{configurable:true,value:async data=>{
+        window.sharedForTest.push({title:data.title,text:data.text,url:data.url,files:data.files.map(file=>({name:file.name,type:file.type,size:file.size}))});
+      }});
+    });
+    const page=await context.newPage(),errors=[];
+    page.on('pageerror',error=>errors.push(error.message));
+    page.on('dialog',dialog=>dialog.accept());
+    await page.goto('http://127.0.0.1:'+server.address().port+'/index.html',{waitUntil:'domcontentloaded'});
+    await page.locator('#todayResult .item').first().waitFor({state:'visible'});
+    await page.locator('#weatherResult a[href="https://heartopia.th.gl/forecast"]').waitFor({state:'attached'});
+    // The share destination must never be derived from the current address.
+    await page.evaluate(()=>history.replaceState(null,'','?admin=1&pending=DO_NOT_SHARE&restoreId=DO_NOT_SHARE#weekly-import=DO_NOT_SHARE'));
+    await page.locator('#shareTodayImageBtn').click();
+    await page.waitForFunction(()=>window.sharedForTest.length===1);
+    await page.locator('#today .compactCopy > details > summary').click();
+    await page.locator('#shareImageBtn').click();
+    await page.waitForFunction(()=>window.sharedForTest.length===2);
+    const payloads=await page.evaluate(()=>window.sharedForTest);
+    for(const payload of payloads){
+      assert.equal(payload.title,'Heartopia Daily');
+      assert.equal(payload.text,'今日の採取場所メモ\nhttps://sg-log.github.io/heartopia-daily/');
+      assert.doesNotMatch(JSON.stringify(payload),/DO_NOT_SHARE|admin=|pending=|restoreId=|weekly-import=/);
+      assert.equal(payload.files.length,1);
+      assert.equal(payload.files[0].type,'image/png');
+      assert.ok(payload.files[0].size>0);
+    }
+    assert.match(payloads[0].files[0].name,/^heartopia-place-\d{4}-\d{2}-\d{2}\.png$/);
+    assert.match(payloads[1].files[0].name,/^heartopia-daily-\d{4}-\d{2}-\d{2}\.png$/);
+    await page.evaluate(()=>{window.shareSupportedForTest=false;});
+    const downloadPromise=page.waitForEvent('download');
+    await page.locator('#shareTodayImageBtn').click();
+    const download=await downloadPromise;
+    assert.match(download.suggestedFilename(),/^heartopia-place-.*\.png$/);
+    assert.equal(await page.evaluate(()=>window.sharedForTest.length),2,'unsupported native sharing keeps the image-save fallback');
+    assert.deepEqual(errors,[]);
+    await context.close();
+  }finally{
+    await browser.close();
+    await new Promise(resolve=>server.close(resolve));
+  }
+});
 
 
 test('Admin gate and unlocked admin can return to TOP without retaining the session key',{timeout:120000},async()=>{
