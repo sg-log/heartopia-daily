@@ -359,7 +359,7 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 .shareImageTools + .shareImageTitle{margin-top:14px}
 .shareImagePreview{
   width:min(100%,720px);
-  aspect-ratio:16/9;
+  aspect-ratio:auto;
   border:1px solid #e4ded5;
   border-radius:18px;
   background:linear-gradient(135deg,#fffefa,#f5f0e8);
@@ -403,13 +403,19 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
 .shareImagePlaceLabel{font-size:12px;font-weight:800;color:var(--muted)}
 .shareImagePlaceValue{font-size:24px;font-weight:950;color:var(--heading);line-height:1.2}
 .shareImageSectionTitle{font-size:12px;font-weight:900;color:var(--accent2);margin-bottom:4px}
-.shareImageWeatherLine,.shareImageWeeklyLine,.shareImageFocusLine{
+.shareImageWeeklyLine{
   font-size:13px;
   font-weight:800;
   color:var(--body);
   line-height:1.35;
 }
-.shareImageFocusLine{color:var(--accent2)}
+.shareImageWeekGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;text-align:center}
+.shareImageWeekCell{min-width:0;background:#f7faf7;border:1px solid #dde6df;border-radius:9px;padding:7px 2px;display:grid;align-content:start;gap:3px}
+.shareImageWeekDate{font-size:11px;color:var(--muted);white-space:nowrap}
+.shareImageWeekDay{font-size:10px;color:var(--muted)}
+.shareImageWeekIcon{font-size:22px;line-height:1.3;min-width:0;overflow-wrap:anywhere}
+.shareImageWeekText{font-size:10px;overflow-wrap:anywhere}
+.shareImageUrl{font-size:11px;overflow-wrap:anywhere;color:var(--muted);text-decoration:none}
 .shareImageActions{margin-top:8px}
 .giftList{display:grid;gap:10px}
 #gift-codes{scroll-margin-top:84px}
@@ -834,6 +840,8 @@ th{font-size:12px;color:var(--muted);background:#fbf8f4}
 }
 
 @media(max-width:380px){
+  .shareImageWeekGrid{gap:3px}
+  .shareImageWeekDate{font-size:10px}
   .itemIcon{height:74px}
   .itemIcon img{max-height:90px}
   .item .value{font-size:26px}
@@ -887,7 +895,7 @@ th{font-size:12px;color:var(--muted);background:#fbf8f4}
   .shareImagePlaceLabel{font-size:10px}
   .shareImagePlaceValue{font-size:18px}
   .shareImageSectionTitle{font-size:10px;margin-bottom:2px}
-  .shareImageWeatherLine,.shareImageWeeklyLine,.shareImageFocusLine{font-size:11px;line-height:1.25}
+  .shareImageWeeklyLine{font-size:11px;line-height:1.25}
 }
 
 @media(max-width:380px){
@@ -3448,23 +3456,16 @@ function weeklyForecastItems(w, baseDate){
       key,
       day:info.day,
       date:info.dayNum,
+      month:info.month,
+      label:weekDateLabel(baseDate,index),
+      text:weatherValues(w?.weeks?.[key]).join("・") || "—",
       icons:w ? compactWeatherText(w.weeks?.[key], "—") : "—"
     };
   });
 }
-function shareWeatherLine(weather){
-  if(globalThis.HeartopiaCalendar?.active()) return "時間別予報はサイトで確認（TH.GL提供）";
-  if(!weather) return "天気は未登録";
-  const startSlot = normalizeStartSlot(weather.startSlot);
-  return slotLabels(startSlot).map(([key,label]) => `${label.replace("時","")} ${slotWeatherMiniText(weather.slots[key], key, startSlot)}`).join(" / ");
-}
-function shareFocusLine(weather, date){
-  const items = focusWeatherItems(weather, date);
-  return items.length ? items.map(item => `${item.icon} ${item.day}`).join("　") : "なし";
-}
 function shareWeeklyLine(weather, date){
   const items = weeklyForecastItems(weather, date);
-  return items.map(item => `${item.day}${item.icons}`).join(" ");
+  return items.map(item => `${item.label} ${item.text}`).join("\n");
 }
 function normalizeGiftCode(item, order=0){
   const rawStatus = String(item?.status || "active").trim().toLowerCase();
@@ -5017,11 +5018,16 @@ function renderShareImagePreview(date, data, weather){
       </div>
     </div>
     <div>
-      <div class="shareImageSectionTitle">今日の天気</div>
-      <div class="shareImageWeatherLine">${esc(shareWeatherLine(weather))}</div>
+      <div class="shareImageSectionTitle">週間天気</div>
+      <div class="shareImageWeeklyLine shareImageWeekGrid">${weeklyForecastItems(weather,date).map(item=>`
+        <div class="shareImageWeekCell">
+          <span class="shareImageWeekDate">${esc(item.month)}/${esc(item.date)}</span>
+          <span class="shareImageWeekDay">${esc(item.day)}</span>
+          <span class="shareImageWeekIcon" aria-hidden="true">${esc(item.icons)}</span>
+          <span class="shareImageWeekText">${esc(item.text==="—"?"未登録":item.text)}</span>
+        </div>`).join("")}</div>
     </div>
-    <div class="shareImageFocusLine">注目：${esc(shareFocusLine(weather, date))}</div>
-    <div class="shareImageWeeklyLine">週間：${esc(shareWeeklyLine(weather, date))}</div>
+    <a class="shareImageUrl" href="${PUBLIC_SITE_URL}">${PUBLIC_SITE_URL}</a>
   `;
 }
 function roundedRect(ctx,x,y,w,h,r){
@@ -5114,38 +5120,25 @@ async function drawShareImageCanvas(date, data, weather, options={}){
 
   ctx.fillStyle = "#5d746b";
   ctx.font = '900 26px "Noto Sans JP","Segoe UI Emoji",sans-serif';
-  ctx.fillText("今日の天気",90,335);
-  fillRoundRect(ctx,90,355,1020,105,22,"#f7faf7","#dde6df");
-  if(weather && !globalThis.HeartopiaCalendar?.active()){
-    const startSlot = normalizeStartSlot(weather.startSlot);
-    slotLabels(startSlot).forEach(([key,label], index) => {
-      const x = 110 + index * 196;
-      ctx.fillStyle = "#7a746d";
-      ctx.font = '900 24px "Noto Sans JP","Segoe UI Emoji",sans-serif';
-      ctx.fillText(label.replace("時",""),x,392);
-      ctx.fillStyle = "#3f3a36";
-      ctx.font = '900 34px "Noto Sans JP","Segoe UI Emoji",sans-serif';
-      ctx.fillText(slotWeatherMiniText(weather.slots[key], key, startSlot),x,435);
-    });
-  }else{
-    ctx.fillStyle = "#7a746d";
-    ctx.font = '800 30px "Noto Sans JP","Segoe UI Emoji",sans-serif';
-    ctx.fillText(globalThis.HeartopiaCalendar?.active()?"時間別予報はサイトで確認（TH.GL提供）":"天気は未登録",120,420);
-  }
-
-  ctx.fillStyle = "#5d746b";
-  ctx.font = '900 26px "Noto Sans JP","Segoe UI Emoji",sans-serif';
-  ctx.fillText("注目",90,505);
-  ctx.fillStyle = "#3f3a36";
-  ctx.font = '900 30px "Noto Sans JP","Segoe UI Emoji",sans-serif';
-  ctx.fillText(shareFocusLine(weather, date),170,505);
-
-  ctx.fillStyle = "#5d746b";
-  ctx.font = '900 26px "Noto Sans JP","Segoe UI Emoji",sans-serif';
-  ctx.fillText("週間",90,565);
-  ctx.fillStyle = "#3f3a36";
-  ctx.font = '900 30px "Noto Sans JP","Segoe UI Emoji",sans-serif';
-  ctx.fillText(shareWeeklyLine(weather, date),170,565);
+  ctx.fillText("週間天気",90,335);
+  const cellWidth=(1020-6*10)/7;
+  weeklyForecastItems(weather,date).forEach((item,index)=>{
+    const x=90+index*(cellWidth+10),center=x+cellWidth/2;
+    fillRoundRect(ctx,x,355,cellWidth,150,16,"#f7faf7","#dde6df");
+    ctx.textAlign="center";
+    ctx.fillStyle="#7a746d";
+    ctx.font='800 24px "Noto Sans JP","Segoe UI Emoji",sans-serif';
+    ctx.fillText(`${item.month}/${item.date}(${item.day})`,center,391,cellWidth-12);
+    ctx.fillStyle="#3f3a36";
+    ctx.font='900 38px "Noto Sans JP","Segoe UI Emoji",sans-serif';
+    ctx.fillText(item.icons,center,445,cellWidth-12);
+    ctx.font='700 20px "Noto Sans JP","Segoe UI Emoji",sans-serif';
+    ctx.fillText(item.text==="—"?"未登録":item.text,center,482,cellWidth-12);
+  });
+  ctx.textAlign="left";
+  ctx.fillStyle="#5d746b";
+  ctx.font='700 26px "Noto Sans JP",sans-serif';
+  ctx.fillText(PUBLIC_SITE_URL,90,565);
 
   ctx.fillStyle = "#9a938b";
   ctx.font = '700 18px "Noto Sans JP",sans-serif';
@@ -5208,7 +5201,7 @@ async function shareShareImageFile(statusEl){
       await saveShareImageFile(statusEl, `${fallbackMessage} 画像を保存しました。`);
       return;
     }
-    await navigator.share({files:[file], title:"Heartopia Daily", text:`今日の採取場所メモ\n${PUBLIC_SITE_URL}`});
+    await navigator.share({files:[file], title:"Heartopia Daily", text:`採取場所・週間天気\n${PUBLIC_SITE_URL}`});
     if(statusEl) statusEl.textContent = "共有を開きました";
     toast("共有を開きました");
     return;
@@ -5219,38 +5212,6 @@ async function shareShareImageFile(statusEl){
 }
 function isMobileShareDevice(){
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && window.matchMedia?.("(pointer: coarse)").matches);
-}
-async function waitForImagesIn(element){
-  const images = Array.from(element.querySelectorAll("img"));
-  await Promise.all(images.map(img => {
-    if(img.complete && img.naturalWidth > 0) return Promise.resolve();
-    return new Promise(resolve => {
-      img.addEventListener("load", resolve, {once:true});
-      img.addEventListener("error", resolve, {once:true});
-    });
-  }));
-}
-async function createPlaceCardImageBlob(){
-  if(!window.html2canvas) throw new Error("画像化ライブラリを読み込めませんでした");
-  const target = document.getElementById("placeCard");
-  if(!target) throw new Error("採取場所カードが見つかりません");
-  if(document.fonts?.ready) await document.fonts.ready;
-  await waitForImagesIn(target);
-  target.classList.add("capture-mode");
-  try{
-    const canvas = await html2canvas(target, {
-      backgroundColor:"#f5f0e8",
-      scale:2,
-      useCORS:true,
-      allowTaint:false,
-      logging:false,
-      scrollX:-window.scrollX,
-      scrollY:-window.scrollY
-    });
-    return await canvasToPngBlob(canvas);
-  }finally{
-    target.classList.remove("capture-mode");
-  }
 }
 async function copyPngBlobToClipboard(blob){
   if(!navigator.clipboard?.write || !window.ClipboardItem) {
@@ -5274,14 +5235,14 @@ async function savePlaceCardImageFile(blob, message="画像を保存しました
   toast(message);
 }
 async function sharePlaceCardImageFile(){
-  const blob = await createPlaceCardImageBlob();
+  const blob = await createShareImageBlob();
   if(!blob) throw new Error("画像を生成できませんでした");
   const date = E.targetDate.value;
   const fallbackMessage = "この環境では直接共有できないため、画像を保存します。保存した画像をDiscordへ添付してください。";
   if(isMobileShareDevice() && navigator.share && window.File && navigator.canShare){
     const file = new File([blob], `heartopia-place-${date}.png`, {type:"image/png"});
     if(navigator.canShare({files:[file]})){
-      await navigator.share({files:[file], title:"Heartopia Daily", text:`今日の採取場所メモ\n${PUBLIC_SITE_URL}`});
+      await navigator.share({files:[file], title:"Heartopia Daily", text:`採取場所・週間天気\n${PUBLIC_SITE_URL}`});
       toast("共有を開きました");
       return;
     }
@@ -5300,11 +5261,7 @@ async function sharePlaceCardImageFile(){
   await savePlaceCardImageFile(blob, "画像を保存しました");
 }
 function discord(dateStr, data, weather){
-  const startSlot = normalizeStartSlot(weather?.startSlot);
-  const slot = currentSlot(startSlot);
-  const w = globalThis.HeartopiaCalendar?.active() ? "" : weather && slot ? weatherText(weather.slots[slot], slot, startSlot, "") : "";
-  const calendarLink = globalThis.HeartopiaCalendar?.active() ? "\n時間別予報：TH.GL\nhttps://heartopia.th.gl/forecast\n" : "";
-  return `【今日の採取メモ】\n\n日付：${jpDate(dateStr)}\n\n無垢な蛍石：${data.fluorite || "未入力"}\nツルツルオーク：${data.oak || "未入力"}\n${w ? `\nいまの天気：${w}\n` : ""}${calendarLink}\n※観測データをもとにした非公式の予想です。\n\nHeartopia Daily\n${PUBLIC_SITE_URL}`;
+  return `【採取場所・週間天気】\n\n日付：${jpDate(dateStr)}\n\n無垢な蛍石：${data.fluorite || "未入力"}\nツルツルオーク：${data.oak || "未入力"}\n\n【週間天気】\n${shareWeeklyLine(weather,dateStr)}\n\n※観測データをもとにした非公式の予想です。\n\nHeartopia Daily\n${PUBLIC_SITE_URL}`;
 }
 
 function renderToday(){

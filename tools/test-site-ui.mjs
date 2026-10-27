@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import test from 'node:test';
@@ -143,7 +143,29 @@ async function runScenario(width,height,label){
     assert.match(discordCopy,/無垢な蛍石：.+/,'Discord text keeps fluorite locations');
     assert.match(discordCopy,/ツルツルオーク：.+/,'Discord text keeps oak locations');
     assert.equal(discordCopy.split('https://sg-log.github.io/heartopia-daily/').length-1,1,'Discord text includes the public site URL once');
-    assert.match(discordCopy,/時間別予報：TH.GL\r?\nhttps:\/\/heartopia.th.gl\/forecast/,'TH.GL credit remains in shared text');
+    assert.match(discordCopy,/【週間天気】/);
+    assert.equal((discordCopy.match(/\d+\/\d+\([日月火水木金土]\) (?:虹|流星群|雨|—)/g)||[]).length,7,'shared weekly forecast has seven dated rows and preserves missing days');
+    assert.doesNotMatch(discordCopy,/TH.GL|heartopia\.th\.gl|時間別予報|いまの天気|注目/,'shared text excludes the hourly source and featured summary');
+    assert.equal(await page.locator('#shareImagePreview .shareImageWeekCell').count(),7);
+    assert.equal(await page.locator('#shareImagePreview .shareImageWeatherLine, #shareImagePreview .shareImageFocusLine').count(),0);
+    assert.equal(await page.locator('#shareImagePreview .shareImageUrl').getAttribute('href'),'https://sg-log.github.io/heartopia-daily/');
+    assert.equal((await page.locator('#shareImagePreview .shareImageWeekText').allTextContents()).filter(text=>text==='未登録').length,4);
+    assert.equal((await page.locator('#shareImagePreview .shareImageWeekIcon').allTextContents()).filter(text=>text==='—').length,4);
+    assert.equal(await page.locator('#shareImagePreview').evaluate(el=>el.scrollWidth>el.clientWidth),false,'share preview fits the viewport');
+    assert.equal(await page.locator('#shareImagePreview').evaluate(el=>el.scrollHeight>el.clientHeight+1),false,'the weekly cells and URL are not clipped vertically');
+    assert.equal(await page.locator('#shareImagePreview .shareImageWeekCell').evaluateAll(cells=>cells.some(cell=>cell.scrollWidth>cell.clientWidth+1)),false,'weekly dates and labels fit every cell');
+    const yearBoundary=await page.evaluate(()=>shareWeeklyLine({weeks:{week1:['雨'],week3:['虹']}},'2026-12-31'));
+    assert.equal(yearBoundary.split('\n')[0],'1/1(金) 雨');
+    assert.equal(yearBoundary.split('\n')[1],'1/2(土) —');
+    assert.equal(yearBoundary.split('\n')[2],'1/3(日) 虹');
+    await mkdir(screenshots,{recursive:true});
+    await page.locator('#shareImagePreview').screenshot({path:path.join(screenshots,label+'-weekly-share-preview.png')});
+    if(label==='desktop'){
+      const png=await page.evaluate(async()=>{const blob=await createShareImageBlob();return Array.from(new Uint8Array(await blob.arrayBuffer()));});
+      await writeFile(path.join(screenshots,'weekly-share.png'),Buffer.from(png));
+      const fallback=await page.evaluate(async()=>{const d=E.targetDate.value,c=await drawShareImageCanvas(d,dayData(cycleDay(d)),weatherData(d),{withImages:false});return c.toDataURL('image/png').split(',')[1];});
+      await writeFile(path.join(screenshots,'weekly-share-no-art.png'),Buffer.from(fallback,'base64'));
+    }
     await page.locator('#today .compactCopy > details > summary').click();
     assert.equal(await page.locator('#tomorrowBtn').evaluate(el=>el.parentElement.contains(document.getElementById('shareTodayImageBtn'))),true,'share beside tomorrow');
 
@@ -233,6 +255,7 @@ async function runScenario(width,height,label){
 
 test('Heartopia Daily desktop: navigation, weather, gift code and existing features',{timeout:120000},async()=>runScenario(1280,900,'desktop'));
 test('Heartopia Daily mobile: navigation, weather, gift code and existing features',{timeout:120000},async()=>runScenario(390,844,'mobile'));
+test('Heartopia Daily small mobile: weekly share and existing features',{timeout:120000},async()=>runScenario(320,844,'small-mobile'));
 test('Heartopia Daily tablet: navigation, weather, gift code and existing features',{timeout:120000},async()=>runScenario(768,1024,'tablet'));
 
 test('Image sharing includes the canonical public URL without private route data and keeps save fallback',{timeout:120000},async()=>{
@@ -243,10 +266,14 @@ test('Image sharing includes the canonical public URL without private route data
     installApiMock(context);
     await context.addInitScript(()=>{
       window.sharedForTest=[];
+      window.shareDrawnTextForTest=[];
+      const originalFillText=CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.fillText=function(...args){window.shareDrawnTextForTest.push(String(args[0]));return originalFillText.apply(this,args);};
       window.shareSupportedForTest=true;
       Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>window.shareSupportedForTest});
       Object.defineProperty(navigator,'share',{configurable:true,value:async data=>{
-        window.sharedForTest.push({title:data.title,text:data.text,url:data.url,files:data.files.map(file=>({name:file.name,type:file.type,size:file.size}))});
+        const files=await Promise.all(data.files.map(async file=>{const png=new DataView(await file.arrayBuffer());return {name:file.name,type:file.type,size:file.size,width:png.getUint32(16),height:png.getUint32(20)};}));
+        window.sharedForTest.push({title:data.title,text:data.text,url:data.url,files,drawnText:window.shareDrawnTextForTest.splice(0)});
       }});
     });
     const page=await context.newPage(),errors=[];
@@ -255,6 +282,7 @@ test('Image sharing includes the canonical public URL without private route data
     await page.goto('http://127.0.0.1:'+server.address().port+'/index.html',{waitUntil:'domcontentloaded'});
     await page.locator('#todayResult .item').first().waitFor({state:'visible'});
     await page.locator('#weatherResult a[href="https://heartopia.th.gl/forecast"]').waitFor({state:'attached'});
+    await page.evaluate(()=>{const baseDate=E.targetDate.value;setWeeklyForecastRecord({baseDate,weeks:{week1:['虹'],week2:['雨'],week3:['流星群']}});renderToday();window.shareDrawnTextForTest=[];});
     // The share destination must never be derived from the current address.
     await page.evaluate(()=>history.replaceState(null,'','?admin=1&pending=DO_NOT_SHARE&restoreId=DO_NOT_SHARE#weekly-import=DO_NOT_SHARE'));
     await page.locator('#shareTodayImageBtn').click();
@@ -265,11 +293,19 @@ test('Image sharing includes the canonical public URL without private route data
     const payloads=await page.evaluate(()=>window.sharedForTest);
     for(const payload of payloads){
       assert.equal(payload.title,'Heartopia Daily');
-      assert.equal(payload.text,'今日の採取場所メモ\nhttps://sg-log.github.io/heartopia-daily/');
+      assert.equal(payload.text,'採取場所・週間天気\nhttps://sg-log.github.io/heartopia-daily/');
       assert.doesNotMatch(JSON.stringify(payload),/DO_NOT_SHARE|admin=|pending=|restoreId=|weekly-import=/);
       assert.equal(payload.files.length,1);
       assert.equal(payload.files[0].type,'image/png');
       assert.ok(payload.files[0].size>0);
+      assert.equal(payload.files[0].width,1200);
+      assert.equal(payload.files[0].height,675);
+      assert.ok(payload.drawnText.includes('無垢な蛍石')&&payload.drawnText.includes('ツルツルオーク'));
+      assert.ok(payload.drawnText.includes('週間天気')&&payload.drawnText.includes('https://sg-log.github.io/heartopia-daily/'));
+      assert.ok(payload.drawnText.includes('虹')&&payload.drawnText.includes('雨')&&payload.drawnText.includes('流星群'));
+      assert.equal(payload.drawnText.filter(text=>text==='—').length,4,'four unregistered weekly days keep dash icons');
+      assert.equal(payload.drawnText.filter(text=>text==='未登録').length,4,'missing values are labelled without borrowing hourly forecasts');
+      assert.doesNotMatch(payload.drawnText.join(' '),/今日の天気|注目|TH.GL|時間別予報|ギフトコード/);
     }
     assert.match(payloads[0].files[0].name,/^heartopia-place-\d{4}-\d{2}-\d{2}\.png$/);
     assert.match(payloads[1].files[0].name,/^heartopia-daily-\d{4}-\d{2}-\d{2}\.png$/);

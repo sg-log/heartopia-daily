@@ -73,9 +73,9 @@ test('today-only forecast keeps the approved game-style card, weekly focus and a
     await page.goto('http://127.0.0.1:'+server.address().port+'/',{waitUntil:'networkidle'});
     await page.waitForFunction(()=>globalThis.HeartopiaCalendar?.active());
     await page.waitForFunction(()=>document.querySelectorAll('#weatherResult .compactWeatherWeek .weeklyWeatherRow').length===7&&document.querySelector('#weatherResult .focusWeatherChip'));
-    const actual=await page.evaluate(()=>({daily:document.getElementById('weatherResult').innerHTML,summary:document.getElementById('weatherSummary').innerHTML,weeklyRows:document.querySelectorAll('#weeklyWeather .weeklyWeatherRow').length,share:document.querySelector('.shareImageWeatherLine')?.textContent||'',discord:document.getElementById('discordText').textContent}));
+    const actual=await page.evaluate(()=>({daily:document.getElementById('weatherResult').innerHTML,summary:document.getElementById('weatherSummary').innerHTML,weeklyRows:document.querySelectorAll('#weeklyWeather .weeklyWeatherRow').length,share:document.getElementById('shareImagePreview').textContent,shareWeekRows:document.querySelectorAll('#shareImagePreview .shareImageWeekCell').length,discord:document.getElementById('discordText').textContent}));
     assert.deepEqual(errors,[]);assert.ok(actual.daily.includes('Weather forecast by TH.GL'));assert.ok(actual.summary.includes('weatherHourlySlots'));
-    assert.equal(actual.weeklyRows,7);assert.ok(actual.share.includes('サイトで確認'));assert.ok(!actual.discord.includes('いまの天気：'));
+    assert.equal(actual.weeklyRows,7);assert.equal(actual.shareWeekRows,7);assert.ok(actual.share.includes('週間天気'));assert.doesNotMatch(actual.share,/TH.GL|時間別予報|注目/);assert.ok(!actual.discord.includes('いまの天気：'));assert.ok(actual.discord.includes('【週間天気】'));assert.doesNotMatch(actual.discord,/TH.GL|heartopia\.th\.gl/);
     assert.deepEqual(await page.locator('#weatherResult .weatherLineTime').allTextContents(),['06','12','18','00','06']);
     assert.deepEqual(await page.locator('#weatherResult .weatherLineLabel').allTextContents(),['くもり','くもり','流星','','']);
     assert.deepEqual(await page.locator('#weatherResult .weatherLineText').allTextContents(),['☁️','☁️','🌠','—','—']);
