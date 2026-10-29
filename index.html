@@ -11,7 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
 <meta name="description" content="ハートピアスローライフの今日の天気・週間天気と、無垢な蛍石・ツルツルオークの採取場所を確認できる非公式サイト。採取場所は日付を選んで確認でき、ギフトコード一覧とパズル所持管理も利用できます。">
-<title>Heartopia Daily</title>
+<title>Heartopia Daily｜ハートピアの今日の採取場所・天気</title>
 <style>
 :root{
   --bg:#f5f0e8;
@@ -28,6 +28,8 @@
   --r:20px;
 }
 *{box-sizing:border-box}
+/* Text equivalents for forecast icons and abbreviated dates. */
+.visuallyHidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 body{
   margin:0;
   font-family:"Noto Sans JP",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
@@ -1121,7 +1123,7 @@ button.secondary,button.danger{border-radius:9px}
 <meta property="og:type" content="website">
 <meta property="og:locale" content="ja_JP">
 <meta property="og:site_name" content="Heartopia Daily">
-<meta property="og:title" content="Heartopia Daily">
+<meta property="og:title" content="Heartopia Daily｜ハートピアの今日の採取場所・天気">
 <meta property="og:description" content="ハートピアスローライフの今日の天気・週間天気と、無垢な蛍石・ツルツルオークの採取場所を確認できる非公式サイト。採取場所は日付を選んで確認でき、ギフトコード一覧とパズル所持管理も利用できます。">
 <meta property="og:url" content="https://sg-log.github.io/heartopia-daily/">
 <meta property="og:image" content="https://sg-log.github.io/heartopia-daily/assets/og-site.png">
@@ -1131,7 +1133,7 @@ button.secondary,button.danger{border-radius:9px}
 <meta name="twitter:card" content="summary_large_image">
 <meta name="google-site-verification" content="AjKCfy55CZOxQcE-bZKSmUNJSynsaw1nAAnpoph_VYQ">
 <link rel="stylesheet" href="assets/site-privacy.css?v=20261027">
-<script src="assets/site-analytics.js?v=20261027-2"></script>
+<script src="assets/site-analytics.js?v=20261029"></script>
 </head>
 <body>
 <header class="siteHeader"><div class="siteHeaderRow">
@@ -3411,14 +3413,14 @@ function representativeWeather(w){
 }
 function weeklyRowsHtml(w, baseDate, className="weeklyWeather"){
   if(!w) return "";
-  return `<div class="${esc(className)}">${WEATHER_WEEK_KEYS.map((key, index) => {
+  return `<div class="${esc(className)}" role="group" aria-label="週間天気">${WEATHER_WEEK_KEYS.map((key, index) => {
     const info = weekDateInfo(baseDate, index);
     const icons = compactWeatherText(w.weeks?.[key], "—");
     return `
       <div class="weeklyWeatherRow" data-week-key="${esc(key)}">
         <div class="weeklyWeatherDay">${esc(info.day)}</div>
-        <div class="weeklyWeatherDayNum">${esc(info.dayNum)}</div>
-        <div class="weeklyWeatherText"><span class="weeklyWeatherIcons">${esc(icons)}</span></div>
+        <time class="weeklyWeatherDayNum" datetime="${esc(info.date)}"><span class="visuallyHidden">${esc(info.month)}月</span>${esc(info.dayNum)}<span class="visuallyHidden">日</span></time>
+        <div class="weeklyWeatherText"><span class="weeklyWeatherIcons" aria-hidden="true">${esc(icons)}</span><span class="visuallyHidden">${esc(weatherValues(w.weeks?.[key]).join("・") || "未登録")}</span></div>
       </div>
     `;
   }).join("")}</div>`;

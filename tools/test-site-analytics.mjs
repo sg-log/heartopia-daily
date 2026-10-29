@@ -72,6 +72,16 @@ test('fixed UTM labels survive sanitisation without copying query or fragment',(
 test('codes page uses a fixed title and URL',()=>{
  const s=boot({url:'https://sg-log.github.io/heartopia-daily/codes.html',storage:{[CONSENT]:'granted'},referrer:'https://google.com/search?q=DO_NOT_SEND'});s.init();const c=s.commands().find(c=>c[0]==='config')[2];assert.equal(c.page_location,'https://sg-log.github.io/heartopia-daily/codes.html');assert.equal(c.page_referrer,'https://google.com/');assert.match(c.page_title,/ギフトコード一覧/);
 });
+test('TOP search, social and analytics titles use the approved brand-first name',()=>{
+ const expected='Heartopia Daily｜ハートピアの今日の採取場所・天気';
+ const html=fs.readFileSync(new URL('index.html',root),'utf8');
+ assert.equal(html.match(/<title>([^<]+)<\/title>/)[1],expected);
+ assert.equal(html.match(/<meta property="og:title" content="([^"]+)">/)[1],expected);
+ assert.match(html,/<h1>Heartopia Daily<\/h1><p>ハートピアの天気予報と、今日の採取場所。<\/p>/);
+ const s=boot({storage:{[CONSENT]:'granted'}});s.init();
+ for(const c of s.commands().filter(c=>c[0]==='config'||c[0]==='event')) assert.equal(c[2].page_title,expected);
+ for(const file of ['index.html','codes.html']) assert.match(fs.readFileSync(new URL(file,root),'utf8'),/site-analytics\.js\?v=20261029/);
+});
 test('advertising disabled and automatic pageviews disabled; debug is explicit',()=>{
  const s=boot({storage:{[CONSENT]:'granted'}});s.init();const c=s.commands().find(c=>c[0]==='config')[2];assert.equal(c.send_page_view,false);assert.equal(c.allow_google_signals,false);assert.equal(c.allow_ad_personalization_signals,false);assert.equal(Object.hasOwn(c,'debug_mode'),false);assert.equal(c.cookie_path,'/heartopia-daily/');
  const debug=boot({url:'https://sg-log.github.io/heartopia-daily/?analytics_debug=1',storage:{[CONSENT]:'granted'}});debug.init();assert.equal(debug.commands().find(c=>c[0]==='config')[2].debug_mode,true);

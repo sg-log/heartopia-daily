@@ -35,7 +35,7 @@
     const codes = location.pathname.endsWith('/codes.html');
     return {
       page_location: BASE + (codes ? 'codes.html' : ''),
-      page_title: codes ? 'ハートピアのギフトコード一覧｜Heartopia Daily' : 'ハートピアの今日の採取場所・天気｜Heartopia Daily',
+      page_title: codes ? 'ハートピアのギフトコード一覧｜Heartopia Daily' : 'Heartopia Daily｜ハートピアの今日の採取場所・天気',
       page_referrer: referrer()
     };
   }

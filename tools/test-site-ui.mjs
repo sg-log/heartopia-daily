@@ -117,6 +117,20 @@ async function runScenario(width,height,label){
       renderToday();
     });
     assert.equal(await page.locator('#weatherResult .focusWeatherChip').count(),3,'rainbow, meteor and rain shown without inventing dates');
+    const weekly=page.getByRole('group',{name:'週間天気',exact:true}).filter({has:page.locator('.weeklyWeatherRow')}).first();
+    assert.equal(await weekly.locator('time[datetime]').count(),7,'all seven forecast dates are machine-readable');
+    assert.match(await weekly.ariaSnapshot(),/虹/,'forecast weather has a text equivalent');
+    assert.match(await weekly.ariaSnapshot(),/未登録/,'missing data is explicitly labelled for readers');
+    const boundary=await page.evaluate(()=>weeklyRowsHtml({weeks:{week1:['雨','雪'],week3:['虹']}},'2026-12-31'));
+    await page.evaluate(markup=>{
+      const host=document.createElement('div');host.id='weeklyBoundaryTest';host.innerHTML=markup;document.body.append(host);
+    },boundary);
+    const firstDay=page.locator('#weeklyBoundaryTest .weeklyWeatherRow').first();
+    assert.equal(await firstDay.locator('time').getAttribute('datetime'),'2027-01-01');
+    assert.equal(await firstDay.locator('time').textContent(),'1月1日');
+    assert.match(await firstDay.ariaSnapshot(),/雨・雪/,'multiple weather values are retained');
+    assert.equal(await firstDay.locator('.weeklyWeatherIcons').textContent(),'☔ ☃','visible icons stay unchanged');
+    await page.locator('#weeklyBoundaryTest').evaluate(node=>node.remove());
     assert.equal(await page.locator('#weatherResult .focusWeatherChip').first().textContent().then(x=>x.includes('🌈')),true,'rainbow forecast icon');
     const navStyle=await page.locator('.siteHeaderNav').evaluate(el=>{
       const style=getComputedStyle(el);
