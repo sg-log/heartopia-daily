@@ -1,0 +1,39 @@
+name: Gift public-source read diagnostic
+on:
+  push:
+    branches: [diagnostics/gift-public-read-20261101]
+    paths: [".github/workflows/gift-public-read-diagnostic.yml"]
+permissions:
+  contents: read
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Read public official resources only
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import {extractStatusIdsFromHtml} from './tools/gift-x-backup.mjs';
+          const base='https://x.com/Heartopia_JP';
+          const bot='heartopia-daily-gift-x-backup/1.0 (+https://github.com/sg-log/heartopia-daily)';
+          const cases=[
+            {name:'production-control',url:base,ua:bot},
+            {name:'standard-fetch',url:base},
+            {name:'official-language',url:base+'?lang=ja',ua:bot},
+            {name:'official-twitter-profile',url:'https://twitter.com/Heartopia_JP',ua:bot},
+            {name:'official-embed-dnt',url:'https://syndication.twitter.com/srv/timeline-profile/screen-name/Heartopia_JP?dnt=true',ua:bot}
+          ];
+          await Promise.all(cases.map(async item=>{
+            try {
+              const response=await fetch(item.url,{signal:AbortSignal.timeout(20000),headers:{...(item.ua?{'User-Agent':item.ua}:{}),Accept:'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8'}});
+              const text=await response.text();
+              console.log(JSON.stringify({name:item.name,status:response.status,finalUrl:response.url,bytes:text.length,ids:extractStatusIdsFromHtml(text,'Heartopia_JP').slice(0,6),sample:response.ok?'':text.slice(0,300)}));
+            }catch(error){console.log(JSON.stringify({name:item.name,error:error.message}));}
+          }));
+          JS
