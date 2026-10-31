@@ -9,7 +9,8 @@ function normalizeGiftAnnouncementText_(text) {
     .replace(/ギフト\s*コード\s*[:：]/gi, "Gift Code:")
     .replace(/(?:報酬内容|報酬)\s*[:：]/g, "Rewards:")
     .replace(/(?:交換期限|受取期限|有効期限)\s*[:：]/g, "Redemption Deadline:")
-    .replace(/Rewards?\s+includes?\s*:/ig, "Rewards:");
+    .replace(/Rewards?\s+includes?\s*:/ig, "Rewards:")
+    .replace(/Valid\s*Until\s*:/ig, "Redemption Deadline:");
 }
 
 function giftRewardSegmentsBeforeCode_(text) {
@@ -116,6 +117,9 @@ function parseDiscordGiftAnnouncement_(text, options) {
 
   const deadlineLine = lineValueAfterLabel_(source, /Redemption\s*Deadline/i);
   const expiresAt = deadlineLine ? parseDiscordGiftDeadline_(deadlineLine) : "";
+  if (/(?:^|\n)[^\n]*Valid\s*Until\s*:/i.test(String(text || "").normalize("NFKC")) && !expiresAt) {
+    return { ok: false, error: "Valid Untilの交換期限を確定できません" };
+  }
 
   return {
     ok: true,
@@ -186,6 +190,16 @@ function parseDiscordGiftDeadline_(value) {
     return Utilities.formatDate(new Date(seconds * 1000), DISCORD_GIFT_TIME_ZONE, "yyyy-MM-dd'T'HH:mm");
   }
 
+  const english = text.match(/^(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s*(20\d{2}),?\s+(\d{1,2}):(\d{2})\s*(AM|PM)\s*\(UTC\s*([+-])\s*(\d{1,2})(?::(\d{2}))?\)\s*$/i);
+  if (english) {
+    const months = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+    const hour = Number(english[4]);
+    const zoneHour = Number(english[8]), zoneMinute = Number(english[9] || 0);
+    if (hour < 1 || hour > 12 || zoneHour > 14 || zoneMinute > 59 || (zoneHour === 14 && zoneMinute !== 0)) return "";
+    const hour24 = hour % 12 + (english[6].toUpperCase() === "PM" ? 12 : 0);
+    return giftDeadlineInJst_([null, english[3], months.indexOf(english[1].toLowerCase()) + 1, english[2], hour24, english[5]], text);
+  }
+
   let match = text.match(/(20\d{2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日(?:\s*[^\d\n]*)?\s*(\d{1,2})\s*[:：]\s*(\d{2})/);
   if (match) return giftDeadlineInJst_(match, text);
 
@@ -228,3 +242,4 @@ function giftRewardNameMap_() {
   }
   return result;
 }
+

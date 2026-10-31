@@ -8,32 +8,28 @@ permissions:
 jobs:
   read:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Read public official resources only
+      - name: Discover and parse public official gifts without writes
         shell: bash
         run: |
           node --input-type=module <<'JS'
-          import {extractStatusIdsFromHtml} from './tools/gift-x-backup.mjs';
-          const base='https://x.com/Heartopia_JP';
-          const bot='heartopia-daily-gift-x-backup/1.0 (+https://github.com/sg-log/heartopia-daily)';
-          const cases=[
-            {name:'production-control',url:base,ua:bot},
-            {name:'standard-fetch',url:base},
-            {name:'official-language',url:base+'?lang=ja',ua:bot},
-            {name:'official-twitter-profile',url:'https://twitter.com/Heartopia_JP',ua:bot},
-            {name:'official-embed-dnt',url:'https://syndication.twitter.com/srv/timeline-profile/screen-name/Heartopia_JP?dnt=true',ua:bot}
-          ];
-          await Promise.all(cases.map(async item=>{
-            try {
-              const response=await fetch(item.url,{signal:AbortSignal.timeout(20000),headers:{...(item.ua?{'User-Agent':item.ua}:{}),Accept:'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8'}});
-              const text=await response.text();
-              console.log(JSON.stringify({name:item.name,status:response.status,finalUrl:response.url,bytes:text.length,ids:extractStatusIdsFromHtml(text,'Heartopia_JP').slice(0,6),sample:response.ok?'':text.slice(0,300)}));
-            }catch(error){console.log(JSON.stringify({name:item.name,error:error.message}));}
-          }));
+          import fs from 'node:fs';
+          import vm from 'node:vm';
+          import {discoverOfficialXGiftPosts} from './tools/gift-x-backup.mjs';
+          const reads=[];
+          const allowed=new Set(['x.com','syndication.twitter.com','publish.twitter.com','www.bing.com','search.yahoo.co.jp']);
+          const readOnly=async(url,options={})=>{
+            if((options.method||'GET')!=='GET'||!allowed.has(new URL(url).hostname))throw Error('Read-only diagnostic denied request');
+            reads.push(String(url));return fetch(url,options);
+          };
+          const discovery=await discoverOfficialXGiftPosts({fetchImpl:readOnly});
+          const context=vm.createContext({DISCORD_GIFT_TIME_ZONE:'Asia/Tokyo',Utilities:{formatDate(date){return new Date(date.getTime()+9*3600000).toISOString().slice(0,16);}}});
+          vm.runInContext(fs.readFileSync('./apps-script/gift-code-parser.gs','utf8'),context);
+          console.log(JSON.stringify({reads:reads.length,writes:0,coverage:discovery.coverage,diagnostics:discovery.diagnostics,posts:discovery.posts.map(post=>({sourceUrl:post.sourceUrl,statusId:post.statusId,incomplete:post.incomplete,parsed:context.parseDiscordGiftAnnouncement_(post.text,{rewardNameMap:{}})}))}));
           JS

@@ -113,6 +113,20 @@ async function discoverFromProfile(fetchImpl, handle) {
   }
 }
 
+async function discoverFromRealtime(fetchImpl, handle) {
+  // Yahoo documents id: as the author filter; its real-time index covers Japanese posts.
+  const url = new URL('https://search.yahoo.co.jp/realtime/search');
+  url.searchParams.set('p', 'id:' + handle + ' ギフトコード');
+  url.searchParams.set('ei', 'UTF-8');
+  try {
+    const { response, text } = await fetchText(fetchImpl, url);
+    const ids = response.ok ? extractStatusIdsFromHtml(text, handle) : [];
+    return { source: 'yahoo-realtime', handle, ok: response.ok && ids.length > 0, status: response.status, ids };
+  } catch (error) {
+    return { source: 'yahoo-realtime', handle, ok: false, status: 0, ids: [], error: String(error?.message || error).slice(0, 240) };
+  }
+}
+
 function htmlAttribute(node, name) {
   return node.attrs?.find(attribute => attribute.name === name)?.value || '';
 }
@@ -338,6 +352,11 @@ export async function discoverOfficialXGiftPosts(options = {}) {
     diagnostics.push(primary);
     let ids = primary.ids || [];
     let timelineAvailable = primary.ok;
+    if (!ids.length && /^Heartopia_JP$/i.test(handle)) {
+      const realtime = await discoverFromRealtime(fetchImpl, handle);
+      diagnostics.push(realtime);
+      ids = realtime.ids;
+    }
     if (!ids.length) {
       const fallback = await discoverFromSyndication(fetchImpl, handle);
       diagnostics.push(fallback);
@@ -548,3 +567,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exitCode = 1;
   });
 }
+
