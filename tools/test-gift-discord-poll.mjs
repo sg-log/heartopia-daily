@@ -131,7 +131,7 @@ test("poll mode forwards only gift candidates and the latest message cursor", as
   assert.equal(result.messageCount, 2);
   assert.equal(result.candidateCount, 1);
   assert.equal(ingestBody.action, "ingestDiscordGiftBatch");
-  assert.equal(ingestBody.historyRevision, 'gift-formats-20261015');
+  assert.equal(ingestBody.historyRevision, 'gift-formats-20261101');
   assert.equal(ingestBody.latestMessageId, "823456789012345678");
   assert.equal(ingestBody.messages.length, 1);
   assert.equal(ingestBody.messages[0].id, "723456789012345678");

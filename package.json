@@ -15,5 +15,8 @@
   },
   "devDependencies": {
     "playwright": "1.63.0"
+  },
+  "dependencies": {
+    "parse5": "8.0.1"
   }
 }

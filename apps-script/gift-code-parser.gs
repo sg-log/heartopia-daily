@@ -5,6 +5,7 @@ function normalizeGiftAnnouncementText_(text) {
     .replace(/\*\*/g, "")
     .replace(/__/g, "")
     .replace(/~~/g, "")
+    .replace(/ギフト\s*コード\s*内容\s*[:：]/g, "Rewards:")
     .replace(/ギフト\s*コード\s*[:：]/gi, "Gift Code:")
     .replace(/(?:報酬内容|報酬)\s*[:：]/g, "Rewards:")
     .replace(/(?:交換期限|受取期限|有効期限)\s*[:：]/g, "Redemption Deadline:")
@@ -43,7 +44,26 @@ function looksLikeDiscordGiftAnnouncement_(text) {
   const hasCode = /(?:^|\n)[^\n]*Gift\s*Code\s*:/i.test(source);
   if (!hasCode) return false;
   if (/(?:^|\n)\s*[^\n]*Rewards?\s*:/i.test(source)) return true;
-  return giftRewardSegmentsBeforeCode_(source).length > 0;
+  return (giftLabeledRewardSegments_(source) || []).length > 0 || giftRewardSegmentsBeforeCode_(source).length > 0;
+}
+
+function giftLabeledRewardSegments_(text) {
+  const lines = String(text || "").split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const label = lines[i].trim().replace(/^[^A-Za-z0-9\u3040-\u30ff\u3400-\u9fff]+/, "");
+    if (!/^Rewards?\s*:?\s*$/i.test(label)) continue;
+    const segments = [];
+    for (let j = i + 1; j < lines.length; j++) {
+      const line = lines[j].trim();
+      if (!line) continue;
+      if (/(?:Gift\s*Code|Redemption\s*Deadline|Valid\s*Until)\s*:/i.test(line)) return segments;
+      // Never publish just the valid prefix of an ambiguous reward list.
+      if (!/^.+?\s*[×xX*]\s*\d+\s*$/.test(line) || segments.length >= 25) return [];
+      segments.push(line);
+    }
+    return segments;
+  }
+  return null;
 }
 
 function discordGiftMessageText_(message) {
@@ -77,6 +97,13 @@ function parseDiscordGiftAnnouncement_(text, options) {
   if (uniqueCodes.length !== 1) return { ok: false, error: "Gift Code候補が複数あります" };
 
   let rewardLine = lineValueAfterLabel_(source, /Rewards?/i);
+  if (!rewardLine) {
+    const labeledRewards = giftLabeledRewardSegments_(source);
+    if (labeledRewards !== null) {
+      if (!labeledRewards.length) return { ok: false, error: "Rewardsの形式を安全に解析できません" };
+      rewardLine = labeledRewards.join(", ");
+    }
+  }
   if (!rewardLine) {
     const contextualRewards = giftRewardSegmentsBeforeCode_(source);
     rewardLine = contextualRewards.join(", ");

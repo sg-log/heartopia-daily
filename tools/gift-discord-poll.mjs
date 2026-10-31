@@ -9,7 +9,7 @@ const USER_AGENT = "heartopia-daily-gift-code-bot/1.0 (+https://github.com/sg-lo
 // the collector's candidate gate identical to the deployed parser's formats.
 const giftParser = vm.createContext({});
 vm.runInContext(fs.readFileSync(new URL('../apps-script/gift-code-parser.gs', import.meta.url), 'utf8'), giftParser);
-const GIFT_HISTORY_REVISION = 'gift-formats-20261015';
+const GIFT_HISTORY_REVISION = 'gift-formats-20261101';
 
 export function compareSnowflakes(a, b) {
   const left = String(a || "").replace(/^0+/, "");

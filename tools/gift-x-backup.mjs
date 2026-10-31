@@ -3,6 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import { createHash } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { parse } from "parse5";
 import { extractAppsScriptUrl } from "./gift-discord-poll.mjs";
 
 const OFFICIAL_X_HANDLES = ["Heartopia_JP", "myheartopia"];
@@ -102,6 +103,77 @@ async function discoverFromSyndication(fetchImpl, handle) {
   }
 }
 
+async function discoverFromProfile(fetchImpl, handle) {
+  try {
+    const { response, text } = await fetchText(fetchImpl, 'https://x.com/' + encodeURIComponent(handle));
+    const ids = response.ok ? extractStatusIdsFromHtml(text, handle) : [];
+    return { source: 'official-profile', handle, ok: response.ok && ids.length > 0, status: response.status, ids };
+  } catch (error) {
+    return { source: 'official-profile', handle, ok: false, status: 0, ids: [], error: String(error?.message || error).slice(0, 240) };
+  }
+}
+
+function htmlAttribute(node, name) {
+  return node.attrs?.find(attribute => attribute.name === name)?.value || '';
+}
+
+function htmlDescendants(node, stopAtArticles = false) {
+  const nodes = [];
+  for (const child of node.childNodes || []) {
+    if (stopAtArticles && child.tagName === 'article') continue;
+    nodes.push(child, ...htmlDescendants(child, stopAtArticles));
+  }
+  return nodes;
+}
+
+function officialStatusUrl(value, handle, statusId, base) {
+  try {
+    const url = new URL(value, base);
+    return url.protocol === 'https:' && !url.username && !url.password && !url.port
+      && ['x.com', 'www.x.com', 'twitter.com', 'www.twitter.com'].includes(url.hostname.toLowerCase())
+      && url.pathname.replace(/\/+$/, '').toLowerCase() === ('/' + handle + '/status/' + statusId).toLowerCase();
+  } catch { return false; }
+}
+
+function htmlText(node, omitLinks = false) {
+  if (['script', 'style', 'template', 'noscript', 'button'].includes(node.tagName) || (omitLinks && node.tagName === 'a')) return '';
+  if (node.nodeName === '#text') return node.value || '';
+  if (node.tagName === 'br') return '\n';
+  return (node.childNodes || []).map(child => htmlText(child, omitLinks)).join('');
+}
+
+// Read only the exact post's own article body, never metadata, a quote or a reply.
+// Responsive copies must agree. The full body must extend the verified oEmbed prefix.
+export function extractFullOfficialPost(html, { handle, statusId, oembedText } = {}) {
+  if (!/^\d{15,25}$/.test(String(statusId)) || !OFFICIAL_X_HANDLES.some(value => value.toLowerCase() === String(handle).toLowerCase()) || String(html).length > 2_000_000) return null;
+  const sourceUrl = `https://x.com/${handle}/status/${statusId}`;
+  const nodes = htmlDescendants(parse(String(html || '')));
+  const canonical = nodes.filter(node => node.tagName === 'link' && htmlAttribute(node, 'rel').toLowerCase() === 'canonical');
+  if (canonical.length !== 1 || !officialStatusUrl(htmlAttribute(canonical[0], 'href'), handle, statusId)) return null;
+  const prefix = String(oembedText || '').replace(/(?:…|\.{3})\s*$/, '').replace(/\s+/g, '').trim();
+  if (prefix.length < 20) return null;
+  const texts = [];
+  for (const article of nodes.filter(node => node.tagName === 'article')) {
+    const own = htmlDescendants(article, true);
+    const links = own.filter(node => node.tagName === 'a');
+    if (!links.some(node => officialStatusUrl(htmlAttribute(node, 'href'), handle, statusId, sourceUrl))) continue;
+    const author = links.find(node => {
+      try { return /^\/[a-z0-9_]+\/?$/i.test(new URL(htmlAttribute(node, 'href'), sourceUrl).pathname); } catch { return false; }
+    });
+    if (!author || !isOfficialXAuthorUrl(new URL(htmlAttribute(author, 'href'), sourceUrl).href, handle)) continue;
+    const bodies = own.filter(node => htmlAttribute(node, 'data-testid') === 'tweetText'
+      || (node.tagName === 'div' && htmlAttribute(node, 'dir') === 'auto' && htmlAttribute(node, 'class').split(/\s+/).includes('whitespace-pre-wrap')));
+    if (bodies.length !== 1) return null;
+    const body = bodies[0], text = htmlText(body).trim();
+    if (!text || text.length > 12000 || /(?:…|\.{3})\s*$/.test(text)
+      || htmlDescendants(body).some(node => node.tagName === 'button' && /show more|さらに表示|もっと見る/i.test(htmlText({childNodes:node.childNodes})))) return null;
+    if (!htmlText(body, true).replace(/\s+/g, '').startsWith(prefix)) return null;
+    texts.push(text);
+  }
+  const uniqueTexts = unique(texts);
+  return uniqueTexts.length === 1 ? uniqueTexts[0] : null;
+}
+
 async function discoverFromSearch(fetchImpl, handle, provider = 'bing') {
   const keyword = String(handle).toLowerCase() === 'heartopia_jp' ? '"ギフトコード"' : '"Gift Code"';
   const query = `site:x.com/${handle}/status ${keyword}`;
@@ -117,7 +189,7 @@ async function discoverFromSearch(fetchImpl, handle, provider = 'bing') {
   }
 }
 
-async function fetchOfficialPost(fetchImpl, handle, statusId, includeIncomplete = false) {
+async function fetchOfficialPost(fetchImpl, handle, statusId, includeIncomplete = false, diagnostics) {
   const sourceUrl = `https://x.com/${handle}/status/${statusId}`;
   const endpoint = new URL("https://publish.twitter.com/oembed");
   endpoint.searchParams.set("url", sourceUrl);
@@ -130,16 +202,35 @@ async function fetchOfficialPost(fetchImpl, handle, statusId, includeIncomplete 
       signal: AbortSignal.timeout(15000),
       headers: { "User-Agent": USER_AGENT, Accept: "application/json" }
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      diagnostics?.push({ source: 'official-post', handle, statusId, ok: false, status: response.status });
+      return null;
+    }
     const data = await response.json();
-    if (!isOfficialXAuthorUrl(data?.author_url, handle)) return null;
-    const text = extractTweetTextFromOembedHtml(data?.html || "");
+    if (!isOfficialXAuthorUrl(data?.author_url, handle)) {
+      diagnostics?.push({ source: 'official-post', handle, statusId, ok: false, reason: 'author-mismatch' });
+      return null;
+    }
+    let text = extractTweetTextFromOembedHtml(data?.html || "");
     // oEmbed can shorten long announcements before their redemption deadline.
     // Do not import a partial post as if the deadline were absent.
-    const incomplete = /(?:…|\.{3})\s*$/.test(text);
+    let incomplete = /(?:…|\.{3})\s*$/.test(text);
+    if (text && looksLikeGiftText(text) && incomplete) {
+      try {
+        const full = await fetchText(fetchImpl, sourceUrl);
+        const expanded = full.response.ok && (!full.response.url || officialStatusUrl(full.response.url, handle, statusId))
+          ? extractFullOfficialPost(full.text, { handle, statusId, oembedText: text }) : null;
+        diagnostics?.push({ source: 'official-full-text', handle, statusId, ok: Boolean(expanded), status: full.response.status });
+        if (expanded) { text = expanded; incomplete = false; }
+      } catch (error) {
+        diagnostics?.push({ source: 'official-full-text', handle, statusId, ok: false, error: String(error?.message || error).slice(0, 240) });
+      }
+    }
+    diagnostics?.push({ source: 'official-post', handle, statusId, ok: true, gift: Boolean(text && looksLikeGiftText(text)), incomplete });
     if (!text || !looksLikeGiftText(text) || (incomplete && !includeIncomplete)) return null;
     return { statusId, sourceUrl, text, handle, incomplete };
-  } catch {
+  } catch (error) {
+    diagnostics?.push({ source: 'official-post', handle, statusId, ok: false, error: String(error?.message || error).slice(0, 240) });
     return null;
   }
 }
@@ -240,11 +331,19 @@ export async function discoverOfficialXGiftPosts(options = {}) {
   const diagnostics = [];
   const posts = [];
   const incompletePosts = [];
+  const coverage = [];
 
   for (const handle of handles) {
-    const primary = await discoverFromSyndication(fetchImpl, handle);
+    const primary = await discoverFromProfile(fetchImpl, handle);
     diagnostics.push(primary);
     let ids = primary.ids || [];
+    let timelineAvailable = primary.ok;
+    if (!ids.length) {
+      const fallback = await discoverFromSyndication(fetchImpl, handle);
+      diagnostics.push(fallback);
+      ids = fallback.ids || [];
+      timelineAvailable = fallback.ok && ids.length > 0;
+    }
     if (!ids.length) {
       const fallback = await discoverFromSearch(fetchImpl, handle);
       diagnostics.push(fallback);
@@ -256,17 +355,21 @@ export async function discoverOfficialXGiftPosts(options = {}) {
       ids = fallback.ids || [];
     }
 
-    if (/^Heartopia_JP$/i.test(handle)) ids = unique([...JAPANESE_POST_SEEDS, ...ids]);
-    const fetched = await Promise.all(ids.slice(0, maxPostsPerHandle).map(statusId => fetchOfficialPost(fetchImpl, handle, statusId, true)));
+    const discoveredIds = new Set(ids);
+    if (/^Heartopia_JP$/i.test(handle)) ids = unique([...ids, ...JAPANESE_POST_SEEDS]).sort((a,b) => b.length-a.length || (a === b ? 0 : a > b ? -1 : 1));
+    const fetched = await Promise.all(ids.slice(0, maxPostsPerHandle).map(statusId => fetchOfficialPost(fetchImpl, handle, statusId, true, diagnostics)));
     for (const post of fetched) {
       if (post?.incomplete) incompletePosts.push(post);
       else if (post) posts.push(post);
     }
+    const failed = diagnostics.filter(item => item.handle === handle && discoveredIds.has(item.statusId) && item.ok === false && ['official-post', 'official-full-text'].includes(item.source));
+    coverage.push({ handle, timelineAvailable, latestStatusId: [...discoveredIds][0] || '', verificationFailures: failed.length });
   }
 
   const byId = new Map();
   for (const post of posts) if (!byId.has(post.statusId)) byId.set(post.statusId, post);
-  return { posts: [...byId.values()], incompletePosts, diagnostics };
+  return { posts: [...byId.values()], incompletePosts, diagnostics,
+    coverage: { state: coverage.every(item => item.timelineAvailable && item.verificationFailures === 0) ? 'healthy' : 'degraded', handles: coverage } };
 }
 
 export async function runGiftXBackup(options = {}) {
@@ -301,13 +404,14 @@ export async function runGiftXBackup(options = {}) {
       posts: discovery.posts.length,
       candidates: discovery.posts.map(post => ({ sourceUrl: post.sourceUrl, statusId: post.statusId })),
       reconciliation,
-      diagnostics: discovery.diagnostics
+      diagnostics: discovery.diagnostics,
+      coverage: discovery.coverage
     };
   }
 
   if (!postKey) throw new Error("WEATHER_POST_KEY is missing.");
   if (!discovery.posts.length && !options.reconcile) {
-    return { ok: true, mode, posts: 0, diagnostics: discovery.diagnostics };
+    return { ok: true, mode, posts: 0, diagnostics: discovery.diagnostics, coverage: discovery.coverage };
   }
 
   apiUrl ||= extractAppsScriptUrl(fs.readFileSync(path.join(repoRoot, "index.html"), "utf8"));
@@ -351,7 +455,8 @@ export async function runGiftXBackup(options = {}) {
     notification,
     reconciliation: reconciliation && { activeCandidates: reconciliation.activeCandidates, reviewCandidates: reconciliation.reviews.length,
       availableSources: reconciliation.diagnostics.filter(item => item.ok).length },
-    diagnostics: discovery.diagnostics
+    diagnostics: discovery.diagnostics,
+    coverage: discovery.coverage
   };
 }
 
@@ -424,6 +529,12 @@ async function main() {
     reviewWebhookUrl: process.env.WEATHER_DC_WEBHOOK_URL
   });
   const requests = result.ingest?.evidenceRequests || [];
+  if (result.coverage) {
+    const details = result.coverage.handles.map(item => item.handle + ': timeline=' + item.timelineAvailable + ', verificationFailures=' + item.verificationFailures).join('; ');
+    if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+      '### Official gift discovery: ' + result.coverage.state + '\n\n' + details + '\n\nVerified complete gifts: ' + result.posts + '\n');
+    if (result.coverage.state === 'degraded') console.error('::warning title=Official gift discovery degraded::' + details);
+  }
   if (process.env.GITHUB_OUTPUT) {
     fs.appendFileSync(process.env.GITHUB_OUTPUT, 'evidence_needed=' + String(requests.length > 0) + '\n');
     if (requests.length) fs.writeFileSync(path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'heartopia-gift-evidence.json'), JSON.stringify(requests));

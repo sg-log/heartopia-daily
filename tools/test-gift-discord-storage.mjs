@@ -435,6 +435,21 @@ test("official X batch rejects lookalike non-official account URLs", () => {
   assert.equal(h.rows.length, 1);
 });
 
+test('multiline Japanese official announcement creates once through the normal notification path', () => {
+  const h=makeHarness();
+  const post={statusId:'2199234567890123456',sourceUrl:'https://x.com/Heartopia_JP/status/2199234567890123456',
+    text:'ギフトコード：season123\nギフトコード内容：\nかぼちゃの種 ×10\nツルツルオーク ×2\n良質木材 ×5\n良質肥料 ×10\n有効期限：2099年12月01日 00:59（UTC+9）まで'};
+  const first=h.context.processOfficialXGiftBatch_({posts:[post]});
+  assert.equal(first.counts.created,1);
+  assert.equal(h.rows[1][2],'かぼちゃの種×10\nツルツルオーク×2\n良質木材×5\n良質肥料×10');
+  assert.equal(h.rows[1][3],'2099-12-01T00:59');
+  assert.deepEqual(h.events.notifications,['season123']);
+  const second=h.context.processOfficialXGiftBatch_({posts:[post]});
+  assert.equal(second.counts.created,0);
+  assert.equal(h.rows.length,2);
+  assert.deepEqual(h.events.notifications,['season123']);
+});
+
 
 test("clears only legacy auto-generated gift memos and preserves manual notes", () => {
   const h = makeHarness([

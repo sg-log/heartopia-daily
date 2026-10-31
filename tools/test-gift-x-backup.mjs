@@ -6,6 +6,7 @@ import path from "node:path";
 
 import {
   discoverOfficialXGiftPosts,
+  extractFullOfficialPost,
   extractStatusIdsFromHtml,
   extractTweetTextFromOembedHtml,
   isOfficialXAuthorUrl,
@@ -13,6 +14,87 @@ import {
   shouldRunXBackup,
   extractListingCandidates, reconcileGiftListings, notifyGiftReviews, captureGiftReviewScreenshot
 } from "./gift-x-backup.mjs";
+
+const fullPostId = '2199234567890123456';
+const fullPostPrefix = 'Gift Code: season123\nRewards:\n願い星 ×3\nRedemption Deadline:';
+const fullPostText = fullPostPrefix + ' 2099/12/01 00:59';
+function officialArticle(text = fullPostText, author = 'myheartopia', nested = '') {
+  return `<article><a href="/${author}">author</a><a href="/myheartopia/status/${fullPostId}">date</a><div data-testid="tweetText">${text.replaceAll('\n','<br>')}</div>${nested}</article>`;
+}
+function officialPage(article = officialArticle(), canonical = `https://x.com/myheartopia/status/${fullPostId}`) {
+  return `<html><head><link rel="canonical" href="${canonical}"></head><body>${article}</body></html>`;
+}
+function fullExtract(html, overrides = {}) {
+  return extractFullOfficialPost(html, {handle:'myheartopia', statusId:fullPostId, oembedText:fullPostPrefix+'…', ...overrides});
+}
+
+test('full official body extends verified oEmbed; identical responsive articles agree', () => {
+  assert.equal(fullExtract(officialPage(officialArticle()+officialArticle())), fullPostText);
+  assert.equal(fullExtract(officialPage(officialArticle().replace('data-testid="tweetText"','dir="auto" class="text-primary whitespace-pre-wrap"'))), fullPostText);
+});
+
+test('full-body verification rejects wrong canonical, author, prefix, duplicate or missing bodies', () => {
+  for (const html of [
+    officialPage(undefined, 'https://example.com/myheartopia/status/'+fullPostId),
+    officialPage(undefined, 'https://x.com/myheartopia/status/1199234567890123456'),
+    officialPage(officialArticle(fullPostText,'fakeheartopia')),
+    officialPage(officialArticle('different announcement and reward')),
+    officialPage(officialArticle()+officialArticle(fullPostText+' extra')),
+    officialPage(officialArticle().replace('</article>','<div data-testid="tweetText">quote</div></article>')),
+    officialPage(officialArticle().replace('data-testid="tweetText"','data-testid="other"')),
+    officialPage().replace('</head>','<link rel="canonical" href="https://x.com/myheartopia/status/'+fullPostId+'"></head>')
+  ]) assert.equal(fullExtract(html), null);
+});
+
+test('quotes and replies cannot supply the target article body', () => {
+  const quote = '<article><a href="/fakeheartopia">quote</a><div data-testid="tweetText">Gift Code: quote123</div></article>';
+  assert.equal(fullExtract(officialPage(officialArticle(fullPostText,'myheartopia',quote))), fullPostText);
+  assert.equal(fullExtract(officialPage(officialArticle().replace('/status/'+fullPostId,'/status/1199234567890123456'))), null);
+});
+
+test('truncated bodies and show-more controls stay unresolved', () => {
+  assert.equal(fullExtract(officialPage(officialArticle(fullPostText+'…'))), null);
+  assert.equal(fullExtract(officialPage(officialArticle().replace('</div>','<button>Show more</button></div>'))), null);
+  assert.equal(fullExtract(officialPage(), {oembedText:'Gift…'}), null);
+});
+
+test('official profile automatically discovers newest post and expands only verified full text', async () => {
+  const urls=[];
+  const result=await discoverOfficialXGiftPosts({handles:['myheartopia'],fetchImpl:async (url,options={})=>{
+    assert.equal(options.method || 'GET','GET');
+    const target=String(url); urls.push(target);
+    if(target==='https://x.com/myheartopia') return new Response(`<a href="/myheartopia/status/${fullPostId}">latest</a>`);
+    if(target.includes('publish.twitter.com')) return new Response(JSON.stringify({author_url:'https://x.com/myheartopia', html:`<p>${(fullPostPrefix+'…').replaceAll('\n','<br>')}</p>`}));
+    if(target===`https://x.com/myheartopia/status/${fullPostId}`) return new Response(officialPage());
+    throw Error('unexpected fallback');
+  }});
+  assert.equal(result.coverage.state,'healthy');
+  assert.equal(result.posts[0].text,fullPostText);
+  assert.equal(result.incompletePosts.length,0);
+  assert.equal(urls.length,3);
+});
+
+test('search-only discovery and empty login pages are degraded; partial text cannot publish', async () => {
+  const result=await discoverOfficialXGiftPosts({handles:['myheartopia'],fetchImpl:async url=>{
+    const target=String(url);
+    if(target.includes('publish.twitter.com')) return new Response(JSON.stringify({author_url:'https://x.com/myheartopia',html:`<p>${fullPostPrefix}…</p>`}));
+    if(target.includes('bing.com')) return new Response(`<a href="https://x.com/myheartopia/status/${fullPostId}">old result</a>`);
+    return new Response('<html>Log in</html>');
+  }});
+  assert.equal(result.coverage.state,'degraded');
+  assert.equal(result.coverage.handles[0].timelineAvailable,false);
+  assert.equal(result.posts.length,0);
+  assert.equal(result.incompletePosts.length,1);
+});
+
+test('a failed official author verification degrades an otherwise available profile', async () => {
+  const result=await discoverOfficialXGiftPosts({handles:['myheartopia'],fetchImpl:async url=>
+    new Response(String(url).includes('publish.twitter.com') ? JSON.stringify({author_url:'https://x.com/fakeheartopia',html:'<p>Gift Code: fake123</p>'}) : `<a href="/myheartopia/status/${fullPostId}">latest</a>`)
+  });
+  assert.equal(result.coverage.state,'degraded');
+  assert.equal(result.coverage.handles[0].verificationFailures,1);
+  assert.equal(result.posts.length,0);
+});
 
 test("extracts official status ids from syndication-style escaped HTML", () => {
   const html = [

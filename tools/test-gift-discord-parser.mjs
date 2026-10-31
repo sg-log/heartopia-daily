@@ -33,6 +33,32 @@ const context = {
 vm.createContext(context);
 vm.runInContext(source, context);
 
+test('parses an explicit Japanese gift-content heading and multiline rewards', () => {
+  const result=context.parseDiscordGiftAnnouncement_('🎁 ギフトコード：season2026\n🎃ギフトコード内容：\nかぼちゃの種×10\nツルツルオーク ×2\n良質木材 ×5\n良質肥料 ×10\n⏰ 有効期限：2026年12月01日 00:59（UTC+9）まで',{rewardNameMap:{}});
+  assert.equal(result.ok,true);assert.equal(result.code,'season2026');
+  assert.equal(result.reward,'かぼちゃの種×10\nツルツルオーク×2\n良質木材×5\n良質肥料×10');
+  assert.equal(result.expiresAt,'2026-12-01T00:59');
+});
+
+test('recognises the explicit English Rewards heading without a colon', () => {
+  const text='Gift Code: season2027\n✨ Rewards\nSeed ×10\nTimber ×2\nRedemption Deadline: 2026/12/01 00:59 UTC+9';
+  assert.equal(context.looksLikeDiscordGiftAnnouncement_(text),true);
+  const result=context.parseDiscordGiftAnnouncement_(text,{rewardNameMap:{}});
+  assert.equal(result.ok,true);assert.equal(result.expiresAt,'2026-12-01T00:59');
+});
+
+test('does not publish the valid prefix of an incomplete multiline reward list', () => {
+  for(const invalid of ['Dye ×?','more rewards…','something else']){
+    const result=context.parseDiscordGiftAnnouncement_('Gift Code: failclosed2026\nRewards:\nSeed ×10\n'+invalid+'\nRedemption Deadline: 2026/12/01 00:59',{rewardNameMap:{}});
+    assert.equal(result.ok,false);
+  }
+});
+
+test('an explicit reward heading is required after a code', () => {
+  const result=context.parseDiscordGiftAnnouncement_('Gift Code: failclosed2027\nSeed ×10\nTimber ×2\nRedemption Deadline: 2026/12/01 00:59',{rewardNameMap:{}});
+  assert.equal(result.ok,false);
+});
+
 test("parses current Heartopia Discord announcement and localizes verified reward names", () => {
   const text = [
     "🎁Rewards: Wishing star ×3, Dye ×2, Flawless Fluorite ×1",
@@ -189,4 +215,9 @@ test("accepts Japanese official reward labels without marking Japanese names unr
 test("sorts Discord snowflakes without bigint", () => {
   const ids = ["210", "9", "1000", "99", "010"].sort(context.compareDiscordSnowflakes_);
   assert.deepEqual(Array.from(ids), ["9", "010", "99", "210", "1000"]);
+});
+
+test('invalid labeled rewards never fall back to an unrelated valid pre-code item', () => {
+  const parsed=context.parseDiscordGiftAnnouncement_('願い星 ×3\nGift Code: season123\nRewards:\n染色剤 ×2\n良質木材 unknown\nRedemption Deadline: 2099/12/01 00:59',{rewardNameMap:{}});
+  assert.equal(parsed.ok,false);
 });

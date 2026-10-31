@@ -16,6 +16,7 @@ on:
       - ".claspignore"
       - ".github/workflows/gift-code-discord-poll.yml"
       - "package.json"
+      - "package-lock.json"
       - "README-gift-code-automation.md"
       - ".github/workflows/gift-code-parser-ci.yml"
   workflow_dispatch:
@@ -31,4 +32,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
+      - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run test:gift-discord

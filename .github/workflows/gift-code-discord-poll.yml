@@ -35,6 +35,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
+      - name: Install gift collector dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Poll Discord gift channel
         if: ${{ github.event_name == 'workflow_dispatch' }}
         env:
