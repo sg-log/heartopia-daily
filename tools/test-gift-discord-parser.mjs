@@ -221,3 +221,36 @@ test('invalid labeled rewards never fall back to an unrelated valid pre-code ite
   const parsed=context.parseDiscordGiftAnnouncement_('願い星 ×3\nGift Code: season123\nRewards:\n染色剤 ×2\n良質木材 unknown\nRedemption Deadline: 2099/12/01 00:59',{rewardNameMap:{}});
   assert.equal(parsed.ok,false);
 });
+
+test('English month and explicit UTC offset convert 12-hour time across the JST date boundary', () => {
+  for (const [input, expected] of [
+    ['November 30, 2026, 10:59 AM (UTC-5)', '2026-12-01T00:59'],
+    ['December 31, 2026, 12:00 PM (UTC-5)', '2027-01-01T02:00'],
+    ['November 30, 2026, 12:00 AM (UTC+9)', '2026-11-30T00:00'],
+    ['November 30, 2026, 10:59 AM (UTC+05:30)', '2026-11-30T14:29']
+  ]) assert.equal(context.parseDiscordGiftDeadline_(input), expected);
+});
+
+test('impossible or ambiguous English deadlines remain unresolved', () => {
+  for (const input of [
+    'November 30, 2026, 10:59 AM', 'November 30, 2026, 10:59 AM (EST)',
+    'February 30, 2026, 10:59 AM (UTC-5)', 'November 30, 2026, 13:59 AM (UTC-5)',
+    'November 30, 2026, 00:59 AM (UTC-5)', 'November 30, 2026, 10:99 AM (UTC-5)',
+    'November 30, 2026, 10:59 AM (UTC-14:30)', 'Nov 30, 2026, 10:59 AM (UTC-5)'
+  ]) assert.equal(context.parseDiscordGiftDeadline_(input), '', input);
+});
+
+test('Valid Until binds the explicit deadline and retains unknown English reward names', () => {
+  const parsed = context.parseDiscordGiftAnnouncement_('Gift Code: season123\nRewards\nPumpkin Seeds ×10\nQuality Timber ×5\nValid Until: November 30, 2026, 10:59 AM (UTC-5)', {rewardNameMap:{}});
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.expiresAt, '2026-12-01T00:59');
+  assert.equal(parsed.reward, 'Pumpkin Seeds×10\nQuality Timber×5');
+  assert.deepEqual(Array.from(parsed.unresolvedRewardNames), ['Pumpkin Seeds','Quality Timber']);
+});
+
+test('an unparsed explicit Valid Until cannot become an active code with no deadline', () => {
+  for (const deadline of ['tomorrow','November 30, 2026, 10:59 AM (EST)','']) {
+    const parsed = context.parseDiscordGiftAnnouncement_('Gift Code: season123\nRewards: Seed ×10\nValid Until: '+deadline, {rewardNameMap:{}});
+    assert.equal(parsed.ok, false);
+  }
+});

@@ -450,6 +450,32 @@ test('multiline Japanese official announcement creates once through the normal n
   assert.deepEqual(h.events.notifications,['season123']);
 });
 
+test('forwarded official-news gift embed with English deadline registers and notifies once', () => {
+  const h = makeHarness();
+  h.properties.set('DISCORD_GIFT_LAST_MESSAGE_ID','823456789012345678');
+  const message = {id:'923456789012345678',channel_id:'123456789012345678',webhook_id:'323456789012345678',
+    content:'Baboo, MyHeartopia just posted a new Tweet!',embeds:[{title:'Heartopia (@MyHeartopia)',
+      description:'Gift Code: season123\nRewards\nPumpkin Seeds ×10\nQuality Timber ×5\nValid Until: November 30, 2099, 10:59 AM (UTC-5)'}]};
+  const body = {channelId:'123456789012345678',guildId:'223456789012345678',latestMessageId:message.id,messages:[message]};
+  assert.equal(h.context.processDiscordGiftBatch_(body).counts.created,1);
+  assert.equal(h.rows[1][3],'2099-12-01T00:59');
+  assert.deepEqual(h.events.notifications,['season123']);
+  h.context.processDiscordGiftBatch_(body);
+  assert.equal(h.rows.length,2);
+  assert.deepEqual(h.events.notifications,['season123']);
+});
+
+test('forwarded official-news with ambiguous explicit expiry is held without a new row or notification', () => {
+  const h = makeHarness();
+  h.properties.set('DISCORD_GIFT_LAST_MESSAGE_ID','823456789012345678');
+  const body = {channelId:'123456789012345678',guildId:'223456789012345678',latestMessageId:'923456789012345678',messages:[{
+    id:'923456789012345678',channel_id:'123456789012345678',webhook_id:'323456789012345678',
+    content:'Gift Code: season123\nRewards: Seed ×10\nValid Until: November 30, 2099, 10:59 AM (EST)'}]};
+  assert.equal(h.context.processDiscordGiftBatch_(body).counts.review,1);
+  assert.equal(h.rows.length,1);
+  assert.deepEqual(h.events.notifications,[]);
+});
+
 
 test("clears only legacy auto-generated gift memos and preserves manual notes", () => {
   const h = makeHarness([
