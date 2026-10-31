@@ -96,6 +96,54 @@ test('a failed official author verification degrades an otherwise available prof
   assert.equal(result.posts.length,0);
 });
 
+test('blocked Japanese profile discovers a fresh official gift through documented real-time author search', async () => {
+  const requests=[];
+  const result=await discoverOfficialXGiftPosts({handles:['Heartopia_JP'],maxPostsPerHandle:1,fetchImpl:async (url,options={})=>{
+    assert.equal(options.method || 'GET','GET');
+    const target=new URL(url);requests.push(target.href);
+    if(target.href==='https://x.com/Heartopia_JP')return new Response('blocked',{status:403});
+    if(target.hostname==='search.yahoo.co.jp' && target.pathname==='/realtime/search'){
+      assert.equal(target.searchParams.get('p'),'id:Heartopia_JP ギフトコード');
+      return new Response(`<a href="https://x.com/Heartopia_JP/status/${fullPostId}">official</a><a href="https://x.com/fakeheartopia/status/2299234567890123456">foreign</a>`);
+    }
+    if(target.hostname==='publish.twitter.com'){
+      assert.equal(new URL(target.searchParams.get('url')).pathname,`/Heartopia_JP/status/${fullPostId}`);
+      return new Response(JSON.stringify({author_url:'https://x.com/Heartopia_JP',html:'<p>ギフトコード：fresh2026<br>ギフトコード内容：<br>願い星 ×3<br>有効期限：2099年12月01日 00:59</p>'}));
+    }
+    throw Error('Unexpected fallback');
+  }});
+  assert.equal(result.posts.length,1);
+  assert.equal(result.posts[0].statusId,fullPostId);
+  assert.equal(result.diagnostics.find(item=>item.source==='yahoo-realtime').ok,true);
+  assert.equal(result.coverage.handles[0].timelineAvailable,false);
+  assert.equal(result.coverage.state,'degraded');
+  assert.equal(requests.length,3);
+});
+
+test('empty real-time results retain the original fallbacks without trusting a foreign account', async () => {
+  const result=await discoverOfficialXGiftPosts({handles:['Heartopia_JP'],fetchImpl:async url=>{
+    const target=new URL(url);
+    if(target.hostname==='publish.twitter.com')return new Response(JSON.stringify({author_url:'https://x.com/Heartopia_JP',html:'<p>Not a gift</p>'}));
+    if(target.pathname==='/realtime/search')return new Response(`<a href="https://x.com/fakeheartopia/status/${fullPostId}">foreign</a>`);
+    return new Response('',{status:403});
+  }});
+  assert.equal(result.posts.length,0);
+  assert.equal(result.diagnostics.find(item=>item.source==='yahoo-realtime').ok,false);
+  for(const source of ['syndication','bing','yahoo-web'])assert.ok(result.diagnostics.some(item=>item.source===source));
+});
+
+test('an available official Japanese profile needs no extra real-time search', async () => {
+  const result=await discoverOfficialXGiftPosts({handles:['Heartopia_JP'],maxPostsPerHandle:1,fetchImpl:async url=>{
+    const target=new URL(url);
+    if(target.href==='https://x.com/Heartopia_JP')return new Response(`<a href="/Heartopia_JP/status/${fullPostId}">post</a>`);
+    if(target.hostname==='publish.twitter.com')return new Response(JSON.stringify({author_url:'https://x.com/Heartopia_JP',html:'<p>Gift Code: fresh2026<br>Rewards: 願い星 ×3<br>Redemption Deadline: 2099/12/01 00:59</p>'}));
+    throw Error('Unexpected extra search');
+  }});
+  assert.equal(result.coverage.state,'healthy');
+  assert.equal(result.posts.length,1);
+  assert.equal(result.diagnostics.some(item=>item.source==='yahoo-realtime'),false);
+});
+
 test("extracts official status ids from syndication-style escaped HTML", () => {
   const html = [
     'https:\\/\\/twitter.com\\/myheartopia\\/status\\/2099234567890123456',
