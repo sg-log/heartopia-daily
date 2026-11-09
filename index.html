@@ -242,9 +242,8 @@ button.danger{background:#f8e7e5;color:var(--bad);border:1px solid #efccc8}
   min-height:52px;
 }
 .weeklyWeatherDate{font-weight:800;color:var(--subtle)}
-.weeklyWeatherDay{font-weight:900;color:var(--subtle);line-height:1}
+.weeklyWeatherDay{padding-bottom:8px;font-weight:900;color:var(--subtle);line-height:1}
 .weeklyWeatherDayNum{
-  padding-bottom:8px;
   font-size:11px;
   color:var(--lighttext);
   line-height:1;
@@ -3440,8 +3439,8 @@ function weeklyRowsHtml(w, baseDate, className="weeklyWeather"){
     const icons = compactWeatherText(w.weeks?.[key], "—");
     return `
       <div class="weeklyWeatherRow" data-week-key="${esc(key)}">
+        <time class="weeklyWeatherDayNum" datetime="${esc(info.date)}"><span class="visuallyHidden">${esc(info.month)}月</span>${esc(info.dayNum)}日</time>
         <div class="weeklyWeatherDay">${esc(info.day)}</div>
-        <time class="weeklyWeatherDayNum" datetime="${esc(info.date)}"><span class="visuallyHidden">${esc(info.month)}月</span>${esc(info.dayNum)}<span class="visuallyHidden">日</span></time>
         <div class="weeklyWeatherText"><span class="weeklyWeatherIcons" aria-hidden="true">${esc(icons)}</span><span class="visuallyHidden">${esc(weatherValues(w.weeks?.[key]).join("・") || "未登録")}</span></div>
       </div>
     `;
