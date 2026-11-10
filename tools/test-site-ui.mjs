@@ -253,6 +253,32 @@ async function runScenario(width,height,label){
     assert.equal(listBeforeBackup,true,'backup tools follow both gift-code lists');
     const rowStyle=await page.locator('#giftCodeList .giftCard').first().evaluate(el=>getComputedStyle(el));
     assert.equal(rowStyle.borderTopWidth,'0px','individual gift-code cards have no surrounding border');
+    await page.locator('#expiredGiftCodes > summary').click();
+    const controlMetrics=await page.locator('#giftCodeList .giftCard, #expiredGiftCodeList .giftCard').evaluateAll(rows=>rows.map(row=>{
+      const code=row.querySelector('.giftCodeText'),copy=row.querySelector('.giftCopy'),claim=row.querySelector('.giftClaim');
+      const a=code.getBoundingClientRect(),b=copy.getBoundingClientRect(),c=claim.getBoundingClientRect();
+      return {
+        codeWidth:a.width,copyWidth:b.width,claimWidth:c.width,
+        copyGap:b.left-a.right,claimGap:c.left-b.right,
+        codeHeight:a.height,copyHeight:b.height,claimHeight:c.height,
+        copyRadius:getComputedStyle(copy).borderTopRightRadius,
+        claimRadius:getComputedStyle(claim).borderTopRightRadius
+      };
+    }));
+    assert.equal(controlMetrics.length,2,'active and expired rows have controls');
+    for(const m of controlMetrics){
+      assert.equal(Math.round(m.codeWidth),128,'code block width is aligned');
+      assert.equal(Math.round(m.copyWidth),54,'copy button width is consistent');
+      assert.equal(Math.round(m.claimWidth),62,'claim state width is consistent');
+      assert.equal(Math.round(m.codeHeight),38,'code block height');
+      assert.equal(Math.round(m.copyHeight),38,'copy button height');
+      assert.equal(Math.round(m.claimHeight),38,'claim state height matches copy');
+      assert.ok(Math.abs(m.copyGap)<=1,'copy button touches code');
+      assert.ok(m.claimGap>=5&&m.claimGap<=8,'claim state stays close to copy');
+      assert.equal(m.copyRadius,'8px','copy corner radius');
+      assert.equal(m.claimRadius,'8px','claim corner radius');
+    }
+    await page.locator('#expiredGiftCodes > summary').click();
     await backupPanel.locator('summary').first().click();
     assert.equal(await page.locator('#giftBackupCopyBtn').isVisible(),true,'backup controls open on demand');
     await page.locator('#giftBackupCopyBtn').click();
