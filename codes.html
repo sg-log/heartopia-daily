@@ -43,6 +43,53 @@ button,button.secondary,.giftClaim{border-radius:9px}
 .siteHeaderNav{gap:clamp(22px,2.8vw,34px);padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
 .siteHeaderNav a{padding:7px 1px 9px}
 @media(max-width:700px){.siteHeaderNav{width:max-content;max-width:100%;margin-top:12px;padding:0;gap:clamp(16px,4vw,24px)}.siteHeaderNav a{padding:5px 0 7px}}
+
+/* Gift code list: retain the site's palette and existing control behaviors. */
+.giftDetails>summary{display:flex;align-items:center;gap:9px}
+.giftTitleIcon{width:21px;height:21px;flex:none;color:var(--accent2)}
+.giftDetailsBody>.small{margin:2px 0 16px}
+.giftList{display:block;gap:0;border-top:1px solid var(--line)}
+.giftCard,.giftCard.claimed,.giftCard.expired{
+  display:grid;grid-template-columns:minmax(0,265px) minmax(0,1fr);
+  grid-template-areas:"head reward" "head meta";align-items:center;
+  column-gap:18px;row-gap:4px;margin:0;padding:17px 2px;
+  border:0;border-bottom:1px solid var(--line);border-radius:0;
+  background:transparent;box-shadow:none
+}
+.giftCard.claimed{opacity:.7}
+.giftCard.expired{opacity:.62}
+.giftHead{grid-area:head;display:flex;align-items:center;justify-content:flex-start;gap:0;flex-wrap:nowrap;min-width:0}
+.giftCodeText{height:38px;min-width:0;max-width:calc(100% - 124px);padding:6px 9px;
+  border:1px solid #e7e0d6;border-right:0;border-radius:8px 0 0 8px;
+  background:#fbf8f4;font-size:14px;letter-spacing:.01em}
+.giftCopy{height:38px;flex:none;padding:7px 10px;border-radius:0 8px 8px 0;
+  font-size:12px;white-space:nowrap;line-height:1.6}
+.giftClaim{flex:none;margin-left:7px;padding:6px 9px;border-radius:999px;
+  font-size:11px;white-space:nowrap;line-height:1.6}
+.giftReward{grid-area:reward;color:var(--text);font-size:12px;
+  font-weight:600;line-height:1.7;overflow-wrap:anywhere}
+.giftMeta{grid-area:meta;display:flex;gap:3px 12px;flex-wrap:wrap;
+  align-items:center;font-size:11px;line-height:1.6}
+.giftSource{font-weight:700}
+.giftBackupPanel{margin-top:22px;border-top:1px solid var(--line)}
+.giftBackupPanel>summary{padding:14px 2px;cursor:pointer;
+  font-size:12px;font-weight:700;color:var(--muted)}
+.giftBackupPanel .giftBackupBox{margin:0 0 12px}
+.giftExpiredWrap{margin-top:18px}
+@media(max-width:700px){
+  .giftDetails>summary{gap:7px}
+  .giftTitleIcon{width:18px;height:18px}
+  .giftCard,.giftCard.claimed,.giftCard.expired{
+    grid-template-columns:minmax(0,1fr);
+    grid-template-areas:"head" "reward" "meta";
+    row-gap:5px;padding:14px 0
+  }
+  .giftCodeText{max-width:calc(100% - 124px);font-size:13px}
+  .giftCopy{padding-inline:9px}
+  .giftClaim{margin-left:6px;padding-inline:8px}
+  .giftReward{font-size:12px}
+  .giftMeta{gap:2px 12px}
+}
 </style>
 <link rel="canonical" href="https://sg-log.github.io/heartopia-daily/codes.html">
 <meta property="og:type" content="website">
@@ -62,9 +109,16 @@ button,button.secondary,.giftClaim{border-radius:9px}
 <header class="siteHeader"><div class="siteHeaderRow"><div class="siteHeaderBrand"><h1>Heartopia Daily</h1><p>今日の採取場所をさっと確認できる非公式メモサイトです。</p></div><nav class="siteHeaderNav" aria-label="メインナビゲーション"><a href="./">今日の情報</a><a href="codes.html" class="active" aria-current="page">ギフトコード</a><a href="index.html#puzzles">パズル管理</a></nav></div></header>
 <main><div id="siteNotice" class="siteNotice" hidden></div><div class="card" id="gift-codes">
         <details class="giftDetails" open>
-          <summary><h2 class="giftDetailsHeading">ギフトコード</h2></summary>
+          <summary><svg class="giftTitleIcon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v9h14v-9M12 8v13M12 8H8.5a2.5 2.5 0 1 1 2.5-2.5V8M12 8h3.5a2.5 2.5 0 1 0-2.5-2.5V8"/></svg><h2 class="giftDetailsHeading">ギフトコード</h2></summary>
           <div class="giftDetailsBody">
             <p class="small">コピーで受取済。受取状態はタップで切替できます。</p>
+            <div id="giftCodeList" class="giftList"></div>
+            <details id="expiredGiftCodes" class="giftExpiredWrap">
+              <summary>期限切れコード</summary>
+              <div id="expiredGiftCodeList" class="giftList"></div>
+            </details>
+            <details class="giftBackupPanel">
+              <summary>データ管理・バックアップ</summary>
             <div class="giftBackupBox">
               <div class="giftBackupLine">
                 <span id="giftBackupStatus" class="giftBackupState">受取済バックアップを準備中…</span>
@@ -82,10 +136,6 @@ button,button.secondary,.giftClaim{border-radius:9px}
                 <div id="giftBackupRestoreStatus" class="status"></div>
               </details>
             </div>
-            <div id="giftCodeList" class="giftList"></div>
-            <details id="expiredGiftCodes" class="giftExpiredWrap">
-              <summary>期限切れコード</summary>
-              <div id="expiredGiftCodeList" class="giftList"></div>
             </details>
           </div>
         </details>

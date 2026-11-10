@@ -243,6 +243,18 @@ async function runScenario(width,height,label){
     await page.locator('[data-gift-toggle="UI_TEST_ACTIVE"]').click();
     await page.locator('[data-gift-toggle="UI_TEST_ACTIVE"]').filter({hasText:'未受取'}).waitFor({state:'visible'});
 
+    // Backup tools now live below the code list in a collapsed details panel.
+    const backupPanel=page.locator('.giftBackupPanel');
+    assert.equal(await backupPanel.getAttribute('open'),null,'backup panel starts collapsed');
+    assert.equal(await page.locator('#giftBackupCopyBtn').isVisible(),false,'backup controls are hidden by default');
+    const listBeforeBackup=await page.evaluate(()=>
+      Boolean(document.querySelector('#expiredGiftCodes').compareDocumentPosition(document.querySelector('.giftBackupPanel')) & Node.DOCUMENT_POSITION_FOLLOWING)
+    );
+    assert.equal(listBeforeBackup,true,'backup tools follow both gift-code lists');
+    const rowStyle=await page.locator('#giftCodeList .giftCard').first().evaluate(el=>getComputedStyle(el));
+    assert.equal(rowStyle.borderTopWidth,'0px','individual gift-code cards have no surrounding border');
+    await backupPanel.locator('summary').first().click();
+    assert.equal(await page.locator('#giftBackupCopyBtn').isVisible(),true,'backup controls open on demand');
     await page.locator('#giftBackupCopyBtn').click();
     const backupCode=await page.evaluate(()=>navigator.clipboard.readText());
     assert.match(backupCode,/^HGD-[0-9a-f-]{39}$/);
