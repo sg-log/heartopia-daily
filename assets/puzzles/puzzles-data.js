@@ -1,4 +1,4 @@
-﻿window.HEARTOPIA_PUZZLES = [
+window.HEARTOPIA_PUZZLES = [
     {
         "id":  "puzzle-001",
         "name":  "市庁パズル",
@@ -660,3 +660,11 @@
         "order":  110
     }
 ];
+
+// 管理画面の未承認天気レビューUIだけを追加で読み込む。
+if(new URLSearchParams(window.location.search).get("admin") === "1" || window.location.hash === "#admin"){
+    const pendingReviewScript = document.createElement("script");
+    pendingReviewScript.src = "assets/admin-pending-ui.js?v=20260916";
+    pendingReviewScript.defer = true;
+    document.head.appendChild(pendingReviewScript);
+}
