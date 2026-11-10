@@ -59,12 +59,14 @@ button,button.secondary,.giftClaim{border-radius:9px}
 .giftCard.claimed{opacity:.7}
 .giftCard.expired{opacity:.62}
 .giftHead{grid-area:head;display:flex;align-items:center;justify-content:flex-start;gap:0;flex-wrap:nowrap;min-width:0}
-.giftCodeText{height:38px;min-width:0;max-width:calc(100% - 124px);padding:6px 9px;
+.giftCodeText{height:38px;flex:0 0 128px;width:128px;min-width:0;max-width:128px;padding:6px 9px;
   border:1px solid #e7e0d6;border-right:0;border-radius:8px 0 0 8px;
   background:#fbf8f4;font-size:14px;letter-spacing:.01em}
-.giftCopy{height:38px;flex:none;padding:7px 10px;border-radius:0 8px 8px 0;
+.giftCopy{display:inline-flex;align-items:center;justify-content:center;
+  width:54px;height:38px;flex:0 0 54px;padding:0;border-radius:0 8px 8px 0;
   font-size:12px;white-space:nowrap;line-height:1.6}
-.giftClaim{flex:none;margin-left:7px;padding:6px 9px;border-radius:999px;
+.giftClaim{display:inline-flex;align-items:center;justify-content:center;
+  width:62px;height:38px;flex:0 0 62px;margin-left:7px;padding:0;border-radius:8px;
   font-size:11px;white-space:nowrap;line-height:1.6}
 .giftReward{grid-area:reward;color:var(--text);font-size:12px;
   font-weight:600;line-height:1.7;overflow-wrap:anywhere}
@@ -84,9 +86,8 @@ button,button.secondary,.giftClaim{border-radius:9px}
     grid-template-areas:"head" "reward" "meta";
     row-gap:5px;padding:14px 0
   }
-  .giftCodeText{max-width:calc(100% - 124px);font-size:13px}
-  .giftCopy{padding-inline:9px}
-  .giftClaim{margin-left:6px;padding-inline:8px}
+  .giftCodeText{font-size:13px}
+  .giftClaim{margin-left:6px}
   .giftReward{font-size:12px}
   .giftMeta{gap:2px 12px}
 }
