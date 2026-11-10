@@ -368,6 +368,42 @@ test('Gift-code cache is optional and first visit waits for a fresh response',{t
   }
 });
 
+test('Puzzle tab opens at the header without an anchor-induced scroll',{timeout:120000},async()=>{
+  const server=await staticServer();
+  const browser=await chromium.launch({headless:true});
+  const origin='http://127.0.0.1:'+server.address().port;
+  try{
+    for(const width of [1280,390]){
+      const context=await browser.newContext({viewport:{width,height:844},timezoneId:'Asia/Tokyo'});
+      installApiMock(context);
+      const page=await context.newPage();
+      try{
+        // From another HTML page: the #puzzles fragment should select the tab, not scroll to its section.
+        await page.goto(origin+'/codes.html',{waitUntil:'load'});
+        await page.locator('a[href="index.html#puzzles"]').click();
+        await page.waitForURL(url=>url.hash==='#puzzles',{timeout:15000});
+        await page.locator('#puzzles').waitFor({state:'visible'});
+        await page.waitForLoadState('load');
+        assert.equal(await page.evaluate(()=>scrollY),0,'gift-code link to puzzles starts at page top');
+        // Direct reload of the deep link must also return to the top.
+        await page.reload({waitUntil:'load'});
+        await page.locator('#puzzles').waitFor({state:'visible'});
+        assert.equal(await page.evaluate(()=>scrollY),0,'reloading #puzzles starts at page top');
+        // Internal tab switching must not retain a scroll offset from the previous view.
+        await page.locator('.siteHeaderNav .tab[data-tab="today"]').click();
+        await page.evaluate(()=>scrollTo(0,80));
+        await page.locator('.siteHeaderNav .tab[data-tab="puzzles"]').click();
+        assert.equal(await page.evaluate(()=>scrollY),0,'tab switch resets to header');
+      }finally{
+        await context.close();
+      }
+    }
+  }finally{
+    await browser.close();
+    await new Promise(resolve=>server.close(resolve));
+  }
+});
+
 test('Image sharing includes the canonical public URL without private route data and keeps save fallback',{timeout:120000},async()=>{
   const server=await staticServer();
   const browser=await chromium.launch({headless:true});

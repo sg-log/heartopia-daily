@@ -6966,7 +6966,10 @@ function init(){
     };
   });
   document.querySelectorAll(".siteHeaderNav .tab").forEach(tab=>tab.addEventListener("click",()=>{
-    if(!isAdminRoute())history.replaceState(null,"",tab.dataset.tab==="puzzles"?"#puzzles":location.pathname);
+    if(isAdminRoute())return;
+    history.replaceState(null,"",tab.dataset.tab==="puzzles"?"#puzzles":location.pathname);
+    // Keep tab navigation at the page header instead of preserving a previous scroll offset.
+    window.scrollTo({top:0,behavior:"instant"});
   }));
   document.getElementById("aboutFooterLink")?.addEventListener("click",event=>{
     event.preventDefault();
@@ -7354,6 +7357,11 @@ if(!isAdminRoute()){
  else if(location.hash==="#puzzles"||location.hash==="#about"){
    document.querySelector('.tab[data-tab="'+location.hash.slice(1)+'"]')?.click();
    window.scrollTo({top:0,behavior:"instant"});
+   // A #puzzles link from codes.html may trigger browser anchor scrolling after init().
+   // Restore the expected header position once the document finishes loading.
+   if(location.hash==="#puzzles"){
+     window.addEventListener("load",()=>window.scrollTo({top:0,behavior:"instant"}),{once:true});
+   }
  }
 }
 HeartopiaWeeklyAIImport.mount({
