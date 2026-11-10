@@ -253,6 +253,7 @@ async function runScenario(width,height,label){
     assert.equal(listBeforeBackup,true,'backup tools follow both gift-code lists');
     const rowStyle=await page.locator('#giftCodeList .giftCard').first().evaluate(el=>getComputedStyle(el));
     assert.equal(rowStyle.borderTopWidth,'0px','individual gift-code cards have no surrounding border');
+    await page.locator('#expiredGiftCodes > summary').click();
     const controlMetrics=await page.locator('#giftCodeList .giftCard, #expiredGiftCodeList .giftCard').evaluateAll(rows=>rows.map(row=>{
       const code=row.querySelector('.giftCodeText'),copy=row.querySelector('.giftCopy'),claim=row.querySelector('.giftClaim');
       const a=code.getBoundingClientRect(),b=copy.getBoundingClientRect(),c=claim.getBoundingClientRect();
@@ -277,6 +278,7 @@ async function runScenario(width,height,label){
       assert.equal(m.copyRadius,'8px','copy corner radius');
       assert.equal(m.claimRadius,'8px','claim corner radius');
     }
+    await page.locator('#expiredGiftCodes > summary').click();
     await backupPanel.locator('summary').first().click();
     assert.equal(await page.locator('#giftBackupCopyBtn').isVisible(),true,'backup controls open on demand');
     await page.locator('#giftBackupCopyBtn').click();
