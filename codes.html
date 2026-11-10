@@ -1,4 +1,6 @@
-<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta name="description" content="ハートピアスローライフのギフトコードと報酬・交換期限を一覧で確認。コピーと受取済チェック、受取状態のバックアップに対応した非公式サイトです。"><title>ハートピアのギフトコード一覧｜Heartopia Daily</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800;900&display=swap" rel="stylesheet"><style>
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta name="description" content="ハートピアスローライフのギフトコードと報酬・交換期限を一覧で確認。コピーと受取済チェック、受取状態のバックアップに対応した非公式サイトです。"><title>ハートピアのギフトコード一覧｜Heartopia Daily</title><link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800;900&display=swap" rel="stylesheet"><style>
 :root{--bg:#f5f0e8;--card:#fffefa;--text:#5f5953;--heading:#3f3a36;--muted:#7a746d;--line:#e2d8cc;--accent:#7c9189;--accent2:#5d746b;--soft:#edf3ef}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 0 0,rgba(124,145,137,.2),transparent 34%),var(--bg);color:var(--text);font:14px/1.7 "Noto Sans JP",system-ui,sans-serif}
 header,main{width:min(1080px,100%);margin:auto}header{padding:24px 18px 6px}
@@ -45,6 +47,7 @@ button,button.secondary,.giftClaim{border-radius:9px}
 @media(max-width:700px){.siteHeaderNav{width:max-content;max-width:100%;margin-top:12px;padding:0;gap:clamp(16px,4vw,24px)}.siteHeaderNav a{padding:5px 0 7px}}
 
 /* Gift code list: retain the site's palette and existing control behaviors. */
+.giftLoadStatus{margin:0 0 9px;min-height:0;font-size:12px;line-height:1.6}
 .giftDetails>summary{display:flex;align-items:center;gap:9px}
 .giftTitleIcon{width:21px;height:21px;flex:none;color:var(--accent2)}
 .giftDetailsBody>.small{margin:2px 0 16px}
@@ -113,6 +116,7 @@ button,button.secondary,.giftClaim{border-radius:9px}
           <summary><svg class="giftTitleIcon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v9h14v-9M12 8v13M12 8H8.5a2.5 2.5 0 1 1 2.5-2.5V8M12 8h3.5a2.5 2.5 0 1 0-2.5-2.5V8"/></svg><h2 class="giftDetailsHeading">ギフトコード</h2></summary>
           <div class="giftDetailsBody">
             <p class="small">コピーで受取済。受取状態はタップで切替できます。</p>
+            <p id="giftCodeLoadStatus" class="status giftLoadStatus" role="status" aria-live="polite">ギフトコードを読み込み中…</p>
             <div id="giftCodeList" class="giftList"></div>
             <details id="expiredGiftCodes" class="giftExpiredWrap">
               <summary>期限切れコード</summary>
@@ -142,10 +146,12 @@ button,button.secondary,.giftClaim{border-radius:9px}
         </details>
       </div>
 
-      <p id="giftCodeLoadStatus" class="status" role="status" aria-live="polite">ギフトコードを読み込み中…</p></main><div id="toast" class="toast" role="status" aria-live="polite"></div>
+      </main><div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script>
 "use strict";
 const WEATHER_API_URL="https://script.google.com/macros/s/AKfycbwoPLuj0rSsennsx01-B-6UxqBjqnPieocgVLQnJMKEgRw6fZziV5ZGVA3SusjVLF3o/exec";
+const GIFT_CODE_CACHE_KEY="heartopiaPublicGiftCodes.v1";
+const GIFT_CODE_CACHE_MAX_AGE_MS=7*24*60*60*1000;
 const GIFT_BACKUP_ID_KEY="heartopiaGiftClaimBackupId.v1";
 const ACCESS_SENT_DATE_KEY="heartopiaAccessSentDate.v1";
 const ACCESS_EXCLUDED_KEY="heartopiaAccessExcluded.v1";
@@ -513,15 +519,48 @@ async function fetchSiteNotice(){
   el.hidden=false;
  }catch(error){el.hidden=true}
 }
+// Cache only publicly served gift-code data. Claim state and backup IDs stay in their own stores.
+function cachedPublicGiftCodes(){
+ try{
+  const raw=localStorage.getItem(GIFT_CODE_CACHE_KEY);
+  if(!raw)return null;
+  const entry=JSON.parse(raw);
+  if(entry?.version!==1||!Array.isArray(entry.codes)||!Number.isFinite(entry.savedAt))return null;
+  const age=Date.now()-entry.savedAt;
+  if(age<0||age>GIFT_CODE_CACHE_MAX_AGE_MS)return null;
+  return {codes:entry.codes.map((item,index)=>normalizeGiftCode(item,index)).filter(item=>item.code),savedAt:entry.savedAt};
+ }catch(_){return null}
+}
+function savePublicGiftCodes(codes){
+ try{
+  // The response is public; never store per-user claims or server backup identifiers here.
+  const payload=JSON.stringify({version:1,savedAt:Date.now(),codes});
+  if(payload.length<=250000)localStorage.setItem(GIFT_CODE_CACHE_KEY,payload);
+ }catch(_){}
+}
 async function fetchGiftCodes(){
  const status=document.getElementById("giftCodeLoadStatus");
+ const cached=cachedPublicGiftCodes();
+ if(cached){
+  giftCodes=cached.codes;
+  renderGiftCodes();
+  const savedAt=new Date(cached.savedAt).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo",month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
+  status.textContent=`前回取得分（${savedAt}）を表示中。最新情報を確認しています…`;
+ }
  try{
   const url=new URL(WEATHER_API_URL);url.searchParams.set("action","getGiftCodes");
-  const response=await fetch(url);if(!response.ok)throw Error("HTTP "+response.status);
+  const response=await fetch(url,{cache:"no-store"});if(!response.ok)throw Error("HTTP "+response.status);
   const result=await response.json();if(result.ok===false)throw Error(result.error||"APIエラー");
   giftCodes=(result.codes||[]).map((item,index)=>normalizeGiftCode(item,index)).filter(item=>item.code);
-  renderGiftCodes();status.hidden=true;await syncGiftClaimBackup();
- }catch(error){status.textContent="ギフトコードを読み込めませんでした："+error.message}
+  renderGiftCodes();
+  savePublicGiftCodes(giftCodes);
+  status.hidden=true;
+  await syncGiftClaimBackup();
+ }catch(error){
+  status.textContent=cached
+   ?"最新のギフトコードを取得できませんでした。前回取得分を表示しています。"
+   :"ギフトコードを読み込めませんでした："+error.message;
+ }
 }
 [E.giftCodeList,E.expiredGiftCodeList].forEach(list=>list.addEventListener("click",event=>{
  const copy=event.target.closest("[data-gift-copy]"),toggle=event.target.closest("[data-gift-toggle]");

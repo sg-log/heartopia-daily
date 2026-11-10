@@ -310,6 +310,64 @@ test('Heartopia Daily mobile: navigation, weather, gift code and existing featur
 test('Heartopia Daily small mobile: weekly share and existing features',{timeout:120000},async()=>runScenario(320,844,'small-mobile'));
 test('Heartopia Daily tablet: navigation, weather, gift code and existing features',{timeout:120000},async()=>runScenario(768,1024,'tablet'));
 
+test('Gift-code cached preview is immediate and replaced by fresh server data',{timeout:120000},async()=>{
+  const server=await staticServer();
+  const browser=await chromium.launch({headless:true});
+  try{
+    const context=await browser.newContext({viewport:{width:390,height:844},timezoneId:'Asia/Tokyo',permissions:['clipboard-read','clipboard-write']});
+    installApiMock(context);
+    await context.addInitScript(cache=>{
+      localStorage.setItem('heartopiaPublicGiftCodes.v1',JSON.stringify(cache));
+    },{version:1,savedAt:Date.now()-60000,codes:[{
+      id:'cached',code:'CACHED_ONLY_CODE',status:'active',reward:'前回の報酬',expiresAt:'2099-12-31'
+    }]});
+    // Slow down only the fresh GET: the cached list must appear before this response.
+    await context.route('https://script.google.com/**',async route=>{
+      const request=route.request();
+      if(request.method()==='GET'&&new URL(request.url()).searchParams.get('action')==='getGiftCodes'){
+        await new Promise(resolve=>setTimeout(resolve,1500));
+        await route.fulfill({status:200,contentType:'application/json',headers:{'access-control-allow-origin':'*'},body:JSON.stringify({ok:true,codes:mockCodes})});
+      }else await route.fallback();
+    });
+    const page=await context.newPage();
+    const errors=[];
+    page.on('pageerror',error=>errors.push(error.message));
+    await page.goto('http://127.0.0.1:'+server.address().port+'/codes.html',{waitUntil:'domcontentloaded'});
+    await page.locator('[data-gift-copy="CACHED_ONLY_CODE"]').waitFor({state:'visible',timeout:700});
+    assert.match(await page.locator('#giftCodeLoadStatus').textContent(),/前回取得分/);
+    await page.locator('[data-gift-copy="UI_TEST_ACTIVE"]').waitFor({state:'visible',timeout:10000});
+    assert.equal(await page.locator('[data-gift-copy="CACHED_ONLY_CODE"]').count(),0,'stale entry replaced with fresh');
+    assert.equal(await page.locator('#giftCodeLoadStatus').isVisible(),false,'loading label hidden after refresh');
+    const persisted=await page.evaluate(()=>JSON.parse(localStorage.getItem('heartopiaPublicGiftCodes.v1')));
+    assert.equal(persisted.codes[0].code,'UI_TEST_ACTIVE','new result overwrites public cache');
+    assert.equal(persisted.codes.some(item=>item.code==='CACHED_ONLY_CODE'),false);
+    assert.equal(Object.hasOwn(persisted,'backupId'),false,'no personal backup ID stored');
+    assert.deepEqual(errors,[]);
+    await context.close();
+  }finally{
+    await browser.close();
+    await new Promise(resolve=>server.close(resolve));
+  }
+});
+
+test('Gift-code cache is optional and first visit waits for a fresh response',{timeout:120000},async()=>{
+  const server=await staticServer();
+  const browser=await chromium.launch({headless:true});
+  try{
+    const context=await browser.newContext({viewport:{width:390,height:844},timezoneId:'Asia/Tokyo'});
+    installApiMock(context);
+    const page=await context.newPage();
+    await page.goto('http://127.0.0.1:'+server.address().port+'/codes.html',{waitUntil:'domcontentloaded'});
+    await page.locator('[data-gift-copy="UI_TEST_ACTIVE"]').waitFor({state:'visible'});
+    assert.equal(await page.locator('#giftCodeLoadStatus').isVisible(),false,'first visit loads fresh as before');
+    assert.ok(await page.evaluate(()=>Boolean(localStorage.getItem('heartopiaPublicGiftCodes.v1'))),'fresh response saved for repeat view');
+    await context.close();
+  }finally{
+    await browser.close();
+    await new Promise(resolve=>server.close(resolve));
+  }
+});
+
 test('Image sharing includes the canonical public URL without private route data and keeps save fallback',{timeout:120000},async()=>{
   const server=await staticServer();
   const browser=await chromium.launch({headless:true});
