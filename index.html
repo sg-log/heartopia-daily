@@ -7383,9 +7383,26 @@ HeartopiaWeeklyAIImport.mount({
   }
 });
 </script>
-<script src="assets/weather-calendar-today-ui.js?v=20261022-credit"></script>
+<script src="assets/weather-calendar-today-ui.js?v=20261113-rolling"></script>
 <script>
-HeartopiaCalendar.start({apiUrl:WEATHER_API_URL,post:apiPost,adminKey:adminKeyValue,adminRoute:isAdminRoute(),onChange:()=>{renderWeather(E.targetDate.value,weatherData(E.targetDate.value));renderWeatherSummary();E.discordText.textContent=discord(E.targetDate.value,dayData(cycleDay(E.targetDate.value)),weatherData(E.targetDate.value));renderShareImagePreview(E.targetDate.value,dayData(cycleDay(E.targetDate.value)),weatherData(E.targetDate.value));}});
+let weatherViewGameDate = dateValue(gameToday());
+HeartopiaCalendar.start({apiUrl:WEATHER_API_URL,post:apiPost,adminKey:adminKeyValue,adminRoute:isAdminRoute(),onChange:()=>{
+  const today = dateValue(gameToday());
+  const followToday = HeartopiaCalendar.active() && today !== weatherViewGameDate && E.targetDate.value === weatherViewGameDate;
+  weatherViewGameDate = today;
+  if(followToday){
+    E.targetDate.value = today;
+    renderToday();
+    return;
+  }
+  const date = E.targetDate.value;
+  const weather = weatherData(date);
+  const data = dayData(cycleDay(date));
+  renderWeather(date,weather);
+  renderWeatherSummary();
+  E.discordText.textContent = discord(date,data,weather);
+  renderShareImagePreview(date,data,weather);
+}});
 </script>
 <section class="privacyTools" data-analytics-settings aria-label="利用状況の計測設定">
 <p><a href="privacy.html">プライバシー・計測について</a></p>

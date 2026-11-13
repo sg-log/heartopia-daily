@@ -101,12 +101,25 @@ function fiveRefresh_() {
   return {ok:true,status:'updated',compared:comparison.compared};
 }
 
-function fivePublic_() {
-  if(!fiveConfigured_())return null;
+function fivePublic_(rolling) {
+  const config=fiveConfigured_();if(!config)return null;
   const s=calendarRead_(WEATHER_FIVE_CACHE_KEY);if(!s||s.version!==1||!Array.isArray(s.days))return null;
   const labels={clear:'晴れ',rain:'雨',rainbow:'虹',cloud:'幸運雲',meteor:'流星',snow:'雪',aurora:'オーロラ',heat:'猛暑',petal:'花びら'};
-  try{return {version:1,timeZone:'Asia/Tokyo',gameDate:fiveGameDate_(new Date()),checkedAt:s.checkedAt,
-    slots:fivePoints_(s,new Date()).map(function(p){if(!labels[p.category])throw Error('Unknown weather');return {date:p.date,hour:p.hour,category:p.category,label:labels[p.category]};}),
+  const now=new Date();
+  if(rolling){
+    if(s.calendarYear!==config.calendarYear||!Number.isFinite(Date.parse(s.checkedAt)))return null;
+    const t=calendarJst_(now),start=calendarDate_(t.date).getTime()+Math.floor(t.hour/6)*6*3600000;
+    const slots=Array.from({length:5},function(_,i){
+      const point=new Date(start+i*6*3600000),date=point.toISOString().slice(0,10),hour=point.getUTCHours();
+      const row=date.slice(0,4)===String(config.calendarYear)&&s.days.find(function(d){return d&&d.date===date;});
+      const category=row&&Array.isArray(row.slots)?row.slots[hour/6]:null;
+      return typeof category==='string'&&Object.prototype.hasOwnProperty.call(labels,category)?
+        {date:date,hour:hour,category:category,label:labels[category]}:{date:date,hour:hour};
+    });
+    return {version:2,timeZone:'Asia/Tokyo',checkedAt:s.checkedAt,slots:slots,credit:{label:'Tidebell',url:'https://tidebell.com/calendar'}};
+  }
+  try{return {version:1,timeZone:'Asia/Tokyo',gameDate:fiveGameDate_(now),checkedAt:s.checkedAt,
+    slots:fivePoints_(s,now).map(function(p){if(!labels[p.category])throw Error('Unknown weather');return {date:p.date,hour:p.hour,category:p.category,label:labels[p.category]};}),
     credit:{label:'Tidebell',url:'https://tidebell.com/calendar'}};
   }catch(_){return null;}
 }

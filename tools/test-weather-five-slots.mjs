@@ -41,6 +41,53 @@ test('public response exposes exactly five facts and credit, no annual table, pr
   assert.ok(!JSON.stringify(p).includes('source.invalid'));assert.equal(p.days,undefined);assert.equal(p.types,undefined);
   assert.equal(s.history.length,8);assert.equal(s.history[0].kind,'five-slot-forecast');assert.equal(s.history[0].payload.recordType,'forecast');
 });
+test('public API opts into rolling slots while preserving the default and TH.GL projection',()=>{
+  const s=setup();s.enable();s.c.fiveRefresh_();
+  vm.runInContext(fs.readFileSync(new URL('apps-script/weather-api.gs',root),'utf8'),s.c);
+  s.c.json_=v=>plain(v);
+  const calendar={date:'2026-10-22',hours:[{hour:22,category:'clear'}]};
+  s.c.calendarPublic_=()=>calendar;
+  const get=fiveSlots=>s.c.doGet({parameter:{action:'getWeatherCalendar',fiveSlots}});
+  const old=get();
+  assert.equal(old.fiveSlots.version,1);
+  assert.deepEqual(old.fiveSlots.slots.map(p=>p.hour),[6,12,18,0,6]);
+  const late=get('rolling');
+  assert.deepEqual(late.calendar,old.calendar);
+  assert.deepEqual(Object.keys(late.fiveSlots).sort(),['checkedAt','credit','slots','timeZone','version']);
+  assert.equal(late.fiveSlots.version,2);
+  assert.deepEqual(late.fiveSlots.slots.map(p=>[p.date,p.hour,p.category]),[
+    ['2026-10-22',18,'meteor'],['2026-10-23',0,'clear'],['2026-10-23',6,'rain'],
+    ['2026-10-23',12,'rainbow'],['2026-10-23',18,'clear']
+  ]);
+  for(const [time,hours] of [
+    ['2026-10-22T14:59:59Z',[18,0,6,12,18]],
+    ['2026-10-22T15:00:00Z',[0,6,12,18,0]],
+    ['2026-10-22T21:00:00Z',[6,12,18,0,6]],
+    ['2026-10-23T03:00:00Z',[12,18,0,6,12]],
+    ['2026-10-23T09:00:00Z',[18,0,6,12,18]]
+  ]){
+    s.now(time);
+    assert.deepEqual(get('rolling').fiveSlots.slots.map(p=>p.hour),hours);
+  }
+  assert.equal(s.requests.length,1,'public reads only use the private cache');
+});
+test('rolling projection preserves known facts and dates missing positions across an unconfirmed year',()=>{
+  const s=setup();s.enable();
+  const cache=plain(s.c.fiveParse_(html(fixture()),'2026-12-31',2026,'2026-12-31T00:00:00Z'));
+  cache.days[0].slots[3]='toString';
+  cache.days.push({date:'2027-01-01',slots:['rain','rain','rain','rain']});
+  s.props.set('WEATHER_FIVE_CACHE',JSON.stringify(cache));
+  s.now('2026-12-31T07:00:00Z');
+  const slots=plain(s.c.fivePublic_(true).slots);
+  assert.deepEqual(slots,[
+    {date:'2026-12-31',hour:12,category:'clear',label:'晴れ'},
+    {date:'2026-12-31',hour:18},
+    {date:'2027-01-01',hour:0},
+    {date:'2027-01-01',hour:6},
+    {date:'2027-01-01',hour:12}
+  ]);
+  assert.equal(s.requests.length,0);
+});
 test('rejects duplicate JSON, incomplete days, unknown IDs, partial events and unconfirmed years',()=>{
   const s=setup(),parse=p=>s.c.fiveParse_(typeof p==='string'?p:html(p),'2026-10-22',2026,'2026-10-22T00:00:00Z');
   assert.throws(()=>parse(html(fixture())+html(fixture())),/ambiguous/);

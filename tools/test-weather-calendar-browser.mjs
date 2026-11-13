@@ -57,15 +57,21 @@ test('today-only forecast keeps the approved game-style card, weekly focus and a
   try{
     browser=await chromium.launch({headless:true});
     const context=await browser.newContext({viewport:{width:390,height:844},timezoneId:'Asia/Tokyo'});
-    await context.addInitScript(()=>{globalThis.weatherTestTime='2026-10-20T00:30:00Z';const Original=Date;globalThis.Date=class extends Original{constructor(...args){super(...(args.length?args:[globalThis.weatherTestTime]));}static now(){return new Original(globalThis.weatherTestTime).getTime();}};});
-    const page=await context.newPage(),errors=[];let sourceUnavailable=false,fiveSlots=null,offline=false;page.on('pageerror',e=>errors.push(e.message));
+    const page=await context.newPage(),errors=[];
+    let sourceUnavailable=false,fiveSlots=null,offline=false,enabled=true,calendarReads=0;
+    page.on('pageerror',e=>errors.push(e.message));
+    await page.clock.install({time:new Date('2026-10-20T00:30:00Z')});
     await page.route('**/*',async route=>{
       const req=route.request(),u=new URL(req.url());
       if(u.hostname==='127.0.0.1'){await route.continue();return;}
       if(u.hostname==='script.google.com'){
         if(offline){await route.abort();return;}
         const action=u.searchParams.get('action')||JSON.parse(req.postData()||'{}').action;
-        const body=action==='getWeatherCalendar'?{ok:true,enabled:true,calendar:sourceUnavailable?null:calendar,fiveSlots}:action==='approved'?{ok:true,reports:[report]}:action==='getGiftCodes'?{ok:true,codes:[]}:action==='getSiteNotice'?{ok:true,notice:{}}:{ok:true};
+        if(action==='getWeatherCalendar'){
+          assert.equal(u.searchParams.get('fiveSlots'),'rolling');
+          calendarReads++;
+        }
+        const body=action==='getWeatherCalendar'?{ok:true,enabled,calendar:sourceUnavailable?null:calendar,fiveSlots}:action==='approved'?{ok:true,reports:[report]}:action==='getWeeklyForecasts'?{ok:true,forecasts:[]}:action==='getGiftCodes'?{ok:true,codes:[]}:action==='getSiteNotice'?{ok:true,notice:{}}:{ok:true};
         await route.fulfill({status:200,headers:{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'},body:JSON.stringify(body)});return;
       }
       await route.abort();
@@ -88,40 +94,68 @@ test('today-only forecast keeps the approved game-style card, weekly focus and a
     assert.equal(await page.locator('.weatherBirdClock').evaluate(el=>getComputedStyle(el).width),'104px','real page must load the clock stylesheet');
     if(process.env.WEATHER_TEST_SCREENSHOT)await page.screenshot({path:process.env.WEATHER_TEST_SCREENSHOT,fullPage:false});
     if(process.env.WEATHER_FIXED_FIVE_SCREENSHOT)await page.locator('.weatherCard').screenshot({path:process.env.WEATHER_FIXED_FIVE_SCREENSHOT});
-    await page.evaluate(()=>{weatherTestTime='2026-10-20T09:05:00Z';renderWeather(E.targetDate.value,weatherData(E.targetDate.value));});
+    await page.clock.setSystemTime(new Date('2026-10-20T09:05:00Z'));
+    await page.evaluate(()=>renderWeather(E.targetDate.value,weatherData(E.targetDate.value)));
     assert.equal(await page.locator('#weatherResult .weatherLine.current .weatherLineTime').textContent(),'18');
     assert.equal(await page.locator('#weatherResult .weatherLine.current .weatherLineText').textContent(),'🌠');
+    assert.deepEqual(await page.locator('#weatherResult .weatherLineTime').allTextContents(),['18','00','06','12','18']);
     await page.evaluate(()=>{renderWeather('2026-10-21',weatherData('2026-10-21'));});
     assert.equal(await page.locator('#weatherResult .weatherHourlySlots').count(),0,'selecting another date does not show today-only source values');
-    await page.evaluate(()=>{weatherTestTime='2026-10-20T00:30:00Z';globalThis.savedTestWeather=state.weather;state.weather=[];renderWeather(E.targetDate.value,null);});
+    await page.clock.setSystemTime(new Date('2026-10-20T00:30:00Z'));
+    await page.evaluate(()=>{globalThis.savedTestWeather=state.weather;state.weather=[];renderWeather(E.targetDate.value,null);});
     assert.equal(await page.locator('#weatherResult .compactWeatherWeek .weeklyWeatherRow').count(),7);
     assert.ok((await page.locator('#weatherResult .compactWeatherWeek').textContent()).includes('—'),'missing weekly data keeps empty cells, never borrowed hourly values');
     await page.evaluate(()=>{state.weather=savedTestWeather;renderWeather(E.targetDate.value,weatherData(E.targetDate.value));});
     sourceUnavailable=true;
     await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+    await page.waitForFunction(()=>document.querySelectorAll('#weatherResult .weatherHourlySlots .weatherLineText').length===5&&[...document.querySelectorAll('#weatherResult .weatherHourlySlots .weatherLineText')].every(el=>el.textContent==='—'));
+    enabled=false;
+    await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
     await page.waitForFunction(()=>!HeartopiaCalendar.active());
     const fallback=await page.locator('#weatherResult').textContent();assert.equal(await page.locator('#weatherResult .weatherSlotList .weatherLine').count(),5);assert.ok(!fallback.includes('Weather forecast by TH.GL'));
     assert.equal(await page.locator('#weeklyWeather .weeklyWeatherRow').count(),7);
-    fiveSlots={version:1,timeZone:'Asia/Tokyo',gameDate:'2026-10-20',checkedAt:'2026-10-20T00:00:00Z',slots:[6,12,18,24,30].map((offset,i)=>{const d=new Date(Date.parse('2026-10-20T00:00:00Z')+offset*3600000);return {date:d.toISOString().slice(0,10),hour:d.getUTCHours(),category:['clear','clear','meteor','clear','rain'][i],label:['晴れ','晴れ','流星','晴れ','雨'][i]};}),credit:{label:'Tidebell',url:'https://tidebell.com/calendar'}};
-    await page.evaluate(()=>{weatherTestTime='2026-10-20T11:49:00Z';document.dispatchEvent(new Event('visibilitychange'));});
-    await page.waitForFunction(()=>HeartopiaCalendar.active()&&document.querySelectorAll('#weatherResult .weatherLineLabel')[4]?.textContent==='雨');
-    assert.deepEqual(await page.locator('#weatherResult .weatherLineText').allTextContents(),['☀️','☀️','🌠','🌙','🌧️']);
-    assert.deepEqual(await page.locator('#weatherResult .weatherLineLabel').allTextContents(),['晴れ','晴れ','流星','晴れ','雨']);
+    enabled=true;
+    const makeSlots=(offsets,categories,labels)=>offsets.map((offset,i)=>{
+      const d=new Date(Date.parse('2026-10-20T00:00:00Z')+offset*3600000);
+      const time={date:d.toISOString().slice(0,10),hour:d.getUTCHours()};
+      return categories[i]?{...time,category:categories[i],label:labels[i]}:time;
+    });
+    fiveSlots={version:1,timeZone:'Asia/Tokyo',gameDate:'2026-10-20',checkedAt:'2026-10-20T00:00:00Z',slots:makeSlots([6,12,18,24,30],['clear','clear','meteor','clear','rain'],['晴れ','晴れ','流星','晴れ','雨'])};
+    await page.clock.setSystemTime(new Date('2026-10-20T11:49:00Z'));
+    await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+    await page.waitForFunction(()=>HeartopiaCalendar.active()&&document.querySelectorAll('#weatherResult .weatherLineLabel')[2]?.textContent==='雨');
+    assert.deepEqual(await page.locator('#weatherResult .weatherLineText').allTextContents(),['🌠','🌙','🌧️','—','—'],'the old API can only fill its overlapping slots');
+    fiveSlots={version:2,timeZone:'Asia/Tokyo',checkedAt:'2026-10-20T10:00:00Z',slots:makeSlots([18,24,30,36,42],['meteor','clear','rain','clear','rain'],['流星','晴れ','雨','晴れ','雨'])};
+    await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+    await page.waitForFunction(()=>document.querySelectorAll('#weatherResult .weatherLineLabel')[4]?.textContent==='雨');
+    assert.deepEqual(await page.locator('#weatherResult .weatherLineText').allTextContents(),['🌠','🌙','🌧️','☀️','🌧️']);
+    assert.deepEqual(await page.locator('#weatherResult .weatherLineLabel').allTextContents(),['流星','晴れ','雨','晴れ','雨']);
     assert.equal(await page.locator('#weatherResult .weatherLine.current .weatherLineTime').textContent(),'18');
+    assert.match(await page.locator('#weatherResult .weatherLine').last().getAttribute('title'),/2026-10-21 18:00/);
     assert.equal(await page.locator('#weatherResult .compactWeatherWeek .weeklyWeatherRow').count(),7,'game UI weekly forecast is retained');
     if(process.env.WEATHER_FILLED_FIVE_SCREENSHOT)await page.locator('.weatherCard').screenshot({path:process.env.WEATHER_FILLED_FIVE_SCREENSHOT});
     offline=true;
     await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
     await page.waitForTimeout(100);
-    assert.deepEqual(await page.locator('#weatherResult .weatherLineLabel').allTextContents(),['晴れ','晴れ','流星','晴れ','雨'],'network failure never erases the five cached facts');
+    assert.deepEqual(await page.locator('#weatherResult .weatherLineLabel').allTextContents(),['流星','晴れ','雨','晴れ','雨'],'network failure never erases the five cached facts');
     await page.reload({waitUntil:'networkidle'});
     await page.waitForFunction(()=>HeartopiaCalendar.active());
     assert.equal(await page.locator('#weatherResult .weatherLineLabel').count(),5,'saved five-slot forecast survives reload while offline');
-    await page.evaluate(()=>{weatherTestTime='2026-10-20T15:05:00Z';renderWeather(E.targetDate.value,weatherData(E.targetDate.value));});
+    await page.clock.setSystemTime(new Date('2026-10-20T15:00:00Z'));
+    await page.clock.fastForward(30001);
     assert.equal(await page.locator('#weatherResult .weatherLine.current .weatherLineTime').textContent(),'00');
-    assert.equal(await page.locator('#weatherResult .weatherLineLabel').count(),5,'midnight keeps the same game-day forecast');
-    await page.evaluate(()=>{weatherTestTime='2026-10-20T21:00:00Z';});
-    assert.equal(await page.evaluate(()=>HeartopiaCalendar.active()),false,'yesterday forecast never masquerades as the new game day');
+    assert.deepEqual(await page.locator('#weatherResult .weatherLineLabel').allTextContents(),['晴れ','雨','晴れ','雨',''],'the cached window rolls at midnight with one missing tail slot');
+    offline=false;
+    fiveSlots={...fiveSlots,slots:makeSlots([30,36,42,48,54],['rain','clear','rain',null,'clear'],['雨','晴れ','雨',null,'晴れ'])};
+    const readsBefore=calendarReads;
+    await page.clock.setSystemTime(new Date('2026-10-20T21:00:00Z'));
+    await page.clock.fastForward(30001);
+    await page.waitForFunction(()=>document.querySelectorAll('#weatherResult .weatherLineLabel')[4]?.textContent==='晴れ');
+    assert.ok(calendarReads>readsBefore,'06:00 requests the next five positions');
+    assert.equal(await page.locator('#targetDate').inputValue(),'2026-10-21');
+    assert.deepEqual(await page.locator('#weatherResult .weatherLineTime').allTextContents(),['06','12','18','00','06']);
+    assert.deepEqual(await page.locator('#weatherResult .weatherLineText').allTextContents(),['🌧️','☀️','🌧️','—','☀️']);
+    assert.match(await page.locator('#weatherResult .weatherLine').nth(3).getAttribute('title'),/2026-10-22 00:00 \/ 予報データなし/);
     assert.deepEqual(errors,[]);
   }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));}
 });
