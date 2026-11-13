@@ -2,15 +2,31 @@
   'use strict';
   const icons={clear:'☀️',cloud:'☁️',heat:'🔥',petal:'🌸',meteor:'🌠',aurora:'🌌',sunshower:'🌦️',rain:'🌧️',snow:'❄️',rainbow:'🌈'};
   const creditUrl='https://heartopia.th.gl/forecast',cacheKey='heartopiaWeatherToday:v2';
+  const fiveCacheKey='heartopiaWeatherFive:v2',legacyFiveCacheKey='heartopiaWeatherFive:v1';
+  const sixHours=6*3600000;
   const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let snapshot=null,fiveSnapshot=null,enabled=false;
   function jst(now){const d=new Date(new Date(now).getTime()+9*3600000);return {date:d.toISOString().slice(0,10),hour:d.getUTCHours()};}
-  function gameDate(now){const t=jst(now);return new Date(Date.parse(t.date+'T00:00:00Z')-(t.hour<6?86400000:0)).toISOString().slice(0,10);}
+  const slotTime=(date,hour)=>Date.parse(date+'T00:00:00Z')+hour*3600000;
+  function currentSlotTime(now){const t=jst(now);return slotTime(t.date,Math.floor(t.hour/6)*6);}
   function validFive(s){
-    if(s?.version!==1||s.timeZone!=='Asia/Tokyo'||!/^20\d{2}-\d{2}-\d{2}$/.test(s.gameDate)||!Number.isFinite(Date.parse(s.gameDate+'T00:00:00Z'))||!Number.isFinite(Date.parse(s.checkedAt))||!Array.isArray(s.slots)||s.slots.length!==5)return false;
-    return s.slots.every((p,i)=>{const d=new Date(Date.parse(s.gameDate+'T00:00:00Z')+[6,12,18,24,30][i]*3600000);return p.date===d.toISOString().slice(0,10)&&p.hour===d.getUTCHours()&&icons[p.category]&&typeof p.label==='string'&&p.label.length>0&&p.label.length<=40;});
+    if(![1,2].includes(s?.version)||s.timeZone!=='Asia/Tokyo'||!Number.isFinite(Date.parse(s.checkedAt))||!Array.isArray(s.slots)||s.slots.length!==5)return false;
+    const first=s.version===1?{date:s.gameDate,hour:6}:s.slots[0];
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(first?.date)||![0,6,12,18].includes(first.hour))return false;
+    const start=slotTime(first.date,first.hour);
+    if(!Number.isFinite(start))return false;
+    return s.slots.every((p,i)=>{
+      const d=new Date(start+i*sixHours);
+      if(p?.date!==d.toISOString().slice(0,10)||p.hour!==d.getUTCHours())return false;
+      if(s.version===2&&p.category===undefined&&p.label===undefined)return true;
+      return typeof p.category==='string'&&Object.hasOwn(icons,p.category)&&typeof p.label==='string'&&p.label.length>0&&p.label.length<=40;
+    });
   }
-  function currentFive(s,now){return validFive(s)&&s.gameDate===gameDate(now);}
+  function currentFive(s,now){
+    if(!validFive(s))return false;
+    const start=currentSlotTime(now);
+    return s.slots.some(p=>slotTime(p.date,p.hour)===start);
+  }
   function preferred(now){return currentFive(fiveSnapshot,now)?fiveSnapshot:snapshot;}
   function valid(s){
     return s?.version===2&&s.timeZone==='Asia/Tokyo'&&/^20\d{2}-\d{2}-\d{2}$/.test(s.date)&&Number.isFinite(Date.parse(s.checkedAt))&&
@@ -28,25 +44,23 @@
     return groups;
   }
   const creditHtml=()=>`<p class="weatherAttribution">時間別予報：<a href="${creditUrl}" target="_blank" rel="noopener noreferrer" title="翌日以降の時間別予報（TH.GL）">Weather forecast by TH.GL</a></p>`;
-  function fixedSlots(s,now){
-    const t=jst(now),base=new Date(t.date+'T00:00:00Z');
-    if(t.hour<6)base.setUTCDate(base.getUTCDate()-1);
-    const active=t.hour<6?3:Math.floor((t.hour-6)/6);
-    if(currentFive(s,now))return s.slots.map((p,i)=>({...p,current:i===active,sampleHour:p.hour,icon:p.category==='clear'&&(p.hour<6||p.hour>=18)?'🌙':icons[p.category]}));
-    return [6,12,18,24,30].map((offset,i)=>{
-      const point=new Date(base.getTime()+offset*3600000),date=point.toISOString().slice(0,10),hour=point.getUTCHours();
-      // The highlighted block shows the current hour, not a guessed past forecast.
-      const sampleHour=i===active?t.hour:hour;
-      const h=valid(s)&&s.date===t.date&&date===t.date&&sampleHour>=t.hour?s.hours.find(value=>value.hour===sampleHour):null;
-      return {date,hour,current:i===active,sampleHour:h?sampleHour:null,
-        icon:h?(h.category==='clear'&&(sampleHour<6||sampleHour>=18)?'🌙':icons[h.category]):'—',
-        label:h?(h.category==='meteor'?'流星':h.label==='晴'?'晴れ':h.label):''};
+  function rollingSlots(s,now){
+    const t=jst(now),start=currentSlotTime(now),five=currentFive(s,now),hourly=valid(s)&&s.date===t.date;
+    return Array.from({length:5},(_,i)=>{
+      const point=new Date(start+i*sixHours),date=point.toISOString().slice(0,10),hour=point.getUTCHours();
+      const current=i===0,sampleHour=!five&&current?t.hour:hour;
+      const fact=five?s.slots.find(p=>p.date===date&&p.hour===hour):
+        hourly&&date===t.date?s.hours.find(h=>h.hour===sampleHour):null;
+      if(!fact?.category)return {date,hour,current,sampleHour:null,icon:'—',label:''};
+      const icon=fact.category==='clear'&&(sampleHour<6||sampleHour>=18)?'🌙':icons[fact.category];
+      const label=five?fact.label:fact.category==='meteor'?'流星':fact.label==='晴'?'晴れ':fact.label;
+      return {date,hour,current,sampleHour,icon,label};
     });
   }
-  function slotRowsHtml(s,now){
-    if(!current(s,now)&&!currentFive(s,now))return '';
-    const old=new Date(now)-Date.parse(s.checkedAt)>72*3600000;
-    return `<div class="weatherNow"><div class="weatherSlotList weatherHourlySlots">${fixedSlots(s,now).map(g=>{
+  function slotRowsHtml(s,now,showMissing){
+    if(!showMissing&&!current(s,now)&&!currentFive(s,now))return '';
+    const old=new Date(now)-Date.parse(s?.checkedAt)>72*3600000;
+    return `<div class="weatherNow"><div class="weatherSlotList weatherHourlySlots">${rollingSlots(s,now).map(g=>{
       const start=String(g.hour).padStart(2,'0');
       const detail=g.sampleHour===null?'予報データなし':validFive(s)?'6時間帯の予報 '+g.label:String(g.sampleHour).padStart(2,'0')+':00時点の予報 '+g.label;
       return `<div class="weatherLine${g.current?' current':''}"${g.current?' aria-current="time"':''} title="日本時間 ${escape(g.date)} ${start}:00 / ${escape(detail)}">
@@ -54,26 +68,37 @@
       </div>`;
     }).join('')}</div></div>${old?'<p class="small">保存済みの予報を表示しています。</p>':''}`;
   }
-  function publicHtml(s,now){const rows=slotRowsHtml(s,now);return rows?rows+creditHtml(s):'';}
-  const slotsHtml=(now=new Date())=>slotRowsHtml(preferred(now),now);
-  function html(now=new Date()){return publicHtml(preferred(now),now)||`<p class="small">今日の時間別予報を取得できませんでした。</p>${creditHtml()}`;}
+  function publicHtml(s,now,showMissing){const rows=slotRowsHtml(s,now,showMissing);return rows?rows+creditHtml():'';}
+  const slotsHtml=(now=new Date())=>slotRowsHtml(preferred(now),now,enabled);
+  function html(now=new Date()){return publicHtml(preferred(now),now,enabled)||`<p class="small">今日の時間別予報を取得できませんでした。</p>${creditHtml()}`;}
   function start(options){
-    let busy=false,clock='';
+    let busy=false,reloadAfterBoundary=false,clock=currentSlotTime(new Date());
     try{const s=JSON.parse(localStorage.getItem(cacheKey));if(valid(s)&&s.date===jst(new Date()).date){snapshot=s;enabled=true;}}catch(_){}
-    try{const s=JSON.parse(localStorage.getItem('heartopiaWeatherFive:v1'));if(currentFive(s,new Date())){fiveSnapshot=s;enabled=true;}}catch(_){}
+    for(const key of [fiveCacheKey,legacyFiveCacheKey]){
+      try{const s=JSON.parse(localStorage.getItem(key));if(currentFive(s,new Date())){fiveSnapshot=s;enabled=true;break;}}catch(_){}
+    }
     try{localStorage.removeItem('heartopiaWeatherCalendar:v1');}catch(_){}
     const changed=()=>{options.onChange?.();};
     async function load(){
       if(busy)return;busy=true;
       try{
         const url=new URL(options.apiUrl);url.searchParams.set('action','getWeatherCalendar');
+        url.searchParams.set('fiveSlots','rolling');
         const response=await fetch(url,{cache:'no-store'}),r=await response.json();if(!response.ok||r.ok!==true)throw Error('load');
         enabled=r.enabled===true;
-        if(r.fiveSlots===null){fiveSnapshot=null;try{localStorage.removeItem('heartopiaWeatherFive:v1');}catch(_){}}
-        else if(r.fiveSlots!==undefined){if(!validFive(r.fiveSlots))throw Error('five-schema');fiveSnapshot=r.fiveSlots;try{localStorage.setItem('heartopiaWeatherFive:v1',JSON.stringify(fiveSnapshot));}catch(_){}}
+        if(r.fiveSlots===null){
+          fiveSnapshot=null;
+          try{localStorage.removeItem(fiveCacheKey);localStorage.removeItem(legacyFiveCacheKey);}catch(_){}
+        }else if(validFive(r.fiveSlots)){
+          fiveSnapshot=r.fiveSlots;
+          try{localStorage.setItem(fiveCacheKey,JSON.stringify(fiveSnapshot));localStorage.removeItem(legacyFiveCacheKey);}catch(_){}
+        }
         if(r.calendar===null){snapshot=null;try{localStorage.removeItem(cacheKey);}catch(_){}}
         else{if(!valid(r.calendar))throw Error('schema');snapshot=r.calendar;try{localStorage.setItem(cacheKey,JSON.stringify(snapshot));}catch(_){}}
-      }catch(_){}finally{busy=false;changed();}
+      }catch(_){}finally{
+        busy=false;changed();
+        if(reloadAfterBoundary){reloadAfterBoundary=false;load();}
+      }
     }
     if(options.adminRoute){
       const anchor=document.getElementById('weatherAutomationStatus');
@@ -112,9 +137,18 @@
       }
     }
     changed();load();
-    setInterval(()=>{const t=jst(new Date()),next=t.date+':'+t.hour;if(clock!==next){clock=next;changed();if(fiveSnapshot?!currentFive(fiveSnapshot,new Date()):!snapshot||snapshot.date!==t.date)load();}},30000);
+    let hour=jst(new Date()).hour;
+    setInterval(()=>{
+      const now=new Date(),next=currentSlotTime(now),nextHour=jst(now).hour;
+      if(hour!==nextHour||clock!==next){hour=nextHour;changed();}
+      if(clock!==next){
+        clock=next;
+        if(busy)reloadAfterBoundary=true;
+        else load();
+      }
+    },30000);
     setInterval(()=>{if(!document.hidden)load();},30*60000);
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)load();});
   }
-  root.HeartopiaCalendar={jst,gameDate,valid,validFive,current,intervals,fixedSlots,publicHtml,html,slotsHtml,creditHtml,active:()=>enabled&&(currentFive(fiveSnapshot,new Date())||Boolean(current(snapshot,new Date()))),start};
+  root.HeartopiaCalendar={jst,valid,validFive,current,intervals,rollingSlots,publicHtml,html,slotsHtml,creditHtml,active:()=>enabled,start};
 })(typeof globalThis==='object'?globalThis:this);

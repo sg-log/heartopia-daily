@@ -70,7 +70,7 @@ function doGet(e) {
       return json_({ ok: true, reports: listByStatus_("approved").map(publicWeatherItem_) });
     }
     if (action === "getWeeklyForecasts") return json_({ok:true, forecasts:listWeeklyForecasts_()});
-    if (action === "getWeatherCalendar") return json_({ok:true, enabled:Boolean(calendarConfigured_() || fiveConfigured_()), calendar:calendarPublic_(), fiveSlots:fivePublic_()});
+    if (action === "getWeatherCalendar") return json_({ok:true, enabled:Boolean(calendarConfigured_() || fiveConfigured_()), calendar:calendarPublic_(), fiveSlots:fivePublic_(e.parameter.fiveSlots === "rolling")});
     if (action === "getGiftCodes") {
       return json_({ ok: true, codes: listGiftCodes_(false).map(publicGiftItem_) });
     }
