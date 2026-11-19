@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800;900&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
 <meta name="description" content="ハートピアスローライフの今日の天気・週間天気と、無垢な蛍石・ツルツルオークの採取場所を確認できる非公式サイト。採取場所は日付を選んで確認でき、ギフトコード一覧とパズル所持管理も利用できます。">
 <title>Heartopia Daily｜ハートピアの今日の採取場所・天気</title>
 <style>
@@ -4151,6 +4151,9 @@ function loadTesseract(){
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+    script.integrity = "sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F";
+    script.crossOrigin = "anonymous";
+    script.referrerPolicy = "no-referrer";
     script.async = true;
     script.onload = () => window.Tesseract ? resolve(window.Tesseract) : reject(new Error("OCRライブラリを読み込めませんでした"));
     script.onerror = () => reject(new Error("OCRライブラリを読み込めませんでした"));
@@ -6747,6 +6750,7 @@ function setupPuzzleChecker(){
   };
   E.puzzleCharacterNameInput.onchange = renameActivePuzzleCharacter;
   E.puzzleCharacterNameInput.onkeydown = event => {
+    if(event.isComposing || event.keyCode === 229) return;
     if(event.key === "Enter"){
       event.preventDefault();
       renameActivePuzzleCharacter();
@@ -6989,6 +6993,7 @@ function init(){
     toast("管理画面を開きました");
   };
   E.adminGateKey.onkeydown = event => {
+    if(event.isComposing || event.keyCode === 229) return;
     if(event.key === "Enter") E.openAdminBtn.click();
   };
   E.logoutAdminBtn.onclick = () => {
@@ -7018,6 +7023,7 @@ function init(){
   if(E.giftBackupCopyBtn) E.giftBackupCopyBtn.onclick = copyGiftBackupCode;
   if(E.giftBackupRestoreBtn) E.giftBackupRestoreBtn.onclick = restoreGiftClaimsFromCode;
   if(E.giftBackupCodeInput) E.giftBackupCodeInput.onkeydown = event => {
+    if(event.isComposing || event.keyCode === 229) return;
     if(event.key === "Enter") restoreGiftClaimsFromCode();
   };
   [E.giftCodeList, E.expiredGiftCodeList].forEach(list => {

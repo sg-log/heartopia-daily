@@ -115,6 +115,7 @@ function syncGiftClaims_(body) {
   return withScriptLock_(function() {
     const sheet = getGiftClaimBackupSheet_();
     const existing = findGiftClaimBackupRow_(sheet, backupHash);
+    if (!existing && incoming.length === 0) return json_({ ok: true, claims: [], backedUp: true });
     const merged = [];
     (existing ? existing.claims : []).concat(incoming).forEach(function(code) {
       if (merged.indexOf(code) < 0 && merged.length < GIFT_CLAIM_BACKUP_MAX_CODES) merged.push(code);

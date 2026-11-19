@@ -74,6 +74,51 @@ function makeHarness() {
 
 const backupId = "0123456789abcdef0123456789abcdef";
 
+test("empty syncs for unknown backup IDs do not create backup rows", () => {
+  const h = makeHarness();
+  for (const id of [backupId, "fedcba9876543210fedcba9876543210", backupId]) {
+    const result = h.context.syncGiftClaims_({ backupId: id, claims: [] });
+    assert.equal(result.ok, true);
+    assert.equal(result.backedUp, true);
+    assert.deepEqual(Array.from(result.claims), []);
+    assert.equal(h.rows.length, 1, "only the sheet header exists");
+  }
+});
+
+test("claims that normalize to empty do not create a backup row", () => {
+  const h = makeHarness();
+  const result = h.context.syncGiftClaims_({
+    backupId,
+    claims: ["", " ", "bad code", "<invalid>", "=invalid"]
+  });
+  assert.deepEqual(Array.from(result.claims), []);
+  assert.equal(h.rows.length, 1);
+});
+
+test("an empty first sync can later save and restore the first claim", () => {
+  const h = makeHarness();
+  h.context.syncGiftClaims_({ backupId, claims: [] });
+  h.context.syncGiftClaims_({ backupId, claims: ["codeA"] });
+  const saved = JSON.stringify(h.rows);
+  const restored = h.context.syncGiftClaims_({ backupId, claims: [] });
+  assert.deepEqual(Array.from(restored.claims), ["codeA"]);
+  assert.equal(h.rows.length, 2);
+  assert.equal(JSON.stringify(h.rows), saved);
+});
+
+test("claim state can create the first backup and preserve an existing empty backup", () => {
+  const h = makeHarness();
+  let result = h.context.setGiftClaimState_({ backupId, code: "codeA", claimed: true });
+  assert.deepEqual(Array.from(result.claims), ["codeA"]);
+  assert.equal(h.rows.length, 2);
+  result = h.context.setGiftClaimState_({ backupId, code: "codeA", claimed: false });
+  assert.deepEqual(Array.from(result.claims), []);
+  const saved = JSON.stringify(h.rows);
+  result = h.context.syncGiftClaims_({ backupId, claims: [] });
+  assert.deepEqual(Array.from(result.claims), []);
+  assert.equal(JSON.stringify(h.rows), saved);
+});
+
 test("sync creates a hashed backup without storing the raw recovery code", () => {
   const h = makeHarness();
   const result = h.context.syncGiftClaims_({
