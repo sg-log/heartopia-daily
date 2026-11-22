@@ -3464,8 +3464,14 @@ function focusWeatherHtml(w, baseDate){
   }</div></div>`;
 }
 function focusWeatherItems(w, baseDate){
-  if(!w) return [];
   const items = [];
+  // Today is outside the seven-day weekly forecast, but rain and snow have the same game effect.
+  if(baseDate === dateValue(gameToday()) && globalThis.HeartopiaCalendar?.active()){
+    const category = globalThis.HeartopiaCalendar.focusCurrentCategory?.();
+    const todayWeather = category === "snow" ? "雪" : category === "rain" ? "雨" : null;
+    if(todayWeather) items.push({icon:weatherIcon(todayWeather), day:"今日", value:todayWeather});
+  }
+  if(!w) return items;
   WEATHER_WEEK_KEYS.forEach((key, index) => {
     const values = weatherValues(w.weeks?.[key]).filter(value => FOCUS_WEATHER_VALUES.includes(value));
     values.forEach(value => {
