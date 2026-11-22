@@ -34,6 +34,14 @@
         (!i||h.hour===s.hours[i-1].hour+1)&&icons[h.category]&&typeof h.label==='string'&&h.label.length<=40);
   }
   function current(s,now){const t=jst(now);return valid(s)&&s.date===t.date?s.hours.find(h=>h.hour===t.hour)||null:null;}
+  function focusCurrentCategory(now=new Date()){
+    const s=preferred(now);
+    if(currentFive(s,now)){
+      const start=currentSlotTime(now);
+      return s.slots.find(p=>slotTime(p.date,p.hour)===start)?.category||null;
+    }
+    return current(s,now)?.category||null;
+  }
   function intervals(s,now){
     const t=jst(now),groups=[];if(!valid(s)||s.date!==t.date)return groups;
     for(const h of s.hours.filter(h=>h.hour>=t.hour)){
@@ -150,5 +158,5 @@
     setInterval(()=>{if(!document.hidden)load();},30*60000);
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)load();});
   }
-  root.HeartopiaCalendar={jst,valid,validFive,current,intervals,rollingSlots,publicHtml,html,slotsHtml,creditHtml,active:()=>enabled,start};
+  root.HeartopiaCalendar={jst,valid,validFive,current,intervals,rollingSlots,publicHtml,html,slotsHtml,creditHtml,focusCurrentCategory,active:()=>enabled,start};
 })(typeof globalThis==='object'?globalThis:this);
