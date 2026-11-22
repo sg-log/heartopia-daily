@@ -111,6 +111,26 @@ async function runScenario(width,height,label){
     assert.ok(emptyFocus.includes('<span class="focusWeatherEmpty">—</span>'),'missing weekly forecast shows only dash');
     const sunnyFocus=await page.evaluate(()=>focusWeatherHtml({weeks:{week1:['晴'],week2:['晴']}},document.getElementById('targetDate').value));
     assert.ok(sunnyFocus.includes('<span class="focusWeatherEmpty">—</span>'),'sunny-only forecast shows only dash');
+    const currentFocus=await page.evaluate(()=>{
+      const original=HeartopiaCalendar.focusCurrentCategory;
+      try{
+        HeartopiaCalendar.focusCurrentCategory=()=> 'snow';
+        const snow=focusWeatherHtml({weeks:{week1:['虹']}},dateValue(gameToday()));
+        const snowOnly=focusWeatherHtml(null,dateValue(gameToday()));
+        const tomorrow=focusWeatherHtml({weeks:{week1:['晴']}},addDays(dateValue(gameToday()),1));
+        HeartopiaCalendar.focusCurrentCategory=()=> 'rain';
+        const rain=focusWeatherHtml({weeks:{week1:['晴']}},dateValue(gameToday()));
+        HeartopiaCalendar.focusCurrentCategory=()=> 'clear';
+        const clear=focusWeatherHtml({weeks:{week1:['晴']}},dateValue(gameToday()));
+        return {snow,snowOnly,tomorrow,rain,clear};
+      }finally{HeartopiaCalendar.focusCurrentCategory=original;}
+    });
+    assert.match(currentFocus.snow,/☃.*今日/,'current snow is highlighted alongside weekly weather');
+    assert.equal((currentFocus.snow.match(/<span class="focusWeatherChip"/g)||[]).length,2,'today snow plus weekly rainbow');
+    assert.match(currentFocus.snowOnly,/今日/,'today snow is shown even without weekly reports');
+    assert.match(currentFocus.rain,/☔.*今日/,'current rain has the same featured behavior as snow');
+    assert.ok(currentFocus.clear.includes('<span class="focusWeatherEmpty">—</span>'),'ordinary sunny weather stays unfeatured');
+    assert.ok(currentFocus.tomorrow.includes('<span class="focusWeatherEmpty">—</span>'),'the current snow is not shown for other selected dates');
     await page.evaluate(()=>{
       const baseDate=document.getElementById('targetDate').value;
       setWeeklyForecastRecord({baseDate,weeks:{week1:['虹'],week2:['流星群'],week3:['雨']}});
