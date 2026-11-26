@@ -28,6 +28,29 @@ function fullExtract(html, overrides = {}) {
   return extractFullOfficialPost(html, {handle:'myheartopia', statusId:fullPostId, oembedText:fullPostPrefix+'…', ...overrides});
 }
 
+test('an official post truncated before its gift labels is expanded and verified before import', async () => {
+  const texts=JSON.parse(fs.readFileSync(new URL('../actual-post-fixtures.json',import.meta.url),'utf8'));
+  const statusId='2125786636747444525';
+  const full=texts[1];
+  const prefix=full.slice(0,full.indexOf('🎁 ギフトコード'));
+  const result=await discoverOfficialXGiftPosts({handles:['Heartopia_JP'],maxPostsPerHandle:1,fetchImpl:async url=>{
+    const target=new URL(url);
+    if(target.pathname==='/Heartopia_JP')return new Response('<a href="/Heartopia_JP/status/'+statusId+'">post</a>');
+    if(target.hostname==='publish.twitter.com')return Response.json({author_url:'https://x.com/Heartopia_JP',
+      html:'<p>'+prefix.replaceAll('\n','<br>')+'…</p>'});
+    if(target.pathname==='/Heartopia_JP/status/'+statusId)return new Response(
+      '<html><head><link rel="canonical" href="https://x.com/Heartopia_JP/status/'+statusId+'"></head><body><article>'+
+      '<a href="/Heartopia_JP">author</a><a href="/Heartopia_JP/status/'+statusId+'">date</a>'+
+      '<div data-testid="tweetText">'+full.replaceAll('\n','<br>')+'</div></article></body></html>');
+    throw Error('Unexpected request');
+  }});
+  assert.equal(result.posts.length,1);
+  assert.equal(result.posts[0].statusId,statusId);
+  assert.ok(result.posts[0].text.includes('GRATEFUL11'));
+  assert.ok(result.posts[0].text.includes('2026年12月24日 12:00'));
+  assert.equal(result.incompletePosts.length,0);
+});
+
 test('full official body extends verified oEmbed; identical responsive articles agree', () => {
   assert.equal(fullExtract(officialPage(officialArticle()+officialArticle())), fullPostText);
   assert.equal(fullExtract(officialPage(officialArticle().replace('data-testid="tweetText"','dir="auto" class="text-primary whitespace-pre-wrap"'))), fullPostText);
