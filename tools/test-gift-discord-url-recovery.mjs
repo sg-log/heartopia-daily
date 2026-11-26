@@ -13,6 +13,8 @@ const expected = [
   { code: "GRATEFUL11", reward: "月の水晶×10", expiresAt: "2026-12-24T12:00" }
 ];
 const apiUrl = "https://script.google.com/macros/s/test/exec";
+const webhook = "https://discord.com/api/webhooks/800000000000000005/test-token";
+const feedbackChannel = "800000000000000006";
 function message(overrides = {}) {
   return { id: messageId, author: { id: owner, bot: false }, content: urls[1] + "?a=test&s=20", ...overrides };
 }
@@ -24,13 +26,20 @@ function harness(options = {}) {
     const url = String(input), target = new URL(url);
     if (url.startsWith("https://discord.com/api/v10/")) {
       assert.equal(init.headers.Authorization, "Bot test-token");
-      if (target.pathname === "/api/v10/channels/" + channel + "/messages" && init.method === "POST") {
-        h.notices.push(JSON.parse(init.body));
-        return new Response(null, { status: options.notifyFails ? 403 : 204 });
-      }
+      assert.notEqual(init.method,"POST");
       if (target.pathname === "/api/v10/channels/" + channel) return Response.json({ guild_id: guild });
       if (target.pathname === "/api/v10/guilds/" + guild) return Response.json({ owner_id: h.guildOwner });
       if (target.pathname.endsWith("/messages")) return Response.json(h.messages);
+    }
+    if(url===webhook){
+      assert.equal(init.headers?.Authorization,undefined);
+      if(init.method==="POST"){
+        assert.equal(options.foreignWebhook,undefined,"must never send to a different server");
+        h.notices.push(JSON.parse(init.body));
+        return new Response(null,{status:options.notifyFails?403:204});
+      }
+      return Response.json({guild_id:options.foreignWebhook?"900000000000000001":guild,
+        channel_id:feedbackChannel,token:"must-not-be-logged"});
     }
     if (target.hostname === "publish.twitter.com") {
       assert.equal(init.headers?.Authorization, undefined);
@@ -71,7 +80,7 @@ function harness(options = {}) {
     throw Error("Unexpected request");
   };
   h.run = extra => runGiftUrlRecovery({ token: "test-token", channelId: channel, postKey: "post-key",
-    apiUrl, feedbackMode: "receiver", fetchImpl: h.fetchImpl, ...extra });
+    apiUrl, feedbackMode: "personal", reviewWebhookUrl:webhook, fetchImpl: h.fetchImpl, ...extra });
   return h;
 }
 test("official link extraction strips tracking, normalizes Twitter, deduplicates and rejects foreign origins", () => {
@@ -96,7 +105,7 @@ test("owner-posted URL reaches the existing importer, verifies public data and i
   assert.equal(result.status, "done"); assert.equal(result.recovered, 1);
   assert.equal(h.ingests[0].posts[0].statusId, ids[1]); assert.equal(h.state.cursor, messageId);
   assert.equal(h.notices.length, 1);
-  assert.equal(h.notices[0].message_reference.message_id, messageId);
+  assert.equal(h.notices[0].message_reference, undefined);
   assert.equal((await h.run()).status, "no-new-urls"); assert.equal(h.ingests.length, 1);
 });
 test("initial activation records its start without replaying old pasted links", async () => {
@@ -133,7 +142,7 @@ test("blocked X posts retry at most three times and notify only once before adva
   assert.equal((await h.run()).status, "retry");
   assert.equal((await h.run()).status, "review");
   assert.equal(h.officialReads, 3); assert.equal(h.notices.length, 1); assert.equal(h.ingests.length, 0);
-  assert.deepEqual(h.notices[0].allowed_mentions, { parse: [], replied_user: false });
+  assert.deepEqual(h.notices[0].allowed_mentions, { parse: [] });
   assert.equal((await h.run()).status, "no-new-urls");
 });
 test("wrong author, partial body, conflicting data or failed public readback cannot report done", async () => {
@@ -148,7 +157,7 @@ test("state API must be deployed before recovery can write any gifts", async () 
   await assert.rejects(h.run());
   assert.equal(h.ingests.length + h.officialReads + h.notices.length, 0);
 });
-test("a failed receiving-channel reply is retried and never sent to another destination", async () => {
+test("a failed personal notification is retried and not marked delivered", async () => {
   const h = harness({ blocked: true, notifyFails: true });
   await h.run();
   assert.equal(h.state.notified, false);
@@ -163,9 +172,26 @@ test("feedback can be disabled without posting any result or failure messages", 
   }
 });
 
-test("lack of Send Messages permission cannot turn a verified import into a failure", async () => {
+test("failure of the personal webhook cannot turn a verified import into a failure", async () => {
   const h=harness({notifyFails:true});
   const result=await h.run();
   assert.equal(result.status,"done");assert.equal(result.feedbackWarning,true);
   assert.equal(h.state.cursor,messageId);
+});
+
+test("a webhook belonging to another server is never used for success or failure notifications", async () => {
+  for(const options of [{foreignWebhook:true},{foreignWebhook:true,blocked:true}]){
+    const h=harness(options);
+    const result=await h.run();
+    assert.equal(result.feedbackWarning,true);assert.equal(h.notices.length,0);
+    assert.equal(JSON.stringify(result).includes("test-token"),false);
+  }
+});
+
+test("read-only test identifies the verified personal notification channel without sending messages", async () => {
+  const h=harness();
+  const result=await h.run({mode:"test"});
+  assert.equal(result.feedbackChannelId,feedbackChannel);assert.equal(result.feedbackReady,true);
+  assert.equal(h.notices.length+h.ingests.length+h.stateWrites.length,0);
+  assert.equal(JSON.stringify(result).includes("must-not-be-logged"),false);
 });

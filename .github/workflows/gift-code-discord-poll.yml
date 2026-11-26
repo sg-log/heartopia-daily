@@ -66,7 +66,8 @@ jobs:
           WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
           DISCORD_GIFT_CHANNEL_ID: ${{ inputs.channel_id }}
           GIFT_POLL_MODE: ${{ inputs.mode }}
-          GIFT_URL_RECOVERY_FEEDBACK: ${{ vars.DISCORD_GIFT_URL_FEEDBACK || 'none' }}
+          GIFT_URL_RECOVERY_FEEDBACK: ${{ vars.DISCORD_GIFT_URL_FEEDBACK || 'personal' }}
+          WEATHER_DC_WEBHOOK_URL: ${{ secrets.WEATHER_DC_WEBHOOK_URL }}
           DISCORD_GIFT_URL_USER_IDS: ${{ vars.DISCORD_GIFT_URL_USER_IDS }}
         run: node tools/gift-discord-url-recovery.mjs
 

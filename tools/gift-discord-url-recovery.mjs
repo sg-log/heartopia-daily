@@ -44,22 +44,36 @@ async function json(response) {
   return result;
 }
 
-async function sendRecoveryReply(fetchFn, token, channelId, messageId, content) {
+async function privateFeedbackTarget(fetchFn, webhookUrl, guildId) {
+  if (!webhookUrl) return null;
   try {
-    const response = await fetchFn(API + "/channels/" + channelId + "/messages", {
-      method: "POST", signal: AbortSignal.timeout(15000),
-      headers: { Authorization: "Bot " + token, "Content-Type": "application/json" }, body: JSON.stringify({
-        content, message_reference: { message_id: messageId, fail_if_not_exists: false },
-        allowed_mentions: { parse: [], replied_user: false }, flags: 4 }) });
+    const url = new URL(webhookUrl);
+    if (url.protocol !== "https:" || url.hostname !== "discord.com" || url.username || url.password || url.port ||
+        !/^\/api\/webhooks\/\d+\/[A-Za-z0-9._-]+$/.test(url.pathname) || url.search || url.hash) return null;
+    const response = await fetchFn(webhookUrl, { redirect: "error", signal: AbortSignal.timeout(15000) });
+    if (!response.ok) return null;
+    const metadata = await response.json();
+    if (String(metadata.guild_id || "") !== guildId || !/^\d{15,25}$/.test(String(metadata.channel_id || ""))) return null;
+    return { url: webhookUrl, channelId: String(metadata.channel_id) };
+  } catch { return null; }
+}
+
+async function sendRecoveryFeedback(fetchFn, target, content) {
+  if (!target) return false;
+  try {
+    const response = await fetchFn(target.url, {
+      method: "POST", redirect: "error", signal: AbortSignal.timeout(15000),
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        content, allowed_mentions: { parse: [] }, flags: 4 }) });
     return response.ok;
   } catch { return false; }
 }
 
 export async function runGiftUrlRecovery({ token, channelId, postKey, mode = "poll", allowedUserIds = [],
-  feedbackMode = "none", fetchImpl = fetch, apiUrl } = {}) {
+  feedbackMode = "none", reviewWebhookUrl = "", fetchImpl = fetch, apiUrl } = {}) {
   if (!token || !/^\d{15,25}$/.test(String(channelId || "")) || !["poll", "test"].includes(mode))
     throw Error("Invalid Discord URL recovery configuration");
-  if (!["receiver", "none"].includes(feedbackMode)) throw Error("Invalid recovery feedback setting");
+  if (!["personal", "none"].includes(feedbackMode)) throw Error("Invalid recovery feedback setting");
   const headers = { Authorization: "Bot " + token, Accept: "application/json" };
   const options = { headers, signal: AbortSignal.timeout(15000) };
   const channel = await json(await fetchImpl(API + "/channels/" + channelId, options));
@@ -71,7 +85,9 @@ export async function runGiftUrlRecovery({ token, channelId, postKey, mode = "po
   if (allowed.some(id => !/^\d{15,25}$/.test(id))) throw Error("Invalid recovery user configuration");
   const messages = await json(await fetchImpl(API + "/channels/" + channelId + "/messages?limit=100", options));
   if (!Array.isArray(messages)) throw Error("Invalid recovery message history");
-  if (mode === "test") return { ok: true, mode, candidateMessages: recoveryMessages(messages, allowed).length, writes: 0 };
+  const feedbackTarget = feedbackMode === "personal" ? await privateFeedbackTarget(fetchImpl, reviewWebhookUrl, guildId) : null;
+  if (mode === "test") return { ok: true, mode, candidateMessages: recoveryMessages(messages, allowed).length,
+    feedbackReady: Boolean(feedbackTarget), feedbackChannelId: feedbackTarget?.channelId || "", writes: 0 };
   if (!postKey) throw Error("Recovery post key missing");
   apiUrl ||= extractAppsScriptUrl(fs.readFileSync(new URL("../index.html", import.meta.url), "utf8"));
   const stateCall = async data => {
@@ -119,14 +135,14 @@ export async function runGiftUrlRecovery({ token, channelId, postKey, mode = "po
         throw Error("Gift public verification failed");
       recovered = Number(ingest.counts?.created || 0);
       outcome = "done";
-      if (feedbackMode === "receiver") feedbackWarning = !await sendRecoveryReply(fetchImpl, token, channelId, message.id,
+      if (feedbackMode === "personal") feedbackWarning = !await sendRecoveryFeedback(fetchImpl, feedbackTarget,
         "🎁 ギフトコードの登録内容を確認しました。\n" + expected.map(item => item.code).join("\n") +
         "\n新規追加：" + recovered + "件（登録済みは再追加しません）");
     } catch { outcome = "retry"; }
   }
   if (outcome !== "done") {
-    if (feedbackMode === "receiver" && !notified) {
-      notified = await sendRecoveryReply(fetchImpl, token, channelId, message.id,
+    if (feedbackMode === "personal" && !notified) {
+      notified = await sendRecoveryFeedback(fetchImpl, feedbackTarget,
         "🎁 貼り付けたギフトコードURLの確認が必要です。\n公式本文・報酬・期限の取得、登録内容との一致、または公開データの再取得を確認できませんでした。\n自動確認は最大3回行います。解決しない場合は公式投稿のスクショを添えて相談してください。\n" +
         urls.slice(0, MAX_URLS).map(url => "<" + url + ">").join("\n"));
       feedbackWarning = !notified;
@@ -143,10 +159,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const result = await runGiftUrlRecovery({ token: process.env.DISCORD_GIFT_BOT_TOKEN,
       channelId: process.env.DISCORD_GIFT_CHANNEL_ID, postKey: process.env.WEATHER_POST_KEY,
       mode: process.env.GIFT_POLL_MODE || "poll", feedbackMode: process.env.GIFT_URL_RECOVERY_FEEDBACK || "none",
+      reviewWebhookUrl: process.env.WEATHER_DC_WEBHOOK_URL,
       allowedUserIds: String(process.env.DISCORD_GIFT_URL_USER_IDS || "").split(",").map(id => id.trim()).filter(Boolean) });
     process.stdout.write(JSON.stringify(result) + "\n");
     if (!result.ok) console.error("::warning::Gift URL recovery requires review.");
-    if (result.feedbackWarning) console.error("::warning::Could not reply in the receiving channel; check the bot's Send Messages permission.");
+    if (result.feedbackWarning) console.error("::warning::Recovery feedback was not delivered; the destination must be in the same server as the receiving channel.");
   } catch {
     console.error("Gift URL recovery failed. Normal Discord/X polling runs separately.");
     process.exitCode = 1;
