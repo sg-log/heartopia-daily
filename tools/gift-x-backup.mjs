@@ -203,7 +203,7 @@ async function discoverFromSearch(fetchImpl, handle, provider = 'bing') {
   }
 }
 
-async function fetchOfficialPost(fetchImpl, handle, statusId, includeIncomplete = false, diagnostics) {
+export async function fetchOfficialPost(fetchImpl, handle, statusId, includeIncomplete = false, diagnostics) {
   const sourceUrl = `https://x.com/${handle}/status/${statusId}`;
   const endpoint = new URL("https://publish.twitter.com/oembed");
   endpoint.searchParams.set("url", sourceUrl);

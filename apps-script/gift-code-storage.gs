@@ -1,39 +1,38 @@
-function saveGiftCodeFromChat_(body) {
-  requireKey_(body.adminKey, adminKey_(), "管理キー");
-  if (body.confirmed !== true) throw new Error("チャットでの承認が必要です");
-  const input = body.item || {};
-  if (Object.keys(input).sort().join("|") !== ["code", "expiresAt", "reward", "sourceType", "sourceUrl"].sort().join("|"))
-    throw new Error("ギフトコードの入力形式が正しくありません");
-  const code = validateGiftCodeForWrite_(input.code);
-  const reward = limitText_(input.reward, TEXT_LIMITS.reward, "報酬").trim();
-  const expiresAt = validateGiftExpiresForWrite_(input.expiresAt);
-  if (!code || !reward || !expiresAt || parseDiscordGiftDeadline_(expiresAt.replace("T", " ") + " (UTC+9)") !== expiresAt)
-    throw new Error("コード・報酬・正しい交換期限が必要です");
-  const sourceUrl = String(input.sourceUrl || "");
-  const official = /^https:\/\/x\.com\/(?:myheartopia|Heartopia_JP)\/status\/\d{15,25}$/i.test(sourceUrl);
-  if (!["official-post", "official-screenshot"].includes(input.sourceType) ||
-      (sourceUrl && !official) || (input.sourceType === "official-post" && !official))
-    throw new Error("公式投稿または公式スクショの確認情報が必要です");
-  const result = withScriptLock_(function() {
-    const sheet = getGiftSheet_();
-    const found = sheet.getDataRange().getValues().slice(1).some(function(row) {
-      return String(row[GIFT_HEADERS.indexOf("code")]) === code;
-    });
-    if (found) return { mode: "already_registered" };
-    const now = new Date().toISOString();
-    const item = { id: Utilities.getUuid(), code: code, reward: safeSheetText_(reward),
-      expiresAt: expiresAt, sourceUrl: sourceUrl, memo: "", status: giftStatusFromExpiry_(expiresAt),
-      createdAt: now, updatedAt: now };
-    sheet.appendRow(giftRow_(item));
-    saveAutoGiftNotice_("created", true);
-    return { mode: "created", item: item };
-  });
-  if (result.mode === "created" && result.item.status === "active") {
-    const notification = notifyDiscordGiftCode_(result.item);
-    result.discordNotified = Boolean(notification.notified);
-    if (notification.warning) result.discordWarning = notification.warning;
-  }
-  return json_(Object.assign({ ok: true }, result));
+function giftUrlRecoveryState_(body) {
+  requireKey_(body.postKey, postKey_(), "投稿キー");
+  const props = PropertiesService.getScriptProperties();
+  const channelId = String(body.channelId || "");
+  if (!/^\d{15,25}$/.test(channelId) || channelId !== String(props.getProperty(DISCORD_GIFT_CHANNEL_ID_PROPERTY) || ""))
+    throw new Error("受信用チャンネルが設定と一致しません");
+  return json_(withScriptLock_(function() {
+    let state = {};
+    try { state = JSON.parse(props.getProperty("DISCORD_GIFT_URL_STATE") || "{}"); } catch (_) {}
+    if (body.phase === "read") return { ok: true, initialized: state.initialized === true || Boolean(state.cursor),
+      cursor: String(state.cursor || ""),
+      failedMessageId: String(state.failedMessageId || ""), attempts: Number(state.attempts || 0),
+      notified: state.notified === true };
+    if (body.phase === "initialize") {
+      if (state.initialized === true || state.cursor) return { ok: true, status: "already_initialized" };
+      const cursor = String(body.messageId || "");
+      if (cursor && !/^\d{15,25}$/.test(cursor)) throw new Error("メッセージIDが正しくありません");
+      props.setProperty("DISCORD_GIFT_URL_STATE", JSON.stringify({ initialized: true, cursor: cursor }));
+      return { ok: true, status: "initialized" };
+    }
+    if (body.phase !== "record" || !/^\d{15,25}$/.test(String(body.messageId || "")) ||
+        ["done", "retry", "review"].indexOf(body.status) < 0) throw new Error("URL復旧状態の形式が正しくありません");
+    const messageId = String(body.messageId);
+    if (state.cursor && compareDiscordSnowflakes_(messageId, state.cursor) <= 0) return { ok: true, status: "already_processed" };
+    if (body.status === "retry") {
+      const attempts = state.failedMessageId === messageId ? Number(state.attempts || 0) + 1 : 1;
+      state = { cursor: String(state.cursor || ""), failedMessageId: messageId, attempts: attempts,
+        notified: body.notified === true || (state.failedMessageId === messageId && state.notified === true) };
+    } else {
+      state = { cursor: messageId, failedMessageId: "", attempts: 0, notified: false };
+    }
+    state.initialized = true;
+    props.setProperty("DISCORD_GIFT_URL_STATE", JSON.stringify(state));
+    return { ok: true, status: body.status, cursor: state.cursor };
+  }));
 }
 
 function giftSourceWebhookIds_() {

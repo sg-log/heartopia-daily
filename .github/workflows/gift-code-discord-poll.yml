@@ -57,6 +57,19 @@ jobs:
           GIFT_POLL_MODE: ${{ inputs.mode }}
         run: node tools/gift-x-backup.mjs
 
+      - name: Recover official gift URLs pasted by the server owner
+        if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          DISCORD_GIFT_BOT_TOKEN: ${{ secrets.DISCORD_GIFT_BOT_TOKEN }}
+          WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
+          DISCORD_GIFT_CHANNEL_ID: ${{ inputs.channel_id }}
+          GIFT_POLL_MODE: ${{ inputs.mode }}
+          GIFT_URL_RECOVERY_FEEDBACK: ${{ vars.DISCORD_GIFT_URL_FEEDBACK || 'none' }}
+          DISCORD_GIFT_URL_USER_IDS: ${{ vars.DISCORD_GIFT_URL_USER_IDS }}
+        run: node tools/gift-discord-url-recovery.mjs
+
       - name: Prepare private evidence capture
         if: ${{ steps.gift_x.outputs.evidence_needed == 'true' }}
         run: npm ci --ignore-scripts --no-audit --no-fund
@@ -68,3 +81,4 @@ jobs:
           WEATHER_POST_KEY: ${{ secrets.WEATHER_POST_KEY }}
           GIFT_CAPTURE_ONLY: "1"
         run: node tools/gift-x-backup.mjs
+

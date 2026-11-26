@@ -783,34 +783,6 @@ test('private screenshot reads bind the queued row, validate image bytes, and re
 });
 
 
-test('chat-only create requires approval, creates once and preserves hidden or concurrent data', () => {
-  const h = makeHarness();
-  const item = { code: 'GRATEFUL11', reward: '月の水晶×10', expiresAt: '2099-12-24T12:00',
-    sourceUrl: 'https://x.com/Heartopia_JP/status/2125786636747444525', sourceType: 'official-post' };
-  const body = { adminKey: 'test-admin-key', confirmed: true, item };
-  assert.throws(() => h.context.saveGiftCodeFromChat_({ ...body, confirmed: false }), /承認/);
-  assert.throws(() => h.context.saveGiftCodeFromChat_({ ...body, adminKey: 'wrong' }), /管理キー/);
-  assert.equal(h.context.saveGiftCodeFromChat_(body).mode, 'created');
-  assert.equal(h.context.saveGiftCodeFromChat_(body).mode, 'already_registered');
-  assert.equal(h.rows.length, 2);
-  assert.deepEqual(h.events.notifications, ['GRATEFUL11']);
-  h.rows[1][6] = 'hidden';
-  assert.equal(h.context.saveGiftCodeFromChat_(body).mode, 'already_registered');
-  assert.equal(h.rows[1][6], 'hidden');
-  assert.equal(h.events.notifications.length, 1);
-});
-
-test('chat-only create rejects missing reward, invalid deadlines and foreign evidence', () => {
-  const h = makeHarness();
-  const item = { code: 'GRATEFUL11', reward: '月の水晶×10', expiresAt: '2099-12-24T12:00',
-    sourceUrl: 'https://x.com/Heartopia_JP/status/2125786636747444525', sourceType: 'official-post' };
-  for (const override of [{reward:''}, {expiresAt:'2026-02-30T12:00'}, {sourceUrl:'https://example.com/'}, {sourceType:'unverified'}]) {
-    assert.throws(() => h.context.saveGiftCodeFromChat_({adminKey:'test-admin-key',confirmed:true,item:{...item,...override}}));
-  }
-  assert.equal(h.rows.length,1);
-  assert.deepEqual(h.events.notifications,[]);
-});
-
 test('both user-provided official announcements parse with their exact code, reward and deadline', () => {
   const h = makeHarness();
   const fixtures = JSON.parse(fs.readFileSync(new URL('../actual-post-fixtures.json', import.meta.url), 'utf8'));
@@ -822,6 +794,36 @@ test('both user-provided official announcements parse with their exact code, rew
   assert.equal(second.code, 'GRATEFUL11');
   assert.equal(second.reward, '月の水晶×10');
   assert.equal(second.expiresAt, '2026-12-24T12:00');
+});
+
+test('URL recovery state is authenticated, channel-bound, and independent of forwarded-message cursor', () => {
+  const h=makeHarness();
+  const channelId='123456789012345678';
+  h.properties.set('DISCORD_GIFT_CHANNEL_ID',channelId);
+  h.properties.set('DISCORD_GIFT_LAST_MESSAGE_ID','999999999999999999');
+  const request={postKey:'test-post-key',channelId};
+  assert.throws(()=>h.context.giftUrlRecoveryState_({...request,postKey:'wrong',phase:'read'}));
+  assert.throws(()=>h.context.giftUrlRecoveryState_({...request,channelId:'223456789012345678',phase:'read'}));
+  assert.equal(h.context.giftUrlRecoveryState_({...request,phase:'read'}).initialized,false);
+  h.context.giftUrlRecoveryState_({...request,phase:'initialize',messageId:'323456789012345678'});
+  h.context.giftUrlRecoveryState_({...request,phase:'initialize',messageId:'423456789012345678'});
+  assert.equal(h.context.giftUrlRecoveryState_({...request,phase:'read'}).cursor,'323456789012345678');
+  assert.equal(h.properties.get('DISCORD_GIFT_LAST_MESSAGE_ID'),'999999999999999999');
+});
+
+test('URL retry state persists attempts and notification acknowledgement without advancing the cursor', () => {
+  const h=makeHarness(), channelId='123456789012345678';
+  h.properties.set('DISCORD_GIFT_CHANNEL_ID',channelId);
+  const request={postKey:'test-post-key',channelId};
+  h.context.giftUrlRecoveryState_({...request,phase:'initialize',messageId:''});
+  const failure={...request,phase:'record',messageId:'323456789012345678',status:'retry'};
+  h.context.giftUrlRecoveryState_({...failure,notified:true});
+  h.context.giftUrlRecoveryState_({...failure,notified:false});
+  const state=h.context.giftUrlRecoveryState_({...request,phase:'read'});
+  assert.equal(state.attempts,2);assert.equal(state.notified,true);assert.equal(state.cursor,'');
+  h.context.giftUrlRecoveryState_({...failure,status:'review'});
+  assert.equal(h.context.giftUrlRecoveryState_({...request,phase:'read'}).cursor,failure.messageId);
+  assert.equal(h.context.giftUrlRecoveryState_({...failure,status:'done'}).status,'already_processed');
 });
 
 function currentOfficialPostId() {

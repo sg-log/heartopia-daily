@@ -113,7 +113,7 @@ function doPost(e) {
     }
     if (action === "ingestDiscordGiftBatch") return ingestDiscordGiftBatch_(body);
     if (action === "ingestOfficialXGiftBatch") return ingestOfficialXGiftBatch_(body);
-    if (action === "saveGiftCodeFromChat") return saveGiftCodeFromChat_(body);
+    if (action === "giftUrlRecoveryState") return giftUrlRecoveryState_(body);
     if (action === "getGiftReviews") return getGiftReviews_(body);
     if (action === "decideGiftReview") return decideGiftReview_(body);
     if (action === "saveGiftReviewEvidence") return saveGiftReviewEvidence_(body);
