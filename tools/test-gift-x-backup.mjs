@@ -117,7 +117,9 @@ test('blocked Japanese profile discovers a fresh official gift through documente
   assert.equal(result.diagnostics.find(item=>item.source==='yahoo-realtime').ok,true);
   assert.equal(result.coverage.handles[0].timelineAvailable,false);
   assert.equal(result.coverage.state,'degraded');
-  assert.equal(requests.length,3);
+  assert.equal(requests.length,6);
+  for (const source of ['syndication', 'bing', 'yahoo-web'])
+    assert.ok(result.diagnostics.some(item => item.source === source));
 });
 
 test('empty real-time results retain the original fallbacks without trusting a foreign account', async () => {
@@ -419,3 +421,24 @@ test('screenshots reject a different author or code before launching a browser',
     author_url: 'https://x.com/Heartopia_JP', html: '<p>ギフトコード：different123</p>'
   })) }), /mismatch/);
 });
+
+
+test('a stale real-time index cannot hide a newer official post found by another search', async () => {
+  const texts=JSON.parse(fs.readFileSync(new URL('../actual-post-fixtures.json', import.meta.url),'utf8'));
+  const ids=['2124714562960163281','2125786636747444525'];
+  const result=await discoverOfficialXGiftPosts({handles:['Heartopia_JP'],fetchImpl:async url=>{
+    const target=new URL(url);
+    if(target.href==='https://x.com/Heartopia_JP')return new Response('',{status:403});
+    if(target.pathname==='/realtime/search')return new Response('<a href="https://x.com/Heartopia_JP/status/'+ids[0]+'">older</a>');
+    if(target.hostname==='www.bing.com')return new Response('<a href="https://x.com/Heartopia_JP/status/'+ids[1]+'">newer</a>');
+    if(target.hostname==='publish.twitter.com'){
+      const id=new URL(target.searchParams.get('url')).pathname.split('/').at(-1);
+      const i=ids.indexOf(id);
+      return Response.json({author_url:'https://x.com/Heartopia_JP',html:'<p>'+(i<0?'Not a gift':texts[i].replaceAll('\n','<br>'))+'</p>'});
+    }
+    return new Response('',{status:429});
+  }});
+  assert.deepEqual(result.posts.map(post=>post.statusId),[ids[1],ids[0]]);
+  assert.equal(result.coverage.state,'degraded');
+});
+

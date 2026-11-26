@@ -781,3 +781,85 @@ test('private screenshot reads bind the queued row, validate image bytes, and re
   parentId = 'private-folder'; file.private = false;
   assert.throws(() => h.context.getGiftReviewEvidence_(read), /private/);
 });
+
+
+test('chat-only create requires approval, creates once and preserves hidden or concurrent data', () => {
+  const h = makeHarness();
+  const item = { code: 'GRATEFUL11', reward: '月の水晶×10', expiresAt: '2099-12-24T12:00',
+    sourceUrl: 'https://x.com/Heartopia_JP/status/2125786636747444525', sourceType: 'official-post' };
+  const body = { adminKey: 'test-admin-key', confirmed: true, item };
+  assert.throws(() => h.context.saveGiftCodeFromChat_({ ...body, confirmed: false }), /承認/);
+  assert.throws(() => h.context.saveGiftCodeFromChat_({ ...body, adminKey: 'wrong' }), /管理キー/);
+  assert.equal(h.context.saveGiftCodeFromChat_(body).mode, 'created');
+  assert.equal(h.context.saveGiftCodeFromChat_(body).mode, 'already_registered');
+  assert.equal(h.rows.length, 2);
+  assert.deepEqual(h.events.notifications, ['GRATEFUL11']);
+  h.rows[1][6] = 'hidden';
+  assert.equal(h.context.saveGiftCodeFromChat_(body).mode, 'already_registered');
+  assert.equal(h.rows[1][6], 'hidden');
+  assert.equal(h.events.notifications.length, 1);
+});
+
+test('chat-only create rejects missing reward, invalid deadlines and foreign evidence', () => {
+  const h = makeHarness();
+  const item = { code: 'GRATEFUL11', reward: '月の水晶×10', expiresAt: '2099-12-24T12:00',
+    sourceUrl: 'https://x.com/Heartopia_JP/status/2125786636747444525', sourceType: 'official-post' };
+  for (const override of [{reward:''}, {expiresAt:'2026-02-30T12:00'}, {sourceUrl:'https://example.com/'}, {sourceType:'unverified'}]) {
+    assert.throws(() => h.context.saveGiftCodeFromChat_({adminKey:'test-admin-key',confirmed:true,item:{...item,...override}}));
+  }
+  assert.equal(h.rows.length,1);
+  assert.deepEqual(h.events.notifications,[]);
+});
+
+test('both user-provided official announcements parse with their exact code, reward and deadline', () => {
+  const h = makeHarness();
+  const fixtures = JSON.parse(fs.readFileSync(new URL('../actual-post-fixtures.json', import.meta.url), 'utf8'));
+  const first = h.context.parseDiscordGiftAnnouncement_(fixtures[0]);
+  assert.equal(first.code, 'a5n7k2q8r4m1');
+  assert.equal(first.reward, '願い星×3\nマーメイドの魚寄せ装置×3\n肥料×10');
+  assert.equal(first.expiresAt, '2026-12-04T00:59');
+  const second = h.context.parseDiscordGiftAnnouncement_(fixtures[1]);
+  assert.equal(second.code, 'GRATEFUL11');
+  assert.equal(second.reward, '月の水晶×10');
+  assert.equal(second.expiresAt, '2026-12-24T12:00');
+});
+
+function currentOfficialPostId() {
+  return ((BigInt(Date.now() - 3600000) - 1288834974657n) << 22n).toString();
+}
+
+test('recent verified official posts with unsupported rewards remain reviewable without external lists', () => {
+  const h = makeHarness(), statusId = currentOfficialPostId();
+  const batch = {reconcile:true, posts:[{statusId, sourceUrl:'https://x.com/Heartopia_JP/status/'+statusId,
+    text:'Gift Code: recovery123\nRewards: a new reward format\nRedemption Deadline: 2099/12/01 00:59'}]};
+  const first = h.context.processOfficialXGiftBatch_(batch);
+  assert.equal(first.counts.review,1);
+  assert.equal(first.reviews.length,1);
+  assert.equal(first.reviews[0].code,'recovery123');
+  assert.equal(h.rows.length,1);
+  assert.deepEqual(h.events.notifications,[]);
+  h.context.processOfficialXGiftBatch_({reconcile:true,ackReviewIds:[first.reviews[0].id]});
+  assert.equal(h.context.processOfficialXGiftBatch_(batch).reviews.length,0);
+  assert.equal(h.context.listGiftReviewsForAdmin_().length,1);
+});
+
+test('recent truncated official posts remain private and request missing deadline confirmation', () => {
+  const h = makeHarness(), statusId=currentOfficialPostId();
+  const result=h.context.processOfficialXGiftBatch_({reconcile:true, posts:[{statusId,
+    sourceUrl:'https://x.com/Heartopia_JP/status/'+statusId,
+    text:'Gift Code: partial456\nRewards: Dye ×2\nさらに表示…'}]});
+  assert.equal(result.reviews.length,1);
+  assert.equal(h.rows.length,1);
+  assert.equal(h.context.listGiftReviewsForAdmin_()[0].expiresAt,'');
+  assert.deepEqual(h.events.notifications,[]);
+});
+
+test('ambiguous multi-code official posts never create a guessed review', () => {
+  const h=makeHarness(), statusId=currentOfficialPostId();
+  const result=h.context.processOfficialXGiftBatch_({reconcile:true, posts:[{statusId,
+    sourceUrl:'https://x.com/Heartopia_JP/status/'+statusId,
+    text:'Gift Code: recovery123\nGift Code: recovery456\nRewards: Dye ×2'}]});
+  assert.equal(result.reviews.length,0);
+  assert.equal(h.rows.length,1);
+});
+

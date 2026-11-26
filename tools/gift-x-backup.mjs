@@ -352,26 +352,19 @@ export async function discoverOfficialXGiftPosts(options = {}) {
     diagnostics.push(primary);
     let ids = primary.ids || [];
     let timelineAvailable = primary.ok;
-    if (!ids.length && /^Heartopia_JP$/i.test(handle)) {
-      const realtime = await discoverFromRealtime(fetchImpl, handle);
-      diagnostics.push(realtime);
-      ids = realtime.ids;
-    }
     if (!ids.length) {
-      const fallback = await discoverFromSyndication(fetchImpl, handle);
-      diagnostics.push(fallback);
-      ids = fallback.ids || [];
-      timelineAvailable = fallback.ok && ids.length > 0;
-    }
-    if (!ids.length) {
-      const fallback = await discoverFromSearch(fetchImpl, handle);
-      diagnostics.push(fallback);
-      ids = fallback.ids || [];
-    }
-    if (!ids.length) {
-      const fallback = await discoverFromSearch(fetchImpl, handle, 'yahoo-web');
-      diagnostics.push(fallback);
-      ids = fallback.ids || [];
+      // Search indexes can return older gifts while a newer announcement is
+      // missing. Merge independent fallbacks instead of stopping at the first hit.
+      const fallbacks = await Promise.all([
+        ...(/^Heartopia_JP$/i.test(handle) ? [discoverFromRealtime(fetchImpl, handle)] : []),
+        discoverFromSyndication(fetchImpl, handle),
+        discoverFromSearch(fetchImpl, handle),
+        discoverFromSearch(fetchImpl, handle, 'yahoo-web')
+      ]);
+      diagnostics.push(...fallbacks);
+      ids = unique(fallbacks.flatMap(result => result.ids || [])).sort((a, b) =>
+        b.length - a.length || (a === b ? 0 : a > b ? -1 : 1));
+      timelineAvailable = fallbacks.some(result => result.source === 'syndication' && result.ok && result.ids.length > 0);
     }
 
     const discoveredIds = new Set(ids);
@@ -443,7 +436,7 @@ export async function runGiftXBackup(options = {}) {
       postKey,
       reconcile: Boolean(options.reconcile),
       reviewCandidates: (reconciliation?.reviews || []).slice(0, 20),
-      posts: [...discovery.posts, ...discovery.incompletePosts.filter(post => /^Heartopia_JP$/i.test(post.handle))].map(post => ({
+      posts: [...discovery.posts, ...discovery.incompletePosts].map(post => ({
         statusId: post.statusId,
         sourceUrl: post.sourceUrl,
         text: post.text
@@ -567,3 +560,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exitCode = 1;
   });
 }
+

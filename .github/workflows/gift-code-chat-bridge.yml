@@ -1,0 +1,30 @@
+name: Gift code chat approval bridge
+on:
+  issues:
+    types: [opened]
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: gift-code-chat-bridge
+  cancel-in-progress: false
+jobs:
+  chat:
+    if: >-
+      github.event.issue.user.login == github.repository_owner &&
+      github.event.issue.pull_request == null &&
+      (startsWith(github.event.issue.title, 'Heartopia gift chat READ ') ||
+       startsWith(github.event.issue.title, 'Heartopia gift chat SAVE '))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Read or save approved gift code
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          WEATHER_ADMIN_KEY: ${{ secrets.WEATHER_ADMIN_KEY }}
+        run: node tools/gift-code-chat-bridge.mjs

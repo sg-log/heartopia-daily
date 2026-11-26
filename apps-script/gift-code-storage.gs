@@ -1,3 +1,41 @@
+function saveGiftCodeFromChat_(body) {
+  requireKey_(body.adminKey, adminKey_(), "管理キー");
+  if (body.confirmed !== true) throw new Error("チャットでの承認が必要です");
+  const input = body.item || {};
+  if (Object.keys(input).sort().join("|") !== ["code", "expiresAt", "reward", "sourceType", "sourceUrl"].sort().join("|"))
+    throw new Error("ギフトコードの入力形式が正しくありません");
+  const code = validateGiftCodeForWrite_(input.code);
+  const reward = limitText_(input.reward, TEXT_LIMITS.reward, "報酬").trim();
+  const expiresAt = validateGiftExpiresForWrite_(input.expiresAt);
+  if (!code || !reward || !expiresAt || parseDiscordGiftDeadline_(expiresAt.replace("T", " ") + " (UTC+9)") !== expiresAt)
+    throw new Error("コード・報酬・正しい交換期限が必要です");
+  const sourceUrl = String(input.sourceUrl || "");
+  const official = /^https:\/\/x\.com\/(?:myheartopia|Heartopia_JP)\/status\/\d{15,25}$/i.test(sourceUrl);
+  if (!["official-post", "official-screenshot"].includes(input.sourceType) ||
+      (sourceUrl && !official) || (input.sourceType === "official-post" && !official))
+    throw new Error("公式投稿または公式スクショの確認情報が必要です");
+  const result = withScriptLock_(function() {
+    const sheet = getGiftSheet_();
+    const found = sheet.getDataRange().getValues().slice(1).some(function(row) {
+      return String(row[GIFT_HEADERS.indexOf("code")]) === code;
+    });
+    if (found) return { mode: "already_registered" };
+    const now = new Date().toISOString();
+    const item = { id: Utilities.getUuid(), code: code, reward: safeSheetText_(reward),
+      expiresAt: expiresAt, sourceUrl: sourceUrl, memo: "", status: giftStatusFromExpiry_(expiresAt),
+      createdAt: now, updatedAt: now };
+    sheet.appendRow(giftRow_(item));
+    saveAutoGiftNotice_("created", true);
+    return { mode: "created", item: item };
+  });
+  if (result.mode === "created" && result.item.status === "active") {
+    const notification = notifyDiscordGiftCode_(result.item);
+    result.discordNotified = Boolean(notification.notified);
+    if (notification.warning) result.discordWarning = notification.warning;
+  }
+  return json_(Object.assign({ ok: true }, result));
+}
+
 function giftSourceWebhookIds_() {
   const props = PropertiesService.getScriptProperties();
   const result = [];
@@ -101,20 +139,18 @@ function processOfficialXGiftBatch_(body) {
       continue;
     }
 
-    if (!looksLikeDiscordGiftAnnouncement_(text)) {
-      if (/Gift\s*Code\s*:|ギフト\s*コード\s*[:：]/i.test(text)) counts.review++;
-      else counts.ignored++;
-      continue;
-    }
-
     const parsed = parseDiscordGiftAnnouncement_(text, {
       rewardNameMap: giftRewardNameMap_()
     });
     if (parsed.ok && /^Heartopia_JP$/i.test(match[1])) preferJapaneseGiftSource_(sourceUrl, text, parsed);
     if (!parsed.ok || !parsed.expiresAt || /(?:…|\.{3})\s*$/.test(text)) {
       counts.review++;
-      if (parsed.code) reviewCandidates.push({ code: parsed.code, sourceUrl: sourceUrl, listingUrls: [],
-        excerpt: text.slice(0, 1000), reason: "公式投稿の報酬・交換期限を完全に確認できません。" });
+      const normalized = normalizeGiftAnnouncementText_(text);
+      const codes = Array.from(new Set((normalized.match(/Gift\s*Code\s*:\s*`?([A-Za-z0-9][A-Za-z0-9_-]{5,99})/ig) || []).map(function(label) {
+        return label.match(/:\s*`?([A-Za-z0-9][A-Za-z0-9_-]{5,99})/)[1];
+      })));
+      if (codes.length === 1) reviewCandidates.push({ code: codes[0], sourceUrl: sourceUrl, listingUrls: [],
+        excerpt: text, reason: "公式投稿の報酬・交換期限を完全に確認できません。" });
       Logger.log("Official X gift review required: " + (parsed.error || "交換期限未確認") + " " + sourceUrl);
       continue;
     }
@@ -188,6 +224,14 @@ function getGiftReviewSheet_() {
   return sheet;
 }
 
+function isRecentOfficialGiftPost_(sourceUrl) {
+  const match = String(sourceUrl || "").match(/^https:\/\/x\.com\/(?:myheartopia|Heartopia_JP)\/status\/(\d{15,25})$/i);
+  if (!match) return false;
+  const publishedAt = Math.floor(Number(match[1]) / 4194304) + 1288834974657;
+  const age = Date.now() - publishedAt;
+  return Number.isFinite(age) && age >= -300000 && age <= 7 * 86400000;
+}
+
 function reconcileGiftReviews_(candidates, acknowledgements) {
   return withScriptLock_(function() {
     const sheet = getGiftReviewSheet_();
@@ -206,11 +250,17 @@ function reconcileGiftReviews_(candidates, acknowledgements) {
         return ["https://heartopiaguide.com/codes/", "https://www.heartodex.com/en/codes/"].indexOf(url) >= 0;
       });
       if ((!official && source) || (!official && !listings.length)) return;
-      // Search can return years of old X posts; only current active-list misses alert.
-      if (!listings.length || byCode[code]) return;
+      // A future deadline in the verified official body is also a current candidate.
+      // Old search hits and ambiguous/missing deadlines still require an active listing.
+      const officialDeadline = official ? parseDiscordGiftDeadline_(lineValueAfterLabel_(
+        normalizeGiftAnnouncementText_(item.excerpt || ""), /Redemption\s*Deadline/i)) : "";
+      const liveOfficial = official && (isRecentOfficialGiftPost_(source)
+        || (officialDeadline && Date.parse(officialDeadline + ":00+09:00") > Date.now()));
+      if ((!listings.length && !liveOfficial) || byCode[code]) return;
       const existingIndex = rows.findIndex(function(row, index) { return index > 0 && String(row[1]) === code; });
       const hint = String(item.deadlineHint || "").slice(0, 100);
-      const validHint = listings.indexOf("https://heartopiaguide.com/codes/") >= 0 && parseDiscordGiftDeadline_(hint) ? hint : "";
+      const validHint = liveOfficial && officialDeadline ? officialDeadline.replace("T", " ") + " (UTC+9)"
+        : listings.indexOf("https://heartopiaguide.com/codes/") >= 0 && parseDiscordGiftDeadline_(hint) ? hint : "";
       if (existingIndex >= 0) {
         const existing = rows[existingIndex];
         while (existing.length < 11) existing.push("");
@@ -231,7 +281,11 @@ function reconcileGiftReviews_(candidates, acknowledgements) {
       while (row.length < 11) row.push("");
       const gift = byCode[String(row[1])];
       // A deliberate hide is final; do not expose it as a fresh missing-code alert.
-      const legacy = !JSON.parse(String(row[4] || "[]")).length;
+      const officialDeadline = /^https:\/\/x\.com\/(?:myheartopia|Heartopia_JP)\/status\/\d{15,25}$/i.test(String(row[3]))
+        ? parseDiscordGiftDeadline_(String(row[9] || "")) : "";
+      const legacy = !JSON.parse(String(row[4] || "[]")).length
+        && !isRecentOfficialGiftPost_(row[3])
+        && !(officialDeadline && Date.parse(officialDeadline + ":00+09:00") > Date.now());
       const resolved = Boolean(gift) || legacy;
       let changed = false;
       if (resolved && row[6] !== "resolved") { row[6] = "resolved"; changed = true; }
@@ -648,3 +702,4 @@ function notifyGiftCodeReview_(message, config, reason) {
     Logger.log("Gift code review notification failed: " + error.message);
   }
 }
+
