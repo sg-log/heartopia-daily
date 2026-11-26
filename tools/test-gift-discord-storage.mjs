@@ -781,3 +781,87 @@ test('private screenshot reads bind the queued row, validate image bytes, and re
   parentId = 'private-folder'; file.private = false;
   assert.throws(() => h.context.getGiftReviewEvidence_(read), /private/);
 });
+
+
+test('both user-provided official announcements parse with their exact code, reward and deadline', () => {
+  const h = makeHarness();
+  const fixtures = JSON.parse(fs.readFileSync(new URL('../actual-post-fixtures.json', import.meta.url), 'utf8'));
+  const first = h.context.parseDiscordGiftAnnouncement_(fixtures[0]);
+  assert.equal(first.code, 'a5n7k2q8r4m1');
+  assert.equal(first.reward, '願い星×3\nマーメイドの魚寄せ装置×3\n肥料×10');
+  assert.equal(first.expiresAt, '2026-12-04T00:59');
+  const second = h.context.parseDiscordGiftAnnouncement_(fixtures[1]);
+  assert.equal(second.code, 'GRATEFUL11');
+  assert.equal(second.reward, '月の水晶×10');
+  assert.equal(second.expiresAt, '2026-12-24T12:00');
+});
+
+test('URL recovery state is authenticated, channel-bound, and independent of forwarded-message cursor', () => {
+  const h=makeHarness();
+  const channelId='123456789012345678';
+  h.properties.set('DISCORD_GIFT_CHANNEL_ID',channelId);
+  h.properties.set('DISCORD_GIFT_LAST_MESSAGE_ID','999999999999999999');
+  const request={postKey:'test-post-key',channelId};
+  assert.throws(()=>h.context.giftUrlRecoveryState_({...request,postKey:'wrong',phase:'read'}));
+  assert.throws(()=>h.context.giftUrlRecoveryState_({...request,channelId:'223456789012345678',phase:'read'}));
+  assert.equal(h.context.giftUrlRecoveryState_({...request,phase:'read'}).initialized,false);
+  h.context.giftUrlRecoveryState_({...request,phase:'initialize',messageId:'323456789012345678'});
+  h.context.giftUrlRecoveryState_({...request,phase:'initialize',messageId:'423456789012345678'});
+  assert.equal(h.context.giftUrlRecoveryState_({...request,phase:'read'}).cursor,'323456789012345678');
+  assert.equal(h.properties.get('DISCORD_GIFT_LAST_MESSAGE_ID'),'999999999999999999');
+});
+
+test('URL retry state persists attempts and notification acknowledgement without advancing the cursor', () => {
+  const h=makeHarness(), channelId='123456789012345678';
+  h.properties.set('DISCORD_GIFT_CHANNEL_ID',channelId);
+  const request={postKey:'test-post-key',channelId};
+  h.context.giftUrlRecoveryState_({...request,phase:'initialize',messageId:''});
+  const failure={...request,phase:'record',messageId:'323456789012345678',status:'retry'};
+  h.context.giftUrlRecoveryState_({...failure,notified:true});
+  h.context.giftUrlRecoveryState_({...failure,notified:false});
+  const state=h.context.giftUrlRecoveryState_({...request,phase:'read'});
+  assert.equal(state.attempts,2);assert.equal(state.notified,true);assert.equal(state.cursor,'');
+  h.context.giftUrlRecoveryState_({...failure,status:'review'});
+  assert.equal(h.context.giftUrlRecoveryState_({...request,phase:'read'}).cursor,failure.messageId);
+  assert.equal(h.context.giftUrlRecoveryState_({...failure,status:'done'}).status,'already_processed');
+});
+
+function currentOfficialPostId() {
+  return ((BigInt(Date.now() - 3600000) - 1288834974657n) << 22n).toString();
+}
+
+test('recent verified official posts with unsupported rewards remain reviewable without external lists', () => {
+  const h = makeHarness(), statusId = currentOfficialPostId();
+  const batch = {reconcile:true, posts:[{statusId, sourceUrl:'https://x.com/Heartopia_JP/status/'+statusId,
+    text:'Gift Code: recovery123\nRewards: a new reward format\nRedemption Deadline: 2099/12/01 00:59'}]};
+  const first = h.context.processOfficialXGiftBatch_(batch);
+  assert.equal(first.counts.review,1);
+  assert.equal(first.reviews.length,1);
+  assert.equal(first.reviews[0].code,'recovery123');
+  assert.equal(h.rows.length,1);
+  assert.deepEqual(h.events.notifications,[]);
+  h.context.processOfficialXGiftBatch_({reconcile:true,ackReviewIds:[first.reviews[0].id]});
+  assert.equal(h.context.processOfficialXGiftBatch_(batch).reviews.length,0);
+  assert.equal(h.context.listGiftReviewsForAdmin_().length,1);
+});
+
+test('recent truncated official posts remain private and request missing deadline confirmation', () => {
+  const h = makeHarness(), statusId=currentOfficialPostId();
+  const result=h.context.processOfficialXGiftBatch_({reconcile:true, posts:[{statusId,
+    sourceUrl:'https://x.com/Heartopia_JP/status/'+statusId,
+    text:'Gift Code: partial456\nRewards: Dye ×2\nさらに表示…'}]});
+  assert.equal(result.reviews.length,1);
+  assert.equal(h.rows.length,1);
+  assert.equal(h.context.listGiftReviewsForAdmin_()[0].expiresAt,'');
+  assert.deepEqual(h.events.notifications,[]);
+});
+
+test('ambiguous multi-code official posts never create a guessed review', () => {
+  const h=makeHarness(), statusId=currentOfficialPostId();
+  const result=h.context.processOfficialXGiftBatch_({reconcile:true, posts:[{statusId,
+    sourceUrl:'https://x.com/Heartopia_JP/status/'+statusId,
+    text:'Gift Code: recovery123\nGift Code: recovery456\nRewards: Dye ×2'}]});
+  assert.equal(result.reviews.length,0);
+  assert.equal(h.rows.length,1);
+});
+

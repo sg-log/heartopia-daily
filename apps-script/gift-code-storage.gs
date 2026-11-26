@@ -1,3 +1,40 @@
+function giftUrlRecoveryState_(body) {
+  requireKey_(body.postKey, postKey_(), "投稿キー");
+  const props = PropertiesService.getScriptProperties();
+  const channelId = String(body.channelId || "");
+  if (!/^\d{15,25}$/.test(channelId) || channelId !== String(props.getProperty(DISCORD_GIFT_CHANNEL_ID_PROPERTY) || ""))
+    throw new Error("受信用チャンネルが設定と一致しません");
+  return json_(withScriptLock_(function() {
+    let state = {};
+    try { state = JSON.parse(props.getProperty("DISCORD_GIFT_URL_STATE") || "{}"); } catch (_) {}
+    if (body.phase === "read") return { ok: true, initialized: state.initialized === true || Boolean(state.cursor),
+      cursor: String(state.cursor || ""),
+      failedMessageId: String(state.failedMessageId || ""), attempts: Number(state.attempts || 0),
+      notified: state.notified === true };
+    if (body.phase === "initialize") {
+      if (state.initialized === true || state.cursor) return { ok: true, status: "already_initialized" };
+      const cursor = String(body.messageId || "");
+      if (cursor && !/^\d{15,25}$/.test(cursor)) throw new Error("メッセージIDが正しくありません");
+      props.setProperty("DISCORD_GIFT_URL_STATE", JSON.stringify({ initialized: true, cursor: cursor }));
+      return { ok: true, status: "initialized" };
+    }
+    if (body.phase !== "record" || !/^\d{15,25}$/.test(String(body.messageId || "")) ||
+        ["done", "retry", "review"].indexOf(body.status) < 0) throw new Error("URL復旧状態の形式が正しくありません");
+    const messageId = String(body.messageId);
+    if (state.cursor && compareDiscordSnowflakes_(messageId, state.cursor) <= 0) return { ok: true, status: "already_processed" };
+    if (body.status === "retry") {
+      const attempts = state.failedMessageId === messageId ? Number(state.attempts || 0) + 1 : 1;
+      state = { cursor: String(state.cursor || ""), failedMessageId: messageId, attempts: attempts,
+        notified: body.notified === true || (state.failedMessageId === messageId && state.notified === true) };
+    } else {
+      state = { cursor: messageId, failedMessageId: "", attempts: 0, notified: false };
+    }
+    state.initialized = true;
+    props.setProperty("DISCORD_GIFT_URL_STATE", JSON.stringify(state));
+    return { ok: true, status: body.status, cursor: state.cursor };
+  }));
+}
+
 function giftSourceWebhookIds_() {
   const props = PropertiesService.getScriptProperties();
   const result = [];
@@ -101,20 +138,18 @@ function processOfficialXGiftBatch_(body) {
       continue;
     }
 
-    if (!looksLikeDiscordGiftAnnouncement_(text)) {
-      if (/Gift\s*Code\s*:|ギフト\s*コード\s*[:：]/i.test(text)) counts.review++;
-      else counts.ignored++;
-      continue;
-    }
-
     const parsed = parseDiscordGiftAnnouncement_(text, {
       rewardNameMap: giftRewardNameMap_()
     });
     if (parsed.ok && /^Heartopia_JP$/i.test(match[1])) preferJapaneseGiftSource_(sourceUrl, text, parsed);
     if (!parsed.ok || !parsed.expiresAt || /(?:…|\.{3})\s*$/.test(text)) {
       counts.review++;
-      if (parsed.code) reviewCandidates.push({ code: parsed.code, sourceUrl: sourceUrl, listingUrls: [],
-        excerpt: text.slice(0, 1000), reason: "公式投稿の報酬・交換期限を完全に確認できません。" });
+      const normalized = normalizeGiftAnnouncementText_(text);
+      const codes = Array.from(new Set((normalized.match(/Gift\s*Code\s*:\s*`?([A-Za-z0-9][A-Za-z0-9_-]{5,99})/ig) || []).map(function(label) {
+        return label.match(/:\s*`?([A-Za-z0-9][A-Za-z0-9_-]{5,99})/)[1];
+      })));
+      if (codes.length === 1) reviewCandidates.push({ code: codes[0], sourceUrl: sourceUrl, listingUrls: [],
+        excerpt: text, reason: "公式投稿の報酬・交換期限を完全に確認できません。" });
       Logger.log("Official X gift review required: " + (parsed.error || "交換期限未確認") + " " + sourceUrl);
       continue;
     }
@@ -188,6 +223,14 @@ function getGiftReviewSheet_() {
   return sheet;
 }
 
+function isRecentOfficialGiftPost_(sourceUrl) {
+  const match = String(sourceUrl || "").match(/^https:\/\/x\.com\/(?:myheartopia|Heartopia_JP)\/status\/(\d{15,25})$/i);
+  if (!match) return false;
+  const publishedAt = Math.floor(Number(match[1]) / 4194304) + 1288834974657;
+  const age = Date.now() - publishedAt;
+  return Number.isFinite(age) && age >= -300000 && age <= 7 * 86400000;
+}
+
 function reconcileGiftReviews_(candidates, acknowledgements) {
   return withScriptLock_(function() {
     const sheet = getGiftReviewSheet_();
@@ -206,11 +249,17 @@ function reconcileGiftReviews_(candidates, acknowledgements) {
         return ["https://heartopiaguide.com/codes/", "https://www.heartodex.com/en/codes/"].indexOf(url) >= 0;
       });
       if ((!official && source) || (!official && !listings.length)) return;
-      // Search can return years of old X posts; only current active-list misses alert.
-      if (!listings.length || byCode[code]) return;
+      // A future deadline in the verified official body is also a current candidate.
+      // Old search hits and ambiguous/missing deadlines still require an active listing.
+      const officialDeadline = official ? parseDiscordGiftDeadline_(lineValueAfterLabel_(
+        normalizeGiftAnnouncementText_(item.excerpt || ""), /Redemption\s*Deadline/i)) : "";
+      const liveOfficial = official && (isRecentOfficialGiftPost_(source)
+        || (officialDeadline && Date.parse(officialDeadline + ":00+09:00") > Date.now()));
+      if ((!listings.length && !liveOfficial) || byCode[code]) return;
       const existingIndex = rows.findIndex(function(row, index) { return index > 0 && String(row[1]) === code; });
       const hint = String(item.deadlineHint || "").slice(0, 100);
-      const validHint = listings.indexOf("https://heartopiaguide.com/codes/") >= 0 && parseDiscordGiftDeadline_(hint) ? hint : "";
+      const validHint = liveOfficial && officialDeadline ? officialDeadline.replace("T", " ") + " (UTC+9)"
+        : listings.indexOf("https://heartopiaguide.com/codes/") >= 0 && parseDiscordGiftDeadline_(hint) ? hint : "";
       if (existingIndex >= 0) {
         const existing = rows[existingIndex];
         while (existing.length < 11) existing.push("");
@@ -231,7 +280,11 @@ function reconcileGiftReviews_(candidates, acknowledgements) {
       while (row.length < 11) row.push("");
       const gift = byCode[String(row[1])];
       // A deliberate hide is final; do not expose it as a fresh missing-code alert.
-      const legacy = !JSON.parse(String(row[4] || "[]")).length;
+      const officialDeadline = /^https:\/\/x\.com\/(?:myheartopia|Heartopia_JP)\/status\/\d{15,25}$/i.test(String(row[3]))
+        ? parseDiscordGiftDeadline_(String(row[9] || "")) : "";
+      const legacy = !JSON.parse(String(row[4] || "[]")).length
+        && !isRecentOfficialGiftPost_(row[3])
+        && !(officialDeadline && Date.parse(officialDeadline + ":00+09:00") > Date.now());
       const resolved = Boolean(gift) || legacy;
       let changed = false;
       if (resolved && row[6] !== "resolved") { row[6] = "resolved"; changed = true; }
@@ -648,3 +701,4 @@ function notifyGiftCodeReview_(message, config, reason) {
     Logger.log("Gift code review notification failed: " + error.message);
   }
 }
+

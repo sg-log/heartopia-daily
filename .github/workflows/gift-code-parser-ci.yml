@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "apps-script/gift-*.gs"
+      - "apps-script/weather-api.gs"
       - "tools/test-gift-discord-parser.mjs"
       - "tools/test-gift-discord-storage.mjs"
       - "tools/test-gift-discord-poll.mjs"
@@ -11,6 +12,9 @@ on:
       - "tools/gift-x-backup.mjs"
       - "tools/test-gift-x-backup.mjs"
       - "tools/test-gift-claim-backup.mjs"
+      - "tools/gift-discord-url-recovery.mjs"
+      - "tools/test-gift-discord-url-recovery.mjs"
+      - "actual-post-fixtures.json"
       - "index.html"
       - ".clasp.json"
       - ".claspignore"

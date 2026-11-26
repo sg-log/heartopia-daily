@@ -1,5 +1,16 @@
 # Heartopia Daily ギフトコード自動取得
 
+## 取りこぼしたコードをDiscordのURL貼り付けで復旧
+
+有効化後、受信用チャンネルへ本人が公式XのURLを貼ると、次の5分確認で公式本文を取得し、既存の自動登録処理へ渡します。
+コード・報酬・期限を確認し、公開データの再取得まで一致した場合だけ処理済みにします。
+通常の復旧に管理画面、JSON操作、チャットでの再承認は不要です。詳細は [tools/README-gift-discord-url-recovery.md](tools/README-gift-discord-url-recovery.md)。
+
+公式Discordから受信用チャンネルへ転送されない投稿はDiscordポーリングだけでは回収できません。
+公式Xの補助取得はDiscord処理の成否にかかわらず確認し、プロフィールが利用できない場合は複数の検索経路の投稿IDを統合します。
+最初の検索経路に古い投稿が出たことだけを理由に、他の検索経路を省略しません。
+それでも全取得先の反映遅延・閲覧制限による未発見はあり得るため、URL貼り付けによる復旧を併設します。
+
 ## 目的
 
 PCがOFFでも、公式Discordのフォロー転送を約5分間隔で確認し、公式X（@myheartopia / @Heartopia_JP）もバックアップ確認して、既存の `gift_codes` シートへ自動登録します。
@@ -225,3 +236,4 @@ npm run test:gift-discord
 ```
 
 旧redeem-code形式、新announcement形式、日本語ラベル、日本語化、Discord timestamp、未知アイテム、複数コード、曖昧なRewards、複数フォローWebhook、通知ループ防止、Snowflake順序、GitHub Actions経由のDiscord候補抽出・カーソル更新、公式Xバックアップの投稿者検証と取込を回帰テストします。
+
