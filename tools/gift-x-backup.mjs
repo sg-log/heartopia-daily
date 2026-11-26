@@ -229,7 +229,7 @@ export async function fetchOfficialPost(fetchImpl, handle, statusId, includeInco
     // oEmbed can shorten long announcements before their redemption deadline.
     // Do not import a partial post as if the deadline were absent.
     let incomplete = /(?:…|\.{3})\s*$/.test(text);
-    if (text && looksLikeGiftText(text) && incomplete) {
+    if (text && incomplete) {
       try {
         const full = await fetchText(fetchImpl, sourceUrl);
         const expanded = full.response.ok && (!full.response.url || officialStatusUrl(full.response.url, handle, statusId))
