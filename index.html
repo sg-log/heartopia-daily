@@ -1161,11 +1161,11 @@ button.secondary,button.danger{border-radius:9px}
 </head>
 <body>
 <header class="siteHeader"><div class="siteHeaderRow">
-<div class="siteHeaderBrand"><h1>Heartopia Daily</h1><p>ハートピアの天気予報と、今日の採取場所。</p></div>
+<div class="siteHeaderBrand"><h1>Heartopia Daily</h1><p id="siteHeaderSubtitle">ハートピアの天気予報と、今日の採取場所。</p></div>
 <nav class="siteHeaderNav" aria-label="メインナビゲーション">
 <button type="button" class="tab active" data-tab="today">今日の情報</button>
 <a href="codes.html" class="siteHeaderLink">ギフトコード</a>
-<button type="button" class="tab" data-tab="puzzles">パズル管理</button>
+<button type="button" class="tab" data-tab="puzzles">パズルメモ</button>
 </nav><a class="siteAdminReturn" id="adminReturnToTop" href="./">← TOPへ戻る</a></div></header>
 <main>
 <section class="tabs legacyTabs" hidden>
@@ -1306,15 +1306,15 @@ button.secondary,button.danger{border-radius:9px}
       <div class="card s12 puzzleHero">
         <div class="puzzleTopBar">
           <div>
-            <h2>パズル所持チェッカー</h2>
-            <p class="small">キャラクターごとに、もう買わなくていいパズルを端末内に保存します。</p>
+            <h2>パズルメモ</h2>
+            <p class="small">キャラクターごとに、持ってるパズルを登録できます。</p>
           </div>
           <div class="puzzleProgress">
             <strong id="puzzleOwnedCount">0 / 110</strong>
             <span id="puzzleResultCount" class="small"></span>
           </div>
         </div>
-        <div id="puzzleCharacterTabs" class="puzzleCharacterTabs" role="tablist" aria-label="パズル管理キャラクター"></div>
+        <div id="puzzleCharacterTabs" class="puzzleCharacterTabs" role="tablist" aria-label="キャラクターの切り替え"></div>
         <div class="puzzleCharacterTools">
           <label for="puzzleCharacterNameInput">キャラクター名
             <input id="puzzleCharacterNameInput" maxlength="40" autocomplete="off" spellcheck="false">
@@ -1350,7 +1350,7 @@ button.secondary,button.danger{border-radius:9px}
 
       <details class="card s12">
         <summary>データの書き出しと復元</summary>
-        <p class="small">パズル所持チェッカーの全キャラクターデータだけを書き出し・復元します。</p>
+        <p class="small">パズルメモの全キャラクターデータだけを書き出し・復元します。</p>
         <div class="buttons">
           <button id="puzzleExportBtn" type="button">JSONを書き出し</button>
           <button id="puzzleImportPickBtn" type="button" class="secondary">JSONを選ぶ</button>
@@ -6734,7 +6734,7 @@ function importPuzzleFile(file){
   reader.readAsText(file);
 }
 function resetPuzzleAll(){
-  if(!confirm("パズル所持チェッカーの全キャラクターデータを削除します。よろしいですか？")) return;
+  if(!confirm("パズルメモの全キャラクターデータを削除します。よろしいですか？")) return;
   puzzleState = defaultPuzzleState();
   savePuzzleState();
   renderPuzzleChecker();
@@ -6943,12 +6943,16 @@ function init(){
   fetchSiteNotice();
   recordAccessIfNeeded();
 
+  const siteHeaderSubtitle = document.getElementById("siteHeaderSubtitle");
   document.querySelectorAll(".tab").forEach(btn => {
     btn.onclick = () => {
       if(btn.dataset.adminLink != null && !isAdminRoute()){
         window.location.href = "?admin=1";
         return;
       }
+      siteHeaderSubtitle.textContent = btn.dataset.tab === "puzzles"
+        ? "持っていないパズルも、さっと確認。"
+        : "ハートピアの天気予報と、今日の採取場所。";
       if(btn.dataset.anchor){
         document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
         document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
