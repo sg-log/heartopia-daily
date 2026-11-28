@@ -1,0 +1,13 @@
+{
+  "providers": [
+    {"id":"bing","url":"https://www.bing.com/search?q={query}"},
+    {"id":"duckduckgo","url":"https://html.duckduckgo.com/html/?q={query}"},
+    {"id":"yahoo-web","url":"https://search.yahoo.co.jp/search?p={query}"},
+    {"id":"yahoo-realtime","url":"https://search.yahoo.co.jp/realtime/search?p={query}"},
+    {"id":"google","url":"https://www.google.com/search?q={query}&hl=ja"}
+  ],
+  "perLaneLimit": 12,
+  "perAuthorLimit": 2,
+  "searchConcurrency": 2,
+  "timeoutMs": 20000
+}
